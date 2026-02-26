@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>哨兵 / 向导 世界观抽取器</title>
+  <style>
+    :root{
+      --bg:#f3f4f6;
+      --bg2:#e9eaee;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --border:rgba(17,24,39,.12);
+      --shadow: 0 10px 30px rgba(17,24,39,.08);
+      --btn:#111827;
+      --btnText:#ffffff;
+      --btn2:#f3f4f6;
+      --btn2Text:#111827;
+      --primary: #0369a1;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      background:
+        radial-gradient(900px 500px at 20% 15%, rgba(0,0,0,.06), transparent 60%),
+        radial-gradient(800px 450px at 85% 30%, rgba(0,0,0,.05), transparent 55%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--text);
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+    }
+    .wrap{ width:min(1000px, 100%); display:grid; gap:16px; position: relative; }
+    
+    .header{
+      padding:18px;
+      border:1px solid var(--border);
+      border-radius:16px;
+      background: rgba(255,255,255,.78);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(6px);
+    }
+    .title{ font-size:22px; font-weight:900; margin:0 0 8px 0; letter-spacing:.3px; }
+    .sub{ margin:0; color:var(--muted); line-height:1.55; font-size:14px; }
+
+    .card{
+      border:1px solid var(--border);
+      border-radius:16px;
+      background: var(--card);
+      padding:18px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    }
+    
+    /* 锁定状态特效 */
+    .card.is-locked {
+      border-color: #dc2626;
+      box-shadow: 0 0 0 1px #dc2626, 0 10px 30px rgba(220, 38, 38, 0.1);
+    }
+    .stamp {
+      position: absolute;
+      top: 30px;
+      right: 30px;
+      color: #dc2626;
+      border: 4px solid #dc2626;
+      padding: 6px 16px;
+      font-size: 28px;
+      font-weight: 900;
+      border-radius: 8px;
+      letter-spacing: 2px;
+      transform: rotate(15deg);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .card.is-locked .stamp {
+      animation: stampIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    @keyframes stampIn {
+      0% { transform: scale(3) rotate(25deg); opacity: 0; }
+      100% { transform: scale(1) rotate(15deg); opacity: 0.85; }
+    }
+
+    .row{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+
+    button{
+      border:1px solid rgba(17,24,39,.12);
+      cursor:pointer;
+      padding:12px 16px;
+      border-radius:12px;
+      font-weight:900;
+      font-size:15px;
+      transition: all .15s ease;
+    }
+    button:active{ transform: translateY(1px); }
+    button:hover{ filter:brightness(0.95); }
+    #drawBtn{
+      background: var(--btn);
+      color: var(--btnText);
+      box-shadow: 0 10px 26px rgba(17,24,39,.14);
+    }
+    .smallbtn{
+      background: var(--btn2);
+      color: var(--btn2Text);
+    }
+
+    .pill{
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      padding:8px 10px;
+      border:1px solid var(--border);
+      background: rgba(17,24,39,.03);
+      border-radius:999px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .dot{
+      width:8px;height:8px;border-radius:50%;
+      background: rgba(17,24,39,.75);
+      box-shadow:0 0 0 4px rgba(17,24,39,.08);
+    }
+    .card.is-locked .dot { background: #dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.15); }
+
+    .grid{
+      margin-top:14px;
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap:12px;
+    }
+    .box-spirit { grid-column: span 2; }
+    
+    @media (max-width: 850px){
+      .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .box-spirit { grid-column: span 2; }
+    }
+    @media (max-width: 500px){
+      .grid{ grid-template-columns: 1fr; }
+      .box-spirit { grid-column: span 1; }
+    }
+
+    .box{
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:14px;
+      background: rgba(17,24,39,.02);
+      min-height:92px;
+      display:flex;
+      flex-direction:column;
+    }
+    .label{ font-size:12px; color:var(--muted); margin-bottom:8px; }
+    .value{ font-size:18px; font-weight:950; letter-spacing:.2px; line-height:1.2; word-break:break-word; color:var(--text); }
+    .hint{ margin-top:auto; padding-top:10px; color:var(--muted); font-size:12px; line-height:1.5; }
+    
+    .rank-val{ color: #047857; } 
+    .gold{ color: #d97706; }
+    .ability{ color: var(--primary); }
+    .role-special{ color: #6b21a8; }
+    .text-muted{ color: var(--muted); font-weight: normal; }
+
+    /* 模态框样式 */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(17, 24, 39, 0.6);
+      backdrop-filter: blur(8px);
+      display: none; align-items: center; justify-content: center;
+      z-index: 999; padding: 20px;
+      opacity: 0; transition: opacity 0.3s ease;
+    }
+    .modal-overlay.active { display: flex; opacity: 1; }
+    .modal-content {
+      background: var(--card);
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%; max-width: 960px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      transform: translateY(20px); transition: transform 0.3s ease;
+    }
+    .modal-content.small { max-width: 450px; text-align: center; }
+    .modal-overlay.active .modal-content { transform: translateY(0); }
+    .modal-header { text-align: center; margin-bottom: 20px; }
+    .modal-title { font-size: 20px; font-weight: 900; margin: 0 0 8px 0; }
+    .modal-sub { color: var(--muted); font-size: 14px; margin: 0; }
+    
+    .history-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .history-card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 10px;
+      background: rgba(17,24,39,.01);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .history-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      background: #fff;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+    }
+    .h-title { font-weight: 900; font-size: 15px; border-bottom: 1px dashed var(--border); padding-bottom: 8px; }
+    .h-row { font-size: 14px; display: flex; justify-content: space-between; }
+    .h-row .h-label { color: var(--muted); }
+    .h-row .h-val { font-weight: bold; }
+    .select-btn { margin-top: 8px; width: 100%; background: var(--btn2); color: var(--btn2Text); }
+    .select-btn:hover { background: var(--btn); color: var(--btnText); }
+
+    /* 输入框样式 */
+    input[type="text"] {
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 16px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      text-align: center;
+    }
+    input[type="text"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.15);
+    }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1 class="title">哨兵 / 向导 世界观抽取器</h1>
+      <p class="sub">
+        点击抽取：生成 <b>身份</b>、<b>等级(精神/肉体)</b>、<b>初始金币</b>、<b>能力偏好</b> 与 <b>精神体</b>。<br>
+        <i>* 满 10 次后需从记录中选择 1 个，若为哨/向可决定是否保留精神体，确认后永久锁定。<br>
+        * 设定：普通人无精神等级，鬼魂无肉体强度，且两者均无精神体。</i>
+      </p>
+    </div>
+
+    <div class="card" id="mainCard">
+      <div class="stamp">FINAL LOCKED</div>
+      <div class="row">
+        <div class="pill"><span class="dot"></span><span id="status">就绪 (0/10)</span></div>
+        <div class="row" style="justify-content:flex-end; flex:1;">
+          <button id="drawBtn">抽取 (剩余10次)</button>
+          <button id="copyBtn" class="smallbtn" title="复制当前结果">复制结果</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="box">
+          <div class="label">1) 身份</div>
+          <div class="value" id="roleVal">—</div>
+          <div class="hint">哨/向各40%，人/鬼各10%</div>
+        </div>
+        <div class="box">
+          <div class="label">2) 精神等级</div>
+          <div class="value rank-val" id="mentalRankVal">—</div>
+          <div class="hint">D-SSS；S+合计2%</div>
+        </div>
+        <div class="box">
+          <div class="label">3) 肉体强度</div>
+          <div class="value rank-val" id="physicalRankVal">—</div>
+          <div class="hint">D-SSS；S+合计2%</div>
+        </div>
+        <div class="box">
+          <div class="label">4) 初始金币</div>
+          <div class="value gold" id="goldVal">—</div>
+          <div class="hint">100-10000 (≥8k占10%)</div>
+        </div>
+        <div class="box">
+          <div class="label">5) 能力偏好</div>
+          <div class="value ability" id="abilityVal">—</div>
+          <div class="hint">八大派系随机</div>
+        </div>
+        <div class="box box-spirit">
+          <div class="label">6) 精神体</div>
+          <div class="value" id="spiritVal">—</div>
+          <div class="hint" id="spiritHint">动物为主，少量植物</div>
+        </div>
+        <div class="box">
+          <div class="label">抽取进度</div>
+          <div class="value" id="countVal">0 / 10</div>
+          <div class="hint">满10次后进入最终抉择</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10选1 模态框 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">命运抉择 (10选1)</h2>
+        <p class="modal-sub">你已完成 10 次抽取，请从下方记录中选择一个作为你的基础属性。</p>
+      </div>
+      <div class="history-grid" id="historyGrid">
+        <!-- 卡片由JS动态生成 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 精神体确认 模态框 -->
+  <div class="modal-overlay" id="spiritModal">
+    <div class="modal-content small">
+      
+      <!-- 视图1：询问是否喜欢 -->
+      <div id="spiritQuestionView">
+        <h2 class="modal-title" style="margin-bottom: 16px;">精神体确认</h2>
+        <p style="font-size: 16px; margin-bottom: 24px;">
+          您是否喜欢您现在的精神体：<br>
+          <strong id="currentSpiritName" style="color: var(--primary); font-size: 22px; display: inline-block; margin-top: 8px;">—</strong> ？
+        </p>
+        <div class="row" style="justify-content: center; gap: 16px;">
+          <button id="btnLike" style="background: #047857; color: #fff; border: none; flex: 1;">是，我很喜欢</button>
+          <button id="btnDislike" style="background: #dc2626; color: #fff; border: none; flex: 1;">否，我不喜欢</button>
+        </div>
+      </div>
+
+      <!-- 视图2：离开并重新输入 -->
+      <div id="spiritInputView" style="display: none;">
+        <h2 class="modal-title" style="color: #dc2626; margin-bottom: 12px;">您的精神体离开了 😭</h2>
+        <p class="modal-sub" style="margin-bottom: 20px;">请重新呼唤一个属于您的精神体：</p>
+        <input type="text" id="customSpiritInput" placeholder="输入新的精神体名称..." autocomplete="off" />
+        <button id="btnConfirmSpirit" style="width: 100%; margin-top: 20px;">确认呼唤</button>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  // 核心状态
+  const MAX_DRAWS = 10;
+  let drawCount = 0;
+  let historyData = [];
+  let isLocked = false;
+  let finalData = null;
+
+  // 基础数据池
+  const ROLE_WEIGHTS = [
+    { name: "哨兵", w: 40 },
+    { name: "向导", w: 40 },
+    { name: "普通人", w: 10 },
+    { name: "鬼魂", w: 10 }
+  ];
+  const RANK_WEIGHTS = [
+    { name: "D",   w: 24.5 },
+    { name: "C",   w: 24.5 },
+    { name: "B",   w: 24.5 },
+    { name: "A",   w: 24.5 },
+    { name: "S",   w: 1.2  },
+    { name: "SS",  w: 0.6  },
+    { name: "SSS", w: 0.2  },
+  ];
+  const ABILITIES = ["物理系", "元素系", "精神系", "感知系", "信息系", "治疗系", "强化系", "炼金系"];
+  const PLANT_RATE = 0.12;
+  const PLANT_SPIRITS = ["玫瑰","茉莉","栀子花","薰衣草","向日葵","雏菊","郁金香","樱花","荷花","桂花","牵牛花","紫藤","常春藤","葡萄藤","凌霄花","薄荷","迷迭香","鼠尾草","铃兰","山茶花","百合","鸢尾","绣球花","丁香","夜来香","蔷薇","木槿","芍药","牡丹","金银花"];
+  const ANIMAL_SPIRITS = ["狼","灰狼","北极狼","赤狐","北极狐","豺","鬣狗","虎","东北虎","豹","雪豹","美洲豹","猎豹","猞猁","兔狲","棕熊","黑熊","北极熊","浣熊","獾","水獭","貂","黄鼬","野猪","梅花鹿","麋鹿","驯鹿","羚羊","羊驼","牦牛","野牛","大象","非洲象","河马","犀牛","黑猩猩","大猩猩","猕猴","狒狒","狐猴","白头海雕","金雕","游隼","苍鹰","猫头鹰","雪鸮","乌鸦","渡鸦","喜鹊","天鹅","白鹭","丹顶鹤","火烈鸟","孔雀","蜂鸟","啄木鸟","信天翁","企鹅","海豚","瓶鼻海豚","虎鲸","座头鲸","蓝鲸","抹香鲸","海狮","海豹","海象","大白鲨","锤头鲨","蝠鲼","鳐鱼","旗鱼","金枪鱼","小丑鱼","海马","科莫多巨蜥","变色龙","绿鬣蜥","眼镜蛇","蟒蛇","响尾蛇","海龟","陆龟","鳄鱼","短吻鳄","树蛙","箭毒蛙","蝾螈","火蜥蜴","章鱼","乌贼","鱿鱼","水母","海星","海胆","螳螂","竹节虫","独角仙","锹形虫","蜜蜂","黄蜂","帝王蝶","凤蝶","蜻蜓","狼蛛","蝎子","螃蟹","龙虾"];
+
+  // 工具函数
+  function weightedPick(items) {
+    const total = items.reduce((s, x) => s + x.w, 0);
+    let r = Math.random() * total;
+    for (const it of items) { r -= it.w; if (r <= 0) return it.name; }
+    return items[items.length - 1].name;
+  }
+  const pickFrom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  
+  function generateData() {
+    const role = weightedPick(ROLE_WEIGHTS);
+    
+    let mentalRank = "—";
+    let physicalRank = "—";
+    let spirit = { name: "无", type: "无" }; // 默认无精神体
+    
+    if (role === "哨兵" || role === "向导") {
+      mentalRank = weightedPick(RANK_WEIGHTS);
+      physicalRank = weightedPick(RANK_WEIGHTS);
+      
+      const isPlant = Math.random() < PLANT_RATE;
+      spirit = isPlant 
+        ? { name: pickFrom(PLANT_SPIRITS), type: "植物" } 
+        : { name: pickFrom(ANIMAL_SPIRITS), type: "动物" };
+    } else if (role === "普通人") {
+      mentalRank = "无"; 
+      physicalRank = weightedPick(RANK_WEIGHTS);
+      // 精神体保持为 "无"
+    } else if (role === "鬼魂") {
+      mentalRank = weightedPick(RANK_WEIGHTS);
+      physicalRank = "无"; 
+      // 精神体保持为 "无"
+    }
+
+    let gold = Math.random() < 0.10 
+      ? Math.floor(Math.random() * (10000 - 8000 + 1)) + 8000 
+      : Math.floor(Math.random() * (7999 - 100 + 1)) + 100;
+
+    return {
+      role: role,
+      mentalRank: mentalRank,
+      physicalRank: physicalRank,
+      gold: gold,
+      ability: pickFrom(ABILITIES),
+      spirit: spirit
+    };
+  }
+
+  // DOM 元素
+  const elRole = document.getElementById("roleVal");
+  const elMentalRank = document.getElementById("mentalRankVal");
+  const elPhysicalRank = document.getElementById("physicalRankVal");
+  const elGold = document.getElementById("goldVal");
+  const elAbility = document.getElementById("abilityVal");
+  const elSpirit = document.getElementById("spiritVal");
+  const elSpiritHint = document.getElementById("spiritHint");
+  const elStatus = document.getElementById("status");
+  const elCount = document.getElementById("countVal");
+  
+  const drawBtn = document.getElementById("drawBtn");
+  const copyBtn = document.getElementById("copyBtn");
+  const mainCard = document.getElementById("mainCard");
+  
+  const modalOverlay = document.getElementById("modalOverlay");
+  const historyGrid = document.getElementById("historyGrid");
+
+  const spiritModal = document.getElementById("spiritModal");
+  const spiritQuestionView = document.getElementById("spiritQuestionView");
+  const spiritInputView = document.getElementById("spiritInputView");
+  const currentSpiritName = document.getElementById("currentSpiritName");
+  const customSpiritInput = document.getElementById("customSpiritInput");
+
+  // 更新主界面UI
+  function updateUI(data) {
+    elRole.textContent = data.role;
+    if(data.role === "普通人" || data.role === "鬼魂") elRole.classList.add("role-special");
+    else elRole.classList.remove("role-special");
+
+    elMentalRank.textContent = data.mentalRank;
+    elMentalRank.className = data.mentalRank === "无" ? "value text-muted" : "value rank-val";
+    
+    elPhysicalRank.textContent = data.physicalRank;
+    elPhysicalRank.className = data.physicalRank === "无" ? "value text-muted" : "value rank-val";
+    
+    elGold.textContent = data.gold;
+    elAbility.textContent = data.ability;
+    
+    // 精神体显示处理
+    elSpirit.textContent = data.spirit.name;
+    elSpirit.className = data.spirit.name === "无" ? "value text-muted" : "value";
+    elSpiritHint.textContent = data.spirit.type === "无" ? "普通人/鬼魂无精神体" : `类型：${data.spirit.type}`;
+  }
+
+  function setStatus(text) { elStatus.textContent = text; }
+
+  // 渲染模态框历史记录
+  function renderHistory() {
+    historyGrid.innerHTML = "";
+    historyData.forEach((data, index) => {
+      const card = document.createElement("div");
+      card.className = "history-card";
+      
+      const roleClass = (data.role === "普通人" || data.role === "鬼魂") ? "role-special" : "";
+      const mentalHtml = data.mentalRank === "无" ? `<span class="text-muted">无</span>` : `<span class="rank-val">${data.mentalRank}</span>`;
+      const physicalHtml = data.physicalRank === "无" ? `<span class="text-muted">无</span>` : `<span class="rank-val">${data.physicalRank}</span>`;
+      const spiritHtml = data.spirit.name === "无" ? `<span class="text-muted">无</span>` : data.spirit.name;
+
+      card.innerHTML = `
+        <div class="h-title">第 ${index + 1} 次抽取</div>
+        <div class="h-row"><span class="h-label">身份</span><span class="h-val ${roleClass}">${data.role}</span></div>
+        <div class="h-row"><span class="h-label">精神/肉体</span><span class="h-val">${mentalHtml} / ${physicalHtml}</span></div>
+        <div class="h-row"><span class="h-label">金币</span><span class="h-val gold">${data.gold}</span></div>
+        <div class="h-row"><span class="h-label">能力</span><span class="h-val ability">${data.ability}</span></div>
+        <div class="h-row"><span class="h-label">精神体</span><span class="h-val">${spiritHtml}</span></div>
+        <button class="select-btn" onclick="selectFinal(${index})">选择此项</button>
+      `;
+      historyGrid.appendChild(card);
+    });
+  }
+
+  // 第一步：在10选1中选择了某一项
+  window.selectFinal = function(index) {
+    // 深拷贝一下，以免修改影响原历史记录
+    finalData = JSON.parse(JSON.stringify(historyData[index])); 
+    
+    // 隐藏 10选1 模态框
+    modalOverlay.classList.remove("active");
+    
+    // 如果是普通人或鬼魂，没有精神体，直接跳过询问进入最终锁定
+    if (finalData.role === "普通人" || finalData.role === "鬼魂") {
+      executeFinalLock();
+    } else {
+      // 准备并弹出精神体确认模态框
+      currentSpiritName.textContent = finalData.spirit.name;
+      spiritQuestionView.style.display = "block";
+      spiritInputView.style.display = "none";
+      customSpiritInput.value = "";
+      
+      setTimeout(() => {
+        spiritModal.classList.add("active");
+      }, 300);
+    }
+  };
+
+  // 第二步：喜欢精神体，直接锁定
+  document.getElementById("btnLike").addEventListener("click", () => {
+    spiritModal.classList.remove("active");
+    executeFinalLock();
+  });
+
+  // 第三步：不喜欢精神体，切换到输入视图
+  document.getElementById("btnDislike").addEventListener("click", () => {
+    spiritQuestionView.style.display = "none";
+    spiritInputView.style.display = "block";
+    customSpiritInput.focus();
+  });
+
+  // 第四步：输入新精神体并确认
+  document.getElementById("btnConfirmSpirit").addEventListener("click", () => {
+    const newVal = customSpiritInput.value.trim();
+    if (!newVal) {
+      alert("精神体名称不能为空哦！");
+      return;
+    }
+    
+    // 更新精神体数据
+    finalData.spirit.name = newVal;
+    finalData.spirit.type = "自定义";
+    
+    spiritModal.classList.remove("active");
+    executeFinalLock();
+  });
+
+  // 执行最终锁定并展示主面板（确定面板）
+  function executeFinalLock() {
+    isLocked = true;
+    updateUI(finalData);
+    
+    mainCard.classList.add("is-locked");
+    drawBtn.style.display = "none";
+    
+    elCount.textContent = `最终锁定`;
+    setStatus("数据已永久锁定");
+  }
+
+  // 抽取按钮逻辑
+  function drawOnce() {
+    if (isLocked) return;
+    
+    if (drawCount >= MAX_DRAWS) {
+      modalOverlay.classList.add("active");
+      return;
+    }
+
+    const data = generateData();
+    historyData.push(data);
+    drawCount++;
+    
+    updateUI(data);
+    elCount.textContent = `${drawCount} / ${MAX_DRAWS}`;
+    drawBtn.textContent = `抽取 (剩余${MAX_DRAWS - drawCount}次)`;
+    setStatus(`抽取中... (${drawCount}/${MAX_DRAWS})`);
+
+    // 达到10次
+    if (drawCount === MAX_DRAWS) {
+      drawBtn.textContent = "打开抉择面板";
+      setStatus("请选择基础属性");
+      
+      setTimeout(() => {
+        renderHistory();
+        modalOverlay.classList.add("active");
+      }, 400);
+    }
+  }
+
+  // 复制逻辑
+  async function copyResult() {
+    if (drawCount === 0) {
+      setStatus("请先抽取再复制！");
+      return;
+    }
+    
+    const prefix = isLocked ? "【哨兵/向导 最终锁定属性】" : "【哨兵/向导 暂存属性】";
+    const text =
+`${prefix}
+身份：${elRole.textContent}
+等级：精神 ${elMentalRank.textContent} / 肉体 ${elPhysicalRank.textContent}
+初始金币：${elGold.textContent}
+能力偏好：${elAbility.textContent}
+精神体：${elSpirit.textContent}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(isLocked ? "已复制最终属性" : "已复制暂存属性");
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      setStatus("已复制到剪贴板");
+    }
+  }
+
+  drawBtn.addEventListener("click", drawOnce);
+  copyBtn.addEventListener("click", copyResult);
+</script>
+</body>
+</html>
