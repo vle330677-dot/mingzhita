@@ -1,4 +1,4 @@
-帮我修改管理员后台，这里存储着游戏界面玩家的数据，保证数据和游戏界面玩家始终一致，然后把存储的对戏记录分类归纳，按照地址，人物归纳收集好。接着在下面生成物品的数据库，不同的地址对应不同类型的物品，管理员可以在后台添加或者删除物品，游戏界面直接调用这里的物品。然后技能也是，技能基于能力偏好中八大派系生成，不同派系对应不同的技能，和物品一样，管理员都可以分类添加或是删除。管理员后台的代码:import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, MessageSquareText } from "lucide-react";
 import { User } from "../types";
