@@ -1,4 +1,4 @@
-帮我检查一下这段代码有没有需要修改的:import express from 'express';
+import express from 'express';
 import Database from 'better-sqlite3';
 import dotenv from 'dotenv';
 import path from 'path';
