@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 const dbPath = process.env.DB_PATH || 'game.db';
 const db = new Database(dbPath);
 
+// ================= 数据库初始化 =================
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +39,8 @@ db.exec(`
     appearance TEXT,
     clothing TEXT,
     background TEXT,
-    isHidden INTEGER DEFAULT 0
+    isHidden INTEGER DEFAULT 0,
+    currentLocation TEXT -- 新增：用于记录玩家在地图上的位置
   );
 
   CREATE TABLE IF NOT EXISTS tombstones (
@@ -60,16 +62,33 @@ db.exec(`
     description TEXT,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
+
+  -- 新增：公会委托任务表
+  CREATE TABLE IF NOT EXISTS commissions (
+    id TEXT PRIMARY KEY,
+    publisherId INTEGER,
+    publisherName TEXT,
+    title TEXT,
+    content TEXT,
+    difficulty TEXT,
+    status TEXT DEFAULT 'open',
+    acceptedById INTEGER DEFAULT NULL,
+    acceptedByName TEXT DEFAULT NULL,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 const addColumn = (table: string, col: string, type: string) => {
   try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
-  } catch (e) {}
+  } catch (e) {} // 忽略列已存在的错误
 };
-['gender', 'height', 'age', 'orientation', 'faction', 'factionRole', 'personality', 'appearance', 'clothing', 'background'].forEach(c => addColumn('users', c, 'TEXT'));
+
+// 确保旧数据库升级时也能加上这些列
+['gender', 'height', 'age', 'orientation', 'faction', 'factionRole', 'personality', 'appearance', 'clothing', 'background', 'currentLocation'].forEach(c => addColumn('users', c, 'TEXT'));
 addColumn('users', 'isHidden', 'INTEGER DEFAULT 0');
 addColumn('tombstones', 'isHidden', 'INTEGER DEFAULT 0');
+
 
 async function startServer() {
   const app = express();
@@ -79,6 +98,7 @@ async function startServer() {
 
   // ================= API Routes 开始 =================
   
+  // --- 原有用户与管理员 API ---
   app.get('/api/users/:name', (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.params.name);
     if (user) {
@@ -143,21 +163,10 @@ async function startServer() {
     if (profileText) {
        console.log("Mocking JSON parsing for profile text...");
        parsedData = {
-         gender: "女 (模拟)",
-         height: "165cm (模拟)",
-         age: "20 (模拟)",
-         orientation: "异性恋 (模拟)",
-         faction: "测试阵营 (模拟)",
-         factionRole: "干员 (模拟)",
-         personality: "开朗勇敢 (模拟)",
-         appearance: "短发 (模拟)",
-         clothing: "制服 (模拟)",
-         background: "这是由于关闭了AI功能而生成的测试背景数据。(模拟)",
-         role: "向导",
-         mentalRank: "A",
-         physicalRank: "C",
-         ability: "精神安抚",
-         spiritName: "白猫"
+         gender: "女 (模拟)", height: "165cm (模拟)", age: "20 (模拟)", orientation: "异性恋 (模拟)",
+         faction: "测试阵营 (模拟)", factionRole: "干员 (模拟)", personality: "开朗勇敢 (模拟)",
+         appearance: "短发 (模拟)", clothing: "制服 (模拟)", background: "这是由于关闭了AI功能而生成的测试背景数据。(模拟)",
+         role: "向导", mentalRank: "A", physicalRank: "C", ability: "精神安抚", spiritName: "白猫"
        };
     }
     
@@ -296,10 +305,116 @@ async function startServer() {
     res.json({ success: true, tombstones });
   });
 
+  // ================= 新增：地图与游戏交互 API =================
+  
+  // 1. 获取特定地点停留的所有玩家 (用于同屏显示)
+  app.get('/api/location/:locationId/players', (req, res) => {
+    const { locationId } = req.params;
+    try {
+      // 只选取需要展示的非敏感字段，排除死人或未审核的人
+      const players = db.prepare(`
+        SELECT id, name, role, avatarUrl, currentLocation 
+        FROM users 
+        WHERE currentLocation = ? AND status != 'dead' AND status != 'pending'
+      `).all(locationId);
+      res.json({ success: true, players });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 2. 更新玩家位置 (驻留什么都不做)
+  app.post('/api/users/:id/location', (req, res) => {
+    const { id } = req.params;
+    const { locationId } = req.body;
+    try {
+      db.prepare('UPDATE users SET currentLocation = ? WHERE id = ?').run(locationId, id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 3. 获取用户背包物品
   app.get('/api/users/:id/items', (req, res) => {
     const { id } = req.params;
-    const items = db.prepare('SELECT * FROM items WHERE userId = ?').all(id);
-    res.json({ success: true, items });
+    try {
+      const items = db.prepare('SELECT * FROM items WHERE userId = ?').all(id);
+      res.json({ success: true, items });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 4. 新增物品入背包 (闲逛掉落)
+  app.post('/api/users/:id/items', (req, res) => {
+    const userId = Number(req.params.id);
+    const { name, description } = req.body;
+    try {
+      const stmt = db.prepare('INSERT INTO items (userId, name, description) VALUES (?, ?, ?)');
+      const info = stmt.run(userId, name, description);
+      res.json({ success: true, itemId: info.lastInsertRowid });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 5. 丢弃/消耗物品
+  app.delete('/api/items/:itemId', (req, res) => {
+    const { itemId } = req.params;
+    try {
+      db.prepare('DELETE FROM items WHERE id = ?').run(itemId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 6. 获取公会委托板列表
+  app.get('/api/commissions', (req, res) => {
+    try {
+      const commissions = db.prepare('SELECT * FROM commissions ORDER BY createdAt DESC').all();
+      res.json({ success: true, commissions });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 7. 发布新委托
+  app.post('/api/commissions', (req, res) => {
+    const { id, publisherId, publisherName, title, content, difficulty } = req.body;
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO commissions (id, publisherId, publisherName, title, content, difficulty, status)
+        VALUES (?, ?, ?, ?, ?, ?, 'open')
+      `);
+      stmt.run(id, publisherId, publisherName, title, content, difficulty);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 8. 接受委托
+  app.put('/api/commissions/:id/accept', (req, res) => {
+    const commissionId = req.params.id;
+    const { userId, userName } = req.body;
+    try {
+      // 必须确保 status 为 'open' 才能接取，防止多人同时点击冲突
+      const result = db.prepare(`
+        UPDATE commissions 
+        SET status = 'accepted', acceptedById = ?, acceptedByName = ? 
+        WHERE id = ? AND status = 'open'
+      `).run(userId, userName, commissionId);
+      
+      if (result.changes > 0) {
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ success: false, message: '手慢了，该委托已被接取或不存在' });
+      }
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
   });
 
   // ================= API Routes 结束 =================
