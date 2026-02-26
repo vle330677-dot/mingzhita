@@ -70,6 +70,8 @@ db.exec(`
     title TEXT,
     content TEXT,
     difficulty TEXT,
+    reward INTEGER DEFAULT 0,
+    isAnonymous INTEGER DEFAULT 0,
     status TEXT DEFAULT 'open',
     acceptedById INTEGER DEFAULT NULL,
     acceptedByName TEXT DEFAULT NULL,
@@ -119,9 +121,17 @@ db.prepare("UPDATE users SET hp = 100, maxHp = 100, mp = 100, maxMp = 100 WHERE 
 const JOB_SALARIES: Record<string, number> = { '神使': 1000, '侍奉者': 1000, '神使后裔': 0, '仆从': 500 };
 const JOB_LIMITS: Record<string, number> = { '神使': 1, '侍奉者': 2, '神使后裔': 2, '仆从': 9999 };
 
+// 获取本地时区日期的辅助函数 (修复跨天判定问题)
+const getLocalToday = () => {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
+  
+  // 增加请求体大小限制以支持 Base64 头像上传
   app.use(express.json({ limit: '50mb' }));
 
   // ================= API Routes =================
@@ -130,7 +140,7 @@ async function startServer() {
   app.get('/api/users/:name', (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.params.name) as any;
     if (user) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalToday(); // 使用本地日期
       if (user.lastResetDate !== today) {
         db.prepare('UPDATE users SET workCount = 0, trainCount = 0, lastResetDate = ? WHERE id = ?').run(today, user.id);
         user.workCount = 0; user.trainCount = 0;
@@ -141,11 +151,22 @@ async function startServer() {
     }
   });
 
-  // 2. 命之塔职位系统
+  // 获取全服玩家数据 (前端大地图需要)
+  app.get('/api/admin/users', (req, res) => {
+    try {
+      const users = db.prepare('SELECT id, name, role, job, hp, mentalProgress, currentLocation, avatarUrl, isHidden FROM users').all();
+      res.json({ success: true, users });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 2. 命之塔职位系统 (增加用户判空拦截)
   app.post('/api/tower/join', (req, res) => {
     const { userId, jobName } = req.body;
     try {
       const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
+      if (!user) return res.json({ success: false, message: '用户不存在' });
       if (user.job && user.job !== '无') return res.json({ success: false, message: '你已经有职位了，请先离职。' });
 
       const currentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE job = ?').get(jobName) as any;
@@ -158,9 +179,10 @@ async function startServer() {
 
   app.post('/api/tower/checkin', (req, res) => {
     const { userId } = req.body;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalToday();
     try {
       const user = db.prepare('SELECT job, lastCheckInDate FROM users WHERE id = ?').get(userId) as any;
+      if (!user) return res.json({ success: false, message: '用户不存在' });
       if (!user.job || user.job === '无') return res.json({ success: false, message: '无职位人员无法签到' });
       if (user.lastCheckInDate === today) return res.json({ success: false, message: '今日已领取过工资' });
 
@@ -174,6 +196,8 @@ async function startServer() {
     const { userId } = req.body;
     try {
       const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
+      if (!user) return res.json({ success: false, message: '用户不存在' });
+
       const penalty = Math.floor((JOB_SALARIES[user.job] || 0) * 0.3);
       db.prepare('UPDATE users SET job = "无", gold = MAX(0, gold - ?) WHERE id = ?').run(penalty, userId);
       res.json({ success: true, penalty });
@@ -196,6 +220,7 @@ async function startServer() {
     try {
       const status = db.prepare('SELECT * FROM spirit_status WHERE userId = ?').get(userId) as any;
       const user = db.prepare('SELECT mentalProgress FROM users WHERE id = ?').get(userId) as any;
+      if (!user || !status) return res.json({ success: false, message: '未找到相关数据' });
 
       let newIntimacy = (status.intimacy || 0) + intimacyGain;
       let levelGain = Math.floor(newIntimacy / 100);
@@ -222,22 +247,64 @@ async function startServer() {
     res.json({ success: true, messages });
   });
 
-  // 5. 任务与技能 (保持原有逻辑)
+  app.get('/api/roleplay/unread/:userId', (req, res) => {
+    const { userId } = req.params;
+    const result = db.prepare('SELECT COUNT(*) as count FROM roleplay_messages WHERE receiverId = ? AND isRead = 0').get(userId) as any;
+    res.json({ success: true, count: result.count || 0 });
+  });
+
+  // 5. 任务委托系统
   app.get('/api/commissions', (req, res) => {
     res.json({ success: true, commissions: db.prepare('SELECT * FROM commissions ORDER BY createdAt DESC').all() });
   });
 
+  app.post('/api/commissions', (req, res) => {
+    const { id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous } = req.body;
+    try {
+      // 扣除发布者的金币
+      db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(reward || 0, publisherId);
+      db.prepare('INSERT INTO commissions (id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, publisherId, publisherName, title, content, difficulty || 'C', reward || 0, isAnonymous ? 1 : 0);
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+  });
+
+  app.put('/api/commissions/:id/accept', (req, res) => {
+    const { userId, userName } = req.body;
+    try {
+      db.prepare('UPDATE commissions SET status = "accepted", acceptedById = ?, acceptedByName = ? WHERE id = ?').run(userId, userName, req.params.id);
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+  });
+
+  // 6. 个人技能系统
   app.get('/api/users/:id/skills', (req, res) => {
     res.json({ success: true, skills: db.prepare('SELECT * FROM user_skills WHERE userId = ?').all(req.params.id) });
   });
 
-  // 6. 其他常规 API (初始化、管理员、头像、地图位置等...)
+  app.post('/api/users/:id/skills', (req, res) => {
+    const { name } = req.body;
+    const userId = req.params.id;
+    try {
+      // 检查是否已经学过该技能
+      const exist = db.prepare('SELECT * FROM user_skills WHERE userId = ? AND name = ?').get(userId, name);
+      if (exist) {
+        db.prepare('UPDATE user_skills SET level = level + 1 WHERE userId = ? AND name = ?').run(userId, name);
+      } else {
+        db.prepare('INSERT INTO user_skills (userId, name, level) VALUES (?, ?, 1)').run(userId, name);
+      }
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+  });
+
+  // 7. 其他玩家互动 API
   app.post('/api/users/init', (req, res) => {
     const { name } = req.body;
     try {
       db.prepare(`INSERT INTO users (name, status) VALUES (?, 'pending')`).run(name);
       res.json({ success: true });
-    } catch (e: any) { res.json({ success: true }); }
+    } catch (e: any) { 
+      res.json({ success: false, message: '用户名已存在或创建失败' }); // 修复静默失败
+    }
   });
 
   app.post('/api/users/:id/location', (req, res) => {
@@ -245,13 +312,33 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // (注：此处保留你原有的 app.get('/api/admin/users'), app.post('/api/users') 等接口)
+  app.put('/api/users/:id/avatar', (req, res) => {
+    const { avatarUrl } = req.body;
+    try {
+      db.prepare('UPDATE users SET avatarUrl = ? WHERE id = ?').run(avatarUrl, req.params.id);
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+  });
 
-  // 生产/开发环境配置
+
+  // ================= 生产/开发环境配置 =================
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
+    
+    // 确保开发环境也能处理 SPA 回退
+    app.use('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api')) return next();
+      try {
+        let template = '<!DOCTYPE html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>';
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
