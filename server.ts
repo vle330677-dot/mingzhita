@@ -104,6 +104,50 @@ db.exec(`
   );
 `);
 
+// 职位配置
+const JOB_SALARIES: Record<string, number> = { '神使': 1000, '侍奉者': 1000, '神使后裔': 0, '仆从': 500 };
+const JOB_LIMITS: Record<string, number> = { '神使': 1, '侍奉者': 2, '神使后裔': 2, '仆从': 9999 };
+
+// 1. 加入职位 API
+app.post('/api/tower/join', (req, res) => {
+  const { userId, jobName } = req.body;
+  try {
+    const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
+    if (user.job && user.job !== '无') return res.json({ success: false, message: '你已经有职位了' });
+
+    const currentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE job = ?').get(jobName) as any;
+    if (currentCount.count >= JOB_LIMITS[jobName]) return res.json({ success: false, message: '名额已满' });
+
+    db.prepare('UPDATE users SET job = ? WHERE id = ?').run(jobName, userId);
+    res.json({ success: true });
+  } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+});
+
+// 2. 签到 API
+app.post('/api/tower/checkin', (req, res) => {
+  const { userId } = req.body;
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const user = db.prepare('SELECT job, gold, lastCheckInDate FROM users WHERE id = ?').get(userId) as any;
+    if (!user.job || user.job === '无') return res.json({ success: false, message: '无职位无法签到' });
+    if (user.lastCheckInDate === today) return res.json({ success: false, message: '今日已签到' });
+
+    const salary = JOB_SALARIES[user.job] || 0;
+    db.prepare('UPDATE users SET gold = gold + ?, lastCheckInDate = ? WHERE id = ?').run(salary, today, userId);
+    res.json({ success: true, reward: salary });
+  } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+});
+
+// 3. 离职 API
+app.post('/api/tower/quit', (req, res) => {
+  const { userId } = req.body;
+  try {
+    const user = db.prepare('SELECT job, gold FROM users WHERE id = ?').get(userId) as any;
+    const penalty = Math.floor((JOB_SALARIES[user.job] || 0) * 0.3);
+    db.prepare('UPDATE users SET job = "无", gold = MAX(0, gold - ?) WHERE id = ?').run(penalty, userId);
+    res.json({ success: true, penalty });
+  } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+});
 const addColumn = (table: string, col: string, type: string) => {
   try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
