@@ -14,6 +14,7 @@ const db = new Database(dbPath);
 
 // ================= 数据库初始化 =================
 db.exec(`
+  -- 用户主表
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE,
@@ -29,55 +30,48 @@ db.exec(`
     deathDescription TEXT,
     profileText TEXT,
     isHidden INTEGER DEFAULT 0,
-    currentLocation TEXT
+    currentLocation TEXT,
+    job TEXT DEFAULT '无',
+    hp INTEGER DEFAULT 100,
+    maxHp INTEGER DEFAULT 100,
+    mp INTEGER DEFAULT 100,
+    maxMp INTEGER DEFAULT 100,
+    mentalProgress REAL DEFAULT 0,
+    workCount INTEGER DEFAULT 0,
+    trainCount INTEGER DEFAULT 0,
+    lastResetDate TEXT,
+    lastCheckInDate TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS tombstones (
+  -- 物品库 (全局模板)
+  CREATE TABLE IF NOT EXISTS global_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    deathDescription TEXT,
-    role TEXT,
-    mentalRank TEXT,
-    physicalRank TEXT,
-    ability TEXT,
-    spiritName TEXT,
-    isHidden INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId INTEGER,
     name TEXT,
     description TEXT,
+    locationTag TEXT, -- 对应地图地址，如 'slums', 'rich_area'
+    price INTEGER DEFAULT 0,
+    type TEXT -- 'consumable', 'weapon', etc.
+  );
+
+  -- 玩家背包
+  CREATE TABLE IF NOT EXISTS user_inventory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER,
+    itemId INTEGER,
+    name TEXT,
+    qty INTEGER DEFAULT 1,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
 
-  CREATE TABLE IF NOT EXISTS roleplay_messages (
+  -- 技能库 (全局模板)
+  CREATE TABLE IF NOT EXISTS global_skills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    senderId INTEGER,
-    senderName TEXT,
-    receiverId INTEGER,
-    receiverName TEXT,
-    content TEXT,
-    isRead INTEGER DEFAULT 0,
-    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    name TEXT,
+    faction TEXT, -- 八大派系
+    description TEXT
   );
 
-  CREATE TABLE IF NOT EXISTS commissions (
-    id TEXT PRIMARY KEY,
-    publisherId INTEGER,
-    publisherName TEXT,
-    title TEXT,
-    content TEXT,
-    difficulty TEXT,
-    reward INTEGER DEFAULT 0,
-    isAnonymous INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'open',
-    acceptedById INTEGER DEFAULT NULL,
-    acceptedByName TEXT DEFAULT NULL,
-    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
+  -- 玩家技能
   CREATE TABLE IF NOT EXISTS user_skills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     userId INTEGER,
@@ -86,6 +80,32 @@ db.exec(`
     FOREIGN KEY(userId) REFERENCES users(id)
   );
 
+  -- 对戏消息 (增加地点记录)
+  CREATE TABLE IF NOT EXISTS roleplay_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    senderId INTEGER,
+    senderName TEXT,
+    receiverId INTEGER,
+    receiverName TEXT,
+    content TEXT,
+    locationId TEXT, -- 新增：记录对戏发生的地点
+    isRead INTEGER DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- 拍卖行
+  CREATE TABLE IF NOT EXISTS auction_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    sellerId INTEGER,
+    currentPrice INTEGER,
+    minPrice INTEGER,
+    highestBidderId INTEGER,
+    endsAt DATETIME,
+    status TEXT DEFAULT 'active'
+  );
+
+  -- 精神体状态
   CREATE TABLE IF NOT EXISTS spirit_status (
     userId INTEGER PRIMARY KEY,
     name TEXT,
@@ -98,246 +118,153 @@ db.exec(`
   );
 `);
 
-// 自动动态增加缺失列的辅助函数
+// 辅助函数：动态增加列（向下兼容）
 const addColumn = (table: string, col: string, type: string) => {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`); } catch (e) {}
 };
+addColumn('roleplay_messages', 'locationId', 'TEXT');
 
-// 补全所有核心字段
-[
-  'gender', 'height', 'age', 'orientation', 'faction', 'factionRole', 
-  'personality', 'appearance', 'clothing', 'background', 'currentLocation',
-  'job', 'lastResetDate', 'lastCheckInDate'
-].forEach(c => addColumn('users', c, 'TEXT'));
-
-['hp', 'maxHp', 'mp', 'maxMp', 'workCount', 'trainCount'].forEach(c => addColumn('users', c, 'INTEGER DEFAULT 0'));
-addColumn('users', 'mentalProgress', 'REAL DEFAULT 0');
-addColumn('users', 'isHidden', 'INTEGER DEFAULT 0');
-
-// 初始化数值补丁
-db.prepare("UPDATE users SET hp = 100, maxHp = 100, mp = 100, maxMp = 100 WHERE hp IS NULL OR hp = 0").run();
-
-// 职位名额与工资配置
-const JOB_SALARIES: Record<string, number> = { '神使': 1000, '侍奉者': 1000, '神使后裔': 0, '仆从': 500 };
+// ================= 辅助逻辑 =================
+const JOB_SALARIES: Record<string, number> = { '神使': 1000, '侍奉者': 1000, '神使后裔': 800, '仆从': 500 };
 const JOB_LIMITS: Record<string, number> = { '神使': 1, '侍奉者': 2, '神使后裔': 2, '仆从': 9999 };
 
-// 获取本地时区日期的辅助函数 (修复跨天判定问题)
-const getLocalToday = () => {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-};
+const getLocalToday = () => new Date().toISOString().split('T')[0];
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
-  
-  // 增加请求体大小限制以支持 Base64 头像上传
   app.use(express.json({ limit: '50mb' }));
 
-  // ================= API Routes =================
+  // ================= 1. 管理员后台 API =================
 
-  // 1. 用户基础信息与跨天重置
+  // 获取所有玩家 (与游戏同步)
+  app.get('/api/admin/users', (req, res) => {
+    const users = db.prepare('SELECT * FROM users').all();
+    res.json({ success: true, users });
+  });
+
+  // 分类获取对戏日志
+  app.get('/api/admin/roleplay_logs', (req, res) => {
+    // 按照地点和人物进行归纳排序
+    const logs = db.prepare(`
+      SELECT * FROM roleplay_messages 
+      ORDER BY locationId DESC, createdAt DESC
+    `).all();
+    res.json({ success: true, logs });
+  });
+
+  // 管理物品：添加/删除/查看
+  app.get('/api/admin/items', (req, res) => {
+    res.json({ success: true, items: db.prepare('SELECT * FROM global_items').all() });
+  });
+
+  app.post('/api/admin/items', (req, res) => {
+    const { name, description, locationTag, price } = req.body;
+    db.prepare('INSERT INTO global_items (name, description, locationTag, price) VALUES (?, ?, ?, ?)').run(name, description, locationTag, price);
+    res.json({ success: true });
+  });
+
+  app.delete('/api/admin/items/:id', (req, res) => {
+    db.prepare('DELETE FROM global_items WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  });
+
+  // 管理技能：按派系添加
+  app.get('/api/admin/skills', (req, res) => {
+    res.json({ success: true, skills: db.prepare('SELECT * FROM global_skills').all() });
+  });
+
+  app.post('/api/admin/skills', (req, res) => {
+    const { name, faction, description } = req.body;
+    db.prepare('INSERT INTO global_skills (name, faction, description) VALUES (?, ?, ?)').run(name, faction, description);
+    res.json({ success: true });
+  });
+
+  // ================= 2. 游戏系统 API =================
+
+  // 背包系统
+  app.get('/api/users/:id/inventory', (req, res) => {
+    const items = db.prepare('SELECT * FROM user_inventory WHERE userId = ?').all(req.params.id);
+    res.json({ success: true, items });
+  });
+
+  app.post('/api/users/:id/inventory/add', (req, res) => {
+    const { name, qty, source } = req.body;
+    const exist = db.prepare('SELECT * FROM user_inventory WHERE userId = ? AND name = ?').get(req.params.id, name) as any;
+    if (exist) {
+      db.prepare('UPDATE user_inventory SET qty = qty + ? WHERE id = ?').run(qty, exist.id);
+    } else {
+      db.prepare('INSERT INTO user_inventory (userId, name, qty) VALUES (?, ?, ?)').run(req.params.id, name, qty);
+    }
+    res.json({ success: true });
+  });
+
+  // 商店：根据当前地点获取物品
+  app.get('/api/market/goods', (req, res) => {
+    const { location } = req.query;
+    const goods = db.prepare('SELECT * FROM global_items WHERE locationTag = ?').all(location);
+    res.json({ success: true, goods });
+  });
+
+  app.post('/api/market/buy', (req, res) => {
+    const { userId, itemId } = req.body;
+    const item = db.prepare('SELECT * FROM global_items WHERE id = ?').get(itemId) as any;
+    const user = db.prepare('SELECT gold FROM users WHERE id = ?').get(userId) as any;
+
+    if (user.gold < item.price) return res.json({ success: false, message: '金币不足' });
+
+    db.transaction(() => {
+      db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(item.price, userId);
+      db.prepare('INSERT INTO user_inventory (userId, name, qty) VALUES (?, ?, 1)').run(userId, item.name);
+    })();
+    res.json({ success: true });
+  });
+
+  // 命之塔系统 (修正名额判定)
+  app.post('/api/tower/join', (req, res) => {
+    const { userId, jobName } = req.body;
+    const currentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE job = ?').get(jobName) as any;
+    if (currentCount.count >= (JOB_LIMITS[jobName] || 0)) {
+      return res.json({ success: false, message: `【${jobName}】名额已满，无法入职` });
+    }
+    db.prepare('UPDATE users SET job = ? WHERE id = ?').run(jobName, userId);
+    res.json({ success: true });
+  });
+
+  // 用户基础获取与重置
   app.get('/api/users/:name', (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.params.name) as any;
     if (user) {
-      const today = getLocalToday(); // 使用本地日期
+      const today = getLocalToday();
       if (user.lastResetDate !== today) {
         db.prepare('UPDATE users SET workCount = 0, trainCount = 0, lastResetDate = ? WHERE id = ?').run(today, user.id);
-        user.workCount = 0; user.trainCount = 0;
+        user.workCount = 0;
       }
       res.json({ success: true, user });
     } else {
-      res.json({ success: false, message: 'User not found' });
+      res.json({ success: false });
     }
   });
 
-  // 获取全服玩家数据 (前端大地图需要)
-  app.get('/api/admin/users', (req, res) => {
-    try {
-      const users = db.prepare('SELECT id, name, role, job, hp, mentalProgress, currentLocation, avatarUrl, isHidden FROM users').all();
-      res.json({ success: true, users });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  });
-
-  // 2. 命之塔职位系统 (增加用户判空拦截)
-  app.post('/api/tower/join', (req, res) => {
-    const { userId, jobName } = req.body;
-    try {
-      const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
-      if (!user) return res.json({ success: false, message: '用户不存在' });
-      if (user.job && user.job !== '无') return res.json({ success: false, message: '你已经有职位了，请先离职。' });
-
-      const currentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE job = ?').get(jobName) as any;
-      if (currentCount.count >= (JOB_LIMITS[jobName] || 0)) return res.json({ success: false, message: '该职位名额已满。' });
-
-      db.prepare('UPDATE users SET job = ? WHERE id = ?').run(jobName, userId);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  app.post('/api/tower/checkin', (req, res) => {
-    const { userId } = req.body;
-    const today = getLocalToday();
-    try {
-      const user = db.prepare('SELECT job, lastCheckInDate FROM users WHERE id = ?').get(userId) as any;
-      if (!user) return res.json({ success: false, message: '用户不存在' });
-      if (!user.job || user.job === '无') return res.json({ success: false, message: '无职位人员无法签到' });
-      if (user.lastCheckInDate === today) return res.json({ success: false, message: '今日已领取过工资' });
-
-      const salary = JOB_SALARIES[user.job] || 0;
-      db.prepare('UPDATE users SET gold = gold + ?, lastCheckInDate = ? WHERE id = ?').run(salary, today, userId);
-      res.json({ success: true, reward: salary });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  app.post('/api/tower/quit', (req, res) => {
-    const { userId } = req.body;
-    try {
-      const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
-      if (!user) return res.json({ success: false, message: '用户不存在' });
-
-      const penalty = Math.floor((JOB_SALARIES[user.job] || 0) * 0.3);
-      db.prepare('UPDATE users SET job = "无", gold = MAX(0, gold - ?) WHERE id = ?').run(penalty, userId);
-      res.json({ success: true, penalty });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  // 3. 精神体系统
-  app.get('/api/users/:id/spirit-status', (req, res) => {
-    const { id } = req.params;
-    let status = db.prepare('SELECT * FROM spirit_status WHERE userId = ?').get(id);
-    if (!status) {
-      db.prepare('INSERT INTO spirit_status (userId) VALUES (?)').run(id);
-      status = { userId: id, intimacy: 0, level: 1, hp: 100, status: '良好' };
-    }
-    res.json({ success: true, spiritStatus: status });
-  });
-
-  app.post('/api/tower/interact-spirit', (req, res) => {
-    const { userId, intimacyGain } = req.body;
-    try {
-      const status = db.prepare('SELECT * FROM spirit_status WHERE userId = ?').get(userId) as any;
-      const user = db.prepare('SELECT mentalProgress FROM users WHERE id = ?').get(userId) as any;
-      if (!user || !status) return res.json({ success: false, message: '未找到相关数据' });
-
-      let newIntimacy = (status.intimacy || 0) + intimacyGain;
-      let levelGain = Math.floor(newIntimacy / 100);
-      let finalIntimacy = newIntimacy % 100;
-      let newMentalProgress = Math.min(100, (user.mentalProgress || 0) + (levelGain * 20));
-
-      db.prepare('UPDATE spirit_status SET intimacy = ?, level = level + ? WHERE userId = ?').run(finalIntimacy, levelGain, userId);
-      db.prepare('UPDATE users SET mentalProgress = ? WHERE id = ?').run(newMentalProgress, userId);
-      res.json({ success: true, levelUp: levelGain > 0 });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  // 4. 对戏消息与社交
+  // 对戏消息
   app.post('/api/roleplay', (req, res) => {
-    const { senderId, senderName, receiverId, receiverName, content } = req.body;
-    db.prepare('INSERT INTO roleplay_messages (senderId, senderName, receiverId, receiverName, content) VALUES (?, ?, ?, ?, ?)').run(senderId, senderName, receiverId, receiverName, content);
+    const { senderId, senderName, receiverId, receiverName, content, locationId } = req.body;
+    db.prepare(`
+      INSERT INTO roleplay_messages (senderId, senderName, receiverId, receiverName, content, locationId) 
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(senderId, senderName, receiverId, receiverName, content, locationId);
     res.json({ success: true });
   });
 
-  app.get('/api/roleplay/conversation/:userId/:otherId', (req, res) => {
-    const { userId, otherId } = req.params;
-    const messages = db.prepare('SELECT * FROM roleplay_messages WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?) ORDER BY createdAt ASC').all(userId, otherId, otherId, userId);
-    db.prepare('UPDATE roleplay_messages SET isRead = 1 WHERE receiverId = ? AND senderId = ?').run(userId, otherId);
-    res.json({ success: true, messages });
-  });
-
-  app.get('/api/roleplay/unread/:userId', (req, res) => {
-    const { userId } = req.params;
-    const result = db.prepare('SELECT COUNT(*) as count FROM roleplay_messages WHERE receiverId = ? AND isRead = 0').get(userId) as any;
-    res.json({ success: true, count: result.count || 0 });
-  });
-
-  // 5. 任务委托系统
-  app.get('/api/commissions', (req, res) => {
-    res.json({ success: true, commissions: db.prepare('SELECT * FROM commissions ORDER BY createdAt DESC').all() });
-  });
-
-  app.post('/api/commissions', (req, res) => {
-    const { id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous } = req.body;
-    try {
-      // 扣除发布者的金币
-      db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(reward || 0, publisherId);
-      db.prepare('INSERT INTO commissions (id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, publisherId, publisherName, title, content, difficulty || 'C', reward || 0, isAnonymous ? 1 : 0);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  app.put('/api/commissions/:id/accept', (req, res) => {
-    const { userId, userName } = req.body;
-    try {
-      db.prepare('UPDATE commissions SET status = "accepted", acceptedById = ?, acceptedByName = ? WHERE id = ?').run(userId, userName, req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  // 6. 个人技能系统
-  app.get('/api/users/:id/skills', (req, res) => {
-    res.json({ success: true, skills: db.prepare('SELECT * FROM user_skills WHERE userId = ?').all(req.params.id) });
-  });
-
-  app.post('/api/users/:id/skills', (req, res) => {
-    const { name } = req.body;
-    const userId = req.params.id;
-    try {
-      // 检查是否已经学过该技能
-      const exist = db.prepare('SELECT * FROM user_skills WHERE userId = ? AND name = ?').get(userId, name);
-      if (exist) {
-        db.prepare('UPDATE user_skills SET level = level + 1 WHERE userId = ? AND name = ?').run(userId, name);
-      } else {
-        db.prepare('INSERT INTO user_skills (userId, name, level) VALUES (?, ?, 1)').run(userId, name);
-      }
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-  // 7. 其他玩家互动 API
-  app.post('/api/users/init', (req, res) => {
-    const { name } = req.body;
-    try {
-      db.prepare(`INSERT INTO users (name, status) VALUES (?, 'pending')`).run(name);
-      res.json({ success: true });
-    } catch (e: any) { 
-      res.json({ success: false, message: '用户名已存在或创建失败' }); // 修复静默失败
-    }
-  });
-
-  app.post('/api/users/:id/location', (req, res) => {
-    db.prepare('UPDATE users SET currentLocation = ? WHERE id = ?').run(req.body.locationId, req.params.id);
-    res.json({ success: true });
-  });
-
-  app.put('/api/users/:id/avatar', (req, res) => {
-    const { avatarUrl } = req.body;
-    try {
-      db.prepare('UPDATE users SET avatarUrl = ? WHERE id = ?').run(avatarUrl, req.params.id);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
-  });
-
-
-  // ================= 生产/开发环境配置 =================
+  // ================= 环境配置 =================
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
-    
-    // 确保开发环境也能处理 SPA 回退
     app.use('*', async (req, res, next) => {
       if (req.originalUrl.startsWith('/api')) return next();
-      try {
-        let template = '<!DOCTYPE html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>';
-        template = await vite.transformIndexHtml(req.originalUrl, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-      } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
+      let template = await vite.transformIndexHtml(req.originalUrl, '<!DOCTYPE html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>');
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
     });
   } else {
     const distPath = path.join(__dirname, 'dist');
