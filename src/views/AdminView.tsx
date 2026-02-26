@@ -1,474 +1,413 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, MessageSquareText } from "lucide-react";
-import { User } from "../types";
+import { 
+  X, MessageSquare, Package, Zap, User as UserIcon, 
+  Trash2, MapPin, Save, Plus, Database, ShieldAlert 
+} from "lucide-react";
 
-// === 技能数据接口 ===
-interface Skill {
+// --- 类型定义 ---
+interface User {
   id: number;
-  userId: number;
   name: string;
-  level: number;
+  role: string;
+  mentalRank: string;
+  physicalRank: string;
+  gold: number;
+  ability: string;
+  spiritName: string;
+  currentLocation: string;
+  status: string;
+  profileText: string;
 }
 
-// === 新增：对戏记录数据接口 ===
 interface RoleplayLog {
   id: number;
-  senderId: number;
   senderName: string;
-  receiverId: number;
   receiverName: string;
   content: string;
-  isRead: number;
+  locationId: string;
   createdAt: string;
 }
 
+interface GlobalItem {
+  id: number;
+  name: string;
+  locationTag: string;
+  price: number;
+  description: string;
+}
+
+interface GlobalSkill {
+  id: number;
+  name: string;
+  faction: string;
+  description: string;
+}
+
 export function AdminView() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'items' | 'skills'>('users');
   const [loading, setLoading] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   
-  // 技能状态
-  const [selectedUserSkills, setSelectedUserSkills] = useState<Skill[]>([]);
-  
-  // === 新增：全服对戏记录状态 ===
-  const [roleplayLogs, setRoleplayLogs] = useState<RoleplayLog[]>([]);
-  
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<Partial颜华>({});
-  const [uploadName, setUploadName] = useState("");
-  const [uploadText, setUploadText] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // 数据状态
+  const [users, setUsers] = useState<User[]>([]);
+  const [logs, setLogs] = useState<RoleplayLog[]>([]);
+  const [items, setItems] = useState<GlobalItem[]>([]);
+  const [skills, setSkills] = useState<GlobalSkill[]>([]);
+
+  // 表单状态
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [newItem, setNewItem] = useState({ name: '', locationTag: '', price: 0, description: '' });
+  const [newSkill, setNewSkill] = useState({ name: '', faction: '强攻系', description: '' });
+
+  const factions = ['强攻系', '精神系', '敏捷系', '治愈系', '防御系', '感知系', '控制系', '召唤系'];
 
   useEffect(() => {
-    fetchUsers();
-    fetchRoleplayLogs(); // 初始化时拉取对戏记录
-  }, []);
+    fetchData();
+  }, [activeTab]);
 
-  const fetchUsers = async () => {
-    const res = await fetch("/api/admin/users");
-    const data = await res.json();
-    if (data.success) {
-      setUsers(data.users);
-    }
-  };
-
-  // === 新增：拉取全服对戏记录 ===
-  const fetchRoleplayLogs = async () => {
+  // --- 通用数据获取 ---
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/admin/roleplay_logs');
+      const endpoints = { 
+        users: '/api/admin/users', 
+        logs: '/api/admin/roleplay_logs', 
+        items: '/api/items', 
+        skills: '/api/skills' 
+      };
+      const res = await fetch(endpoints[activeTab]);
       const data = await res.json();
       if (data.success) {
-        setRoleplayLogs(data.logs);
+        if (activeTab === 'users') setUsers(data.users);
+        if (activeTab === 'logs') setLogs(data.logs);
+        if (activeTab === 'items') setItems(data.items);
+        if (activeTab === 'skills') setSkills(data.skills);
       }
-    } catch (error) {
-      console.error("获取对戏记录失败", error);
+    } catch (e) {
+      console.error("Fetch Error:", e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 获取单个角色技能
-  const fetchUserSkills = async (userId: number) => {
-    try {
-      const res = await fetch(`/api/users/${userId}/skills`);
-      const data = await res.json();
-      if (data.success) {
-        setSelectedUserSkills(data.skills);
-      } else {
-        setSelectedUserSkills([]);
-      }
-    } catch (error) {
-      console.error("获取技能失败", error);
-      setSelectedUserSkills([]);
+  // --- 玩家管理操作 ---
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+    const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingUser)
+    });
+    if (res.ok) {
+      alert("玩家档案已更新");
+      setEditingUser(null);
+      fetchData();
     }
   };
 
-  const handleStatusChange = async (id: number, status: "approved" | "rejected") => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/users/${id}/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) { fetchUsers(); } else { alert("操作失败"); }
-    } catch (err) { alert("网络错误"); } finally { setLoading(false); }
+  // --- 物品/技能增删操作 ---
+  const handleAddItem = async () => {
+    if (!newItem.name || !newItem.locationTag) return alert("请填写完整");
+    await fetch('/api/admin/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newItem)
+    });
+    setNewItem({ name: '', locationTag: '', price: 0, description: '' });
+    fetchData();
   };
 
-  const handleHide = async (id: number, isHidden: boolean) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/users/${id}/hide`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isHidden }),
-      });
-      if (res.ok) { fetchUsers(); } else { alert("操作失败"); }
-    } catch (err) { alert("网络错误"); } finally { setLoading(false); }
+  const handleAddSkill = async () => {
+    if (!newSkill.name) return alert("请填写名称");
+    await fetch('/api/admin/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSkill)
+    });
+    setNewSkill({ name: '', faction: '强攻系', description: '' });
+    fetchData();
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("确定要删除该角色吗？删除后将无法恢复。")) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
-      if (res.ok) { fetchUsers(); } else {
-        const data = await res.json();
-        alert(`操作失败: ${data.message || '未知错误'}`);
-      }
-    } catch (err: any) { alert(`网络错误: ${err.message}`); } finally { setLoading(false); }
+  const handleDelete = async (type: 'items' | 'skills', id: number) => {
+    if (!confirm("确定要从数据库中抹除此项吗？")) return;
+    await fetch(`/api/admin/${type}/${id}`, { method: 'DELETE' });
+    fetchData();
   };
-
-  const handleSaveEdit = async () => {
-    if (!selectedUser) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/users/${selectedUser.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role: editData.role,
-          mentalRank: editData.mentalRank,
-          physicalRank: editData.physicalRank,
-          ability: editData.ability,
-          spiritName: editData.spiritName,
-          profileText: editData.profileText,
-        }),
-      });
-      if (res.ok) {
-        alert("保存成功");
-        setIsEditing(false);
-        fetchUsers();
-        setSelectedUser({ ...selectedUser, ...editData } as User);
-      } else { alert("保存失败"); }
-    } catch (err) { alert("网络错误"); } finally { setLoading(false); }
-  };
-
-  const handleUploadSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadName.trim()) { alert("请输入名字"); return; }
-
-    const file = fileInputRef.current?.files?.[0];
-    if (!uploadText.trim() && !file) { alert("请输入文本资料或上传图片资料"); return; }
-
-    setLoading(true);
-    let imageBase64 = "";
-    let mimeType = "";
-
-    if (file) {
-      const reader = new FileReader();
-      const fileReadPromise = new Promise<void>((resolve) => {
-        reader.onload = (event) => {
-          imageBase64 = event.target?.result as string;
-          mimeType = file.type;
-          resolve();
-        };
-      });
-      reader.readAsDataURL(file);
-      await fileReadPromise;
-    }
-
-    try {
-      const res = await fetch("/api/admin/upload-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: uploadName.trim(), text: uploadText, imageBase64, mimeType }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert("资料上传成功！");
-        setShowUploadModal(false); setUploadName(""); setUploadText("");
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        fetchUsers();
-      } else { alert(data.message || "上传失败"); }
-    } catch (err) { alert("网络错误"); } finally { setLoading(false); }
-  };
-
-  const mainUsers = users.filter((u) => u.status !== "dead");
-  const deadUsers = users.filter((u) => u.status === "dead");
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 font-sans">
+    <div className="min-h-screen bg-[#f8fafc] p-6 font-sans text-slate-800">
       <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-black text-gray-900 tracking-tight">
-            管理员控制台
-          </h1>
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-gray-500 bg-white px-4 py-2 rounded-full shadow-sm border border-gray-200">
-              共 {users.length} 名用户
-            </div>
-            <button
-              onClick={() => (window.location.href = "/")}
-              className="px-4 py-2 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors shadow-sm text-sm"
-            >
-              进入游戏
-            </button>
+        {/* Header */}
+        <header className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+          <div>
+            <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3">
+              <Database className="text-sky-600" size={32}/>
+              世界管理中枢
+            </h1>
+            <p className="text-slate-400 font-medium mt-1">数据同步状态：<span className="text-emerald-500">实时连接中</span></p>
           </div>
-        </div>
+          
+          <nav className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
+            <TabBtn active={activeTab === 'users'} onClick={() => setActiveTab('users')} icon={<UserIcon size={18}/>} label="玩家管理"/>
+            <TabBtn active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<MessageSquare size={18}/>} label="对戏归纳"/>
+            <TabBtn active={activeTab === 'items'} onClick={() => setActiveTab('items')} icon={<Package size={18}/>} label="物品库"/>
+            <TabBtn active={activeTab === 'skills'} onClick={() => setActiveTab('skills')} icon={<Zap size={18}/>} label="技能库"/>
+          </nav>
+        </header>
 
-        {/* 活体档案表格 */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-          <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="font-bold text-gray-900">活体档案</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-500">
-                  <th className="p-4 font-medium">ID</th>
-                  <th className="p-4 font-medium">名字</th>
-                  <th className="p-4 font-medium">身份</th>
-                  <th className="p-4 font-medium">状态</th>
-                  <th className="p-4 font-medium">详细信息</th>
-                  <th className="p-4 font-medium text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-sm">
-                {mainUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="p-4 text-gray-500">#{user.id}</td>
-                    <td className="p-4 font-bold text-gray-900">{user.name}</td>
-                    <td className="p-4"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">{user.role || "未分化"}</span></td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
-                        ${user.status === "pending" ? "bg-amber-50 text-amber-700 border-amber-100" : ""}
-                        ${user.status === "approved" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : ""}
-                        ${user.status === "rejected" ? "bg-red-50 text-red-700 border-red-100" : ""}
-                        ${user.status === "ghost" ? "bg-purple-50 text-purple-700 border-purple-100" : ""}
-                      `}>
-                        {user.status === "pending" && "待审核"}
-                        {user.status === "approved" && "已过审"}
-                        {user.status === "rejected" && "已拒绝"}
-                        {user.status === "ghost" && "鬼魂"}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <button
-                        onClick={() => {
-                          setSelectedUser(user);
-                          setEditData(user);
-                          setIsEditing(false);
-                          setShowDetailsModal(true);
-                          fetchUserSkills(user.id);
-                        }}
-                        className="text-sky-600 hover:text-sky-800 font-medium text-xs"
-                      >
-                        查看
-                      </button>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {user.status === "pending" && (
-                          <>
-                            <button onClick={() => { setUploadName(user.name); setUploadText(user.profileText || ""); setShowUploadModal(true); }} disabled={loading} className="px-3 py-1.5 bg-sky-600 text-white rounded-lg font-medium hover:bg-sky-700 transition-colors disabled:opacity-50 text-xs shadow-sm">上传资料</button>
-                            <button onClick={() => handleStatusChange(user.id, "approved")} disabled={loading} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 text-xs shadow-sm">通过</button>
-                            <button onClick={() => handleStatusChange(user.id, "rejected")} disabled={loading} className="px-3 py-1.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 text-xs shadow-sm">拒绝</button>
-                          </>
-                        )}
-                        <button onClick={() => handleDelete(user.id)} disabled={loading} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors disabled:opacity-50 text-xs shadow-sm border border-red-100">删除</button>
-                      </div>
-                    </td>
+        {/* 主内容区 */}
+        <AnimatePresence mode="wait">
+          {/* 玩家管理 */}
+          {activeTab === 'users' && (
+            <motion.div initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} exit={{opacity:0}} className="bg-white rounded-[32px] shadow-sm border border-slate-200 overflow-hidden">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b text-[11px] uppercase tracking-wider font-bold text-slate-400">
+                  <tr>
+                    <th className="p-6">玩家基本信息</th>
+                    <th className="p-6">精神/肉体等级</th>
+                    <th className="p-6">当前位置</th>
+                    <th className="p-6">状态</th>
+                    <th className="p-6 text-right">管理</th>
                   </tr>
-                ))}
-                {mainUsers.length === 0 && (<tr><td colSpan={6} className="p-8 text-center text-gray-400">暂无活体档案</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* 死亡名单表格 */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-          <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="font-bold text-gray-900">死亡名单</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-500">
-                  <th className="p-4 font-medium">ID</th>
-                  <th className="p-4 font-medium">名字</th>
-                  <th className="p-4 font-medium">死亡描述</th>
-                  <th className="p-4 font-medium">状态</th>
-                  <th className="p-4 font-medium text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-sm">
-                {deadUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="p-4 text-gray-500">#{user.id}</td>
-                    <td className="p-4 font-bold text-gray-900">{user.name}</td>
-                    <td className="p-4 text-gray-600 max-w-xs truncate" title={user.deathDescription}>{user.deathDescription || "-"}</td>
-                    <td className="p-4">
-                      {user.isHidden ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">已隐藏</span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">显示中</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => handleHide(user.id, !user.isHidden)} disabled={loading} className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 text-xs shadow-sm">
-                          {user.isHidden ? "取消隐藏" : "隐藏"}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.map(u => (
+                    <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-6">
+                        <div className="font-bold text-slate-900">{u.name}</div>
+                        <div className="text-xs text-slate-400">{u.role || '未分化'}</div>
+                      </td>
+                      <td className="p-6 font-mono text-xs">
+                        <span className="text-sky-600 font-bold">{u.mentalRank}</span> / 
+                        <span className="text-rose-500 font-bold"> {u.physicalRank}</span>
+                      </td>
+                      <td className="p-6">
+                        <span className="flex items-center gap-1 text-xs font-bold text-slate-600">
+                          <MapPin size={12} className="text-slate-300"/> {u.currentLocation || '位面虚空'}
+                        </span>
+                      </td>
+                      <td className="p-6">
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${
+                          u.status === 'approved' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                        }`}>
+                          {u.status === 'approved' ? '已过审' : '待审核'}
+                        </span>
+                      </td>
+                      <td className="p-6 text-right">
+                        <button 
+                          onClick={() => setEditingUser(u)}
+                          className="text-sky-600 font-black text-xs hover:underline"
+                        >
+                          编辑档案
                         </button>
-                        <button onClick={() => handleDelete(user.id)} disabled={loading} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg font-medium hover:bg-red-100 transition-colors disabled:opacity-50 text-xs shadow-sm border border-red-100">删除</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {deadUsers.length === 0 && (<tr><td colSpan={5} className="p-8 text-center text-gray-400">暂无死亡记录</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </motion.div>
+          )}
 
-        {/* === 新增：全服对戏记录监控 === */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden mb-8">
-          <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-            <h2 className="font-bold text-gray-900 flex items-center gap-2">
-              <MessageSquareText size={20} className="text-sky-600" />
-              全服对戏日志监控
-            </h2>
-            <button 
-              onClick={fetchRoleplayLogs} 
-              className="text-xs font-bold text-sky-600 hover:text-sky-800 transition-colors"
-            >
-              手动刷新
-            </button>
-          </div>
-          <div className="p-4 max-h-[500px] overflow-y-auto space-y-3 bg-gray-50/30">
-            {roleplayLogs.length === 0 ? (
-              <div className="text-center text-gray-400 py-10 text-sm">目前全服还没有产生任何对戏记录。</div>
-            ) : (
-              roleplayLogs.map(log => (
-                <div key={log.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
-                  <div className="flex justify-between items-start">
-                    <div className="text-xs font-bold text-gray-700">
-                      <span className="text-sky-600">{log.senderName}</span> 
-                      <span className="text-gray-400 font-normal mx-2">对</span> 
-                      <span className="text-emerald-600">{log.receiverName}</span>
-                      <span className="text-gray-400 font-normal ml-1">说：</span>
-                    </div>
-                    <div className="text-[10px] text-gray-400 font-mono">
-                      {new Date(log.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-800 leading-relaxed bg-gray-50 p-3 rounded-lg border border-gray-100">
-                    {log.content}
+          {/* 对戏归纳 - 核心需求:按地点/人物归纳 */}
+          {activeTab === 'logs' && (
+            <motion.div initial={{opacity:0}} animate={{opacity:1}} className="space-y-8">
+              {Array.from(new Set(logs.map(l => l.locationId))).map(loc => (
+                <div key={loc} className="bg-white rounded-[32px] border border-slate-200 p-8 shadow-sm">
+                  <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-slate-900">
+                    <div className="w-2 h-8 bg-sky-500 rounded-full"/>
+                    {loc || '未知位面'} <span className="text-slate-300 text-sm font-medium">({logs.filter(l => l.locationId === loc).length} 条记录)</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {logs.filter(l => l.locationId === loc).map(l => (
+                      <div key={l.id} className="bg-slate-50 p-5 rounded-2xl border border-slate-100 hover:border-sky-200 transition-all">
+                        <div className="flex justify-between items-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-sky-600">{l.senderName}</span>
+                            <span className="text-[10px] text-slate-300">➔</span>
+                            <span className="text-xs font-black text-rose-500">{l.receiverName}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-300">{new Date(l.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p className="text-sm text-slate-600 leading-relaxed italic">"{l.content}"</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-        {/* ================================= */}
+              ))}
+            </motion.div>
+          )}
 
+          {/* 物品管理 - 核心需求:按地址添加删除 */}
+          {activeTab === 'items' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm h-fit">
+                <h3 className="font-black text-lg mb-6 flex items-center gap-2"><Plus size={18}/> 注入新物品</h3>
+                <div className="space-y-4">
+                  <Input label="物品名称" value={newItem.name} onChange={v => setNewItem({...newItem, name: v})}/>
+                  <Input label="部署地址 (Tag)" value={newItem.locationTag} onChange={v => setNewItem({...newItem, locationTag: v})} placeholder="如: slums"/>
+                  <Input label="交易价格" type="number" value={newItem.price.toString()} onChange={v => setNewItem({...newItem, price: parseInt(v)})}/>
+                  <button 
+                    onClick={handleAddItem}
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-slate-800 transition-all mt-4 shadow-lg shadow-slate-200"
+                  >
+                    同步至世界
+                  </button>
+                </div>
+              </div>
+              <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b text-[11px] font-bold text-slate-400">
+                    <tr>
+                      <th className="p-6">物品信息</th>
+                      <th className="p-6">部署区域</th>
+                      <th className="p-6">价值</th>
+                      <th className="p-6 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {items.map(i => (
+                      <tr key={i.id}>
+                        <td className="p-6 font-bold">{i.name}</td>
+                        <td className="p-6">
+                          <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black uppercase">
+                            {i.locationTag}
+                          </span>
+                        </td>
+                        <td className="p-6 font-mono text-sm text-slate-500">{i.price} G</td>
+                        <td className="p-6 text-right">
+                          <button onClick={() => handleDelete('items', i.id)} className="text-slate-300 hover:text-rose-500 transition-colors">
+                            <Trash2 size={18}/>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 技能管理 - 核心需求:基于八大派系 */}
+          {activeTab === 'skills' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm h-fit">
+                <h3 className="font-black text-lg mb-6 flex items-center gap-2"><Zap size={18}/> 录入派系技能</h3>
+                <div className="space-y-4">
+                  <Input label="技能名称" value={newSkill.name} onChange={v => setNewSkill({...newSkill, name: v})}/>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">所属派系</label>
+                    <select 
+                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-bold text-sm"
+                      value={newSkill.faction}
+                      onChange={e => setNewSkill({...newSkill, faction: e.target.value})}
+                    >
+                      {factions.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <textarea 
+                    placeholder="技能奥义描述..." 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl h-32 outline-none focus:ring-2 focus:ring-sky-500/20 font-medium text-sm"
+                    onChange={e => setNewSkill({...newSkill, description: e.target.value})}
+                  />
+                  <button 
+                    onClick={handleAddSkill}
+                    className="w-full py-4 bg-sky-600 text-white rounded-2xl font-black hover:bg-sky-500 transition-all mt-4"
+                  >
+                    写入技能库
+                  </button>
+                </div>
+              </div>
+              <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {skills.map(s => (
+                  <div key={s.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative group">
+                    <button 
+                      onClick={() => handleDelete('skills', s.id)}
+                      className="absolute top-6 right-6 text-slate-200 hover:text-rose-500 transition-colors"
+                    >
+                      <Trash2 size={16}/>
+                    </button>
+                    <div className="inline-block px-2 py-0.5 bg-sky-50 text-sky-600 rounded text-[9px] font-black uppercase tracking-tighter mb-3">
+                      {s.faction}
+                    </div>
+                    <h4 className="font-black text-lg text-slate-900 mb-2">{s.name}</h4>
+                    <p className="text-xs text-slate-500 leading-relaxed">{s.description || '暂无描述'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Details Modal */}
+      {/* 玩家编辑弹窗 */}
       <AnimatePresence>
-        {showDetailsModal && selectedUser && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-                <h3 className="text-2xl font-black text-gray-900">
-                  角色档案：{selectedUser.name}
-                </h3>
-                <div className="flex items-center gap-4">
-                  {!isEditing ? (
-                    <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-sky-600 text-white rounded-xl font-medium hover:bg-sky-700 transition-colors text-sm">编辑</button>
-                  ) : (
-                    <button onClick={handleSaveEdit} disabled={loading} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors text-sm">保存</button>
-                  )}
-                  <button onClick={() => setShowDetailsModal(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+        {editingUser && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div initial={{scale:0.9, opacity:0}} animate={{scale:1, opacity:1}} className="bg-white rounded-[40px] p-10 w-full max-w-2xl shadow-2xl relative">
+              <button onClick={() => setEditingUser(null)} className="absolute top-8 right-8 text-slate-300 hover:text-slate-900"><X/></button>
+              <h3 className="text-2xl font-black mb-8 flex items-center gap-2"><ShieldAlert className="text-amber-500"/> 修改玩家档案：{editingUser.name}</h3>
+              
+              <div className="grid grid-cols-2 gap-6">
+                <Input label="身份/角色" value={editingUser.role} onChange={v => setEditingUser({...editingUser, role: v})}/>
+                <Input label="精神力等级" value={editingUser.mentalRank} onChange={v => setEditingUser({...editingUser, mentalRank: v})}/>
+                <Input label="肉体等级" value={editingUser.physicalRank} onChange={v => setEditingUser({...editingUser, physicalRank: v})}/>
+                <Input label="所属能力" value={editingUser.ability} onChange={v => setEditingUser({...editingUser, ability: v})}/>
+                <Input label="精神体名称" value={editingUser.spiritName} onChange={v => setEditingUser({...editingUser, spiritName: v})}/>
+                <div className="col-span-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">个人资料文本</label>
+                  <textarea 
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl h-32 font-medium"
+                    value={editingUser.profileText}
+                    onChange={e => setEditingUser({...editingUser, profileText: e.target.value})}
+                  />
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-4">
-                  <ProfileField label="姓名" value={selectedUser.name} />
-                  {isEditing ? (
-                    <>
-                      <EditField label="所属人群" value={editData.role} onChange={(v) => setEditData({ ...editData, role: v })} />
-                      <EditField label="精神力" value={editData.mentalRank} onChange={(v) => setEditData({ ...editData, mentalRank: v })} />
-                      <EditField label="肉体强度" value={editData.physicalRank} onChange={(v) => setEditData({ ...editData, physicalRank: v })} />
-                      <EditField label="能力" value={editData.ability} onChange={(v) => setEditData({ ...editData, ability: v })} />
-                      <EditField label="精神体" value={editData.spiritName} onChange={(v) => setEditData({ ...editData, spiritName: v })} />
-                      <EditField label="个人资料" value={editData.profileText} onChange={(v) => setEditData({ ...editData, profileText: v })} isLong />
-                    </>
-                  ) : (
-                    <>
-                      <ProfileField label="所属人群" value={selectedUser.role || "未分化"} />
-                      <ProfileField label="精神力" value={selectedUser.mentalRank} />
-                      <ProfileField label="肉体强度" value={selectedUser.physicalRank} />
-                      <ProfileField label="能力" value={selectedUser.ability} />
-                      <ProfileField label="精神体" value={selectedUser.spiritName} />
-                      <ProfileField label="个人资料" value={selectedUser.profileText} isLong />
-                    </>
-                  )}
-
-                  {/* 技能展示面板 */}
-                  {!isEditing && (
-                    <div className="mt-6 border-t border-gray-100 pt-4">
-                      <div className="text-xs text-gray-500 mb-3 font-bold">该角色已掌握的技能 ({selectedUserSkills.length})</div>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedUserSkills.length === 0 && (<span className="text-sm text-gray-400 italic">暂无任何技能</span>)}
-                        {selectedUserSkills.map((skill) => (
-                          <div key={skill.id} className="bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
-                            <span className="text-sm font-bold text-emerald-900">{skill.name}</span>
-                            <span className="text-xs font-black text-emerald-600 bg-white px-1.5 py-0.5 rounded-md border border-emerald-100">Lv.{skill.level}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                </div>
-              </div>
+              <button 
+                onClick={handleUpdateUser}
+                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black mt-8 flex items-center justify-center gap-2"
+              >
+                <Save size={18}/> 写入数据库并同步
+              </button>
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* Upload Modal (保持原样...) */}
-      <AnimatePresence>
-        {showUploadModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl">
-              <h2 className="text-xl font-black mb-4 text-gray-900">上传玩家资料</h2>
-              <form onSubmit={handleUploadSubmit} className="space-y-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">玩家名字</label><input type="text" value={uploadName} readOnly className="w-full px-4 py-2 border border-gray-200 rounded-xl bg-gray-50 text-gray-500 cursor-not-allowed" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">文本资料 (可选)</label><textarea value={uploadText} onChange={(e) => setUploadText(e.target.value)} className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-100 focus:border-sky-700 h-32 resize-none" placeholder="输入玩家的详细资料..." /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">图片资料 (可选，将自动识别文字)</label><input type="file" ref={fileInputRef} accept="image/*" className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100" /></div>
-                <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setShowUploadModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors">取消</button>
-                  <button type="submit" disabled={loading} className="flex-1 py-2.5 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-50">提交资料</button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {loading && (<div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-[60] flex items-center justify-center"><div className="text-center"><div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div><p className="text-gray-900 font-medium">处理中，请稍候...</p></div></div>)}
+      {loading && (
+        <div className="fixed bottom-10 right-10 bg-white shadow-xl px-6 py-3 rounded-full border border-slate-100 flex items-center gap-3 animate-bounce">
+          <div className="w-2 h-2 bg-sky-500 rounded-full animate-ping"/>
+          <span className="text-xs font-black">正在读取服务器数据...</span>
+        </div>
+      )}
     </div>
   );
 }
 
-function ProfileField({ label, value, isLong }: { label: string; value?: string; isLong?: boolean; }) {
-  return (<div className={`bg-gray-50 rounded-xl p-3 border border-gray-100 ${isLong ? "h-full" : ""}`}><div className="text-xs text-gray-500 mb-1">{label}</div><div className="text-sm font-medium text-gray-900 whitespace-pre-wrap">{value || "未知"}</div></div>);
+// --- 辅助小组件 ---
+function TabBtn({ active, onClick, icon, label }: any) {
+  return (
+    <button 
+      onClick={onClick} 
+      className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all font-black text-sm ${
+        active ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'
+      }`}
+    >
+      {icon} {label}
+    </button>
+  );
 }
 
-function EditField({ label, value, onChange, isLong }: { label: string; value?: string; onChange: (val: string) => void; isLong?: boolean; }) {
-  return (<div className={`bg-gray-50 rounded-xl p-3 border border-gray-200 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 ${isLong ? "h-full" : ""}`}><div className="text-xs text-gray-500 mb-1">{label}</div>{isLong ? (<textarea value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent text-sm font-medium text-gray-900 focus:outline-none resize-y min-h-[100px]" />) : (<input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent text-sm font-medium text-gray-900 focus:outline-none" />)}</div>);
+function Input({ label, value, onChange, type = "text", placeholder = "" }: any) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-black text-slate-400 uppercase ml-1">{label}</label>
+      <input 
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={e => onChange(e.target.value)}
+        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 transition-all font-bold text-sm"
+      />
+    </div>
+  );
 }
