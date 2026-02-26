@@ -157,9 +157,38 @@ async function startServer() {
     res.json({ success: true, users: processedUsers });
   });
 
-  // ... 其余通用 API (如 items, roleplay) 保持不变
+    // ================= 前端页面路由配置 (修复 Cannot GET / 问题) =================
+  if (process.env.NODE_ENV !== 'production') {
+    // 开发环境：使用 Vite 中间件实时热更新
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
+    app.use(vite.middlewares);
+    
+    // 拦截非 API 请求，交给前端路由处理 (SPA回退)
+    app.use('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api')) return next();
+      try {
+        let template = '<!DOCTYPE html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>';
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
+  } else {
+    // 生产环境 (云端)：直接提供 dist 目录下的静态文件
+    const distPath = path.join(__dirname, 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
+  }
 
   const PORT = process.env.PORT || 3000;
+  app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+}
+
+startServer();
+
   app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
 }
 startServer();
