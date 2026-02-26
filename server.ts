@@ -76,6 +76,15 @@ db.exec(`
     acceptedByName TEXT DEFAULT NULL,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- 新增：玩家技能表
+  CREATE TABLE IF NOT EXISTS user_skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER,
+    name TEXT,
+    level INTEGER DEFAULT 1,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
 `);
 
 const addColumn = (table: string, col: string, type: string) => {
@@ -311,7 +320,6 @@ async function startServer() {
   app.get('/api/location/:locationId/players', (req, res) => {
     const { locationId } = req.params;
     try {
-      // 只选取需要展示的非敏感字段，排除死人或未审核的人
       const players = db.prepare(`
         SELECT id, name, role, avatarUrl, currentLocation 
         FROM users 
@@ -400,7 +408,6 @@ async function startServer() {
     const commissionId = req.params.id;
     const { userId, userName } = req.body;
     try {
-      // 必须确保 status 为 'open' 才能接取，防止多人同时点击冲突
       const result = db.prepare(`
         UPDATE commissions 
         SET status = 'accepted', acceptedById = ?, acceptedByName = ? 
@@ -417,11 +424,51 @@ async function startServer() {
     }
   });
 
+  // --- 新增：技能相关 API ---
+
+  // 9. 获取玩家所有技能
+  app.get('/api/users/:id/skills', (req, res) => {
+    const { id } = req.params;
+    try {
+      const skills = db.prepare('SELECT * FROM user_skills WHERE userId = ?').all(id);
+      res.json({ success: true, skills });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 10. 学习或升级技能
+  app.post('/api/users/:id/skills', (req, res) => {
+    const userId = Number(req.params.id);
+    const { name } = req.body;
+    try {
+      const existing = db.prepare('SELECT * FROM user_skills WHERE userId = ? AND name = ?').get(userId, name) as any;
+      if (existing) {
+        db.prepare('UPDATE user_skills SET level = level + 1 WHERE id = ?').run(existing.id);
+      } else {
+        db.prepare('INSERT INTO user_skills (userId, name, level) VALUES (?, ?, 1)').run(userId, name);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 11. 遗忘(失去)技能
+  app.delete('/api/skills/:skillId', (req, res) => {
+    const { skillId } = req.params;
+    try {
+      db.prepare('DELETE FROM user_skills WHERE id = ?').run(skillId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // ================= API Routes 结束 =================
 
   // 生产与开发环境分离配置
   if (process.env.NODE_ENV !== 'production') {
-    // 开发环境：动态引入 Vite，避免生产环境加载庞大的依赖
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -430,7 +477,6 @@ async function startServer() {
     app.use(vite.middlewares);
     console.log('Running in Development mode with Vite middleware');
   } else {
-    // 生产环境：使用编译好的 dist 目录
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
