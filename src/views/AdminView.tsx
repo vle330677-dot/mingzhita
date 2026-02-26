@@ -3,12 +3,24 @@ import { motion, AnimatePresence } from "motion/react";
 import { X } from "lucide-react";
 import { User } from "../types";
 
+// === 新增：技能数据接口 ===
+interface Skill {
+  id: number;
+  userId: number;
+  name: string;
+  level: number;
+}
+
 export function AdminView() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  
+  // === 新增：当前选中角色的技能状态 ===
+  const [selectedUserSkills, setSelectedUserSkills] = useState<Skill[]>([]);
+  
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<User>>({});
   const [uploadName, setUploadName] = useState("");
@@ -24,6 +36,22 @@ export function AdminView() {
     const data = await res.json();
     if (data.success) {
       setUsers(data.users);
+    }
+  };
+
+  // === 新增：获取单个角色技能的方法 ===
+  const fetchUserSkills = async (userId: number) => {
+    try {
+      const res = await fetch(`/api/users/${userId}/skills`);
+      const data = await res.json();
+      if (data.success) {
+        setSelectedUserSkills(data.skills);
+      } else {
+        setSelectedUserSkills([]);
+      }
+    } catch (error) {
+      console.error("获取技能失败", error);
+      setSelectedUserSkills([]);
     }
   };
 
@@ -256,6 +284,7 @@ export function AdminView() {
                           setEditData(user);
                           setIsEditing(false);
                           setShowDetailsModal(true);
+                          fetchUserSkills(user.id); // <--- 点击查看时，拉取该角色的技能
                         }}
                         className="text-sky-600 hover:text-sky-800 font-medium text-xs"
                       >
@@ -498,6 +527,28 @@ export function AdminView() {
                       />
                     </>
                   )}
+
+                  {/* === 新增：技能展示面板 === */}
+                  {!isEditing && (
+                    <div className="mt-6 border-t border-gray-100 pt-4">
+                      <div className="text-xs text-gray-500 mb-3 font-bold">该角色已掌握的技能 ({selectedUserSkills.length})</div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedUserSkills.length === 0 && (
+                          <span className="text-sm text-gray-400 italic">暂无任何技能</span>
+                        )}
+                        {selectedUserSkills.map((skill) => (
+                          <div key={skill.id} className="bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-sm">
+                            <span className="text-sm font-bold text-emerald-900">{skill.name}</span>
+                            <span className="text-xs font-black text-emerald-600 bg-white px-1.5 py-0.5 rounded-md border border-emerald-100">
+                              Lv.{skill.level}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* ======================= */}
+
                 </div>
               </div>
             </motion.div>
