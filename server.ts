@@ -62,7 +62,17 @@ db.exec(`
     description TEXT,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
-
+-- 新增：对戏消息表 (用于玩家间实时互动)
+  CREATE TABLE IF NOT EXISTS roleplay_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    senderId INTEGER,
+    senderName TEXT,
+    receiverId INTEGER,
+    receiverName TEXT,
+    content TEXT,
+    isRead INTEGER DEFAULT 0,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
   -- 新增：公会委托任务表
   CREATE TABLE IF NOT EXISTS commissions (
     id TEXT PRIMARY KEY,
@@ -130,7 +140,61 @@ async function startServer() {
       }
     }
   });
+// --- 新增：玩家对戏 (Roleplay) API ---
 
+  // 1. 发送对戏消息
+  app.post('/api/roleplay', (req, res) => {
+    const { senderId, senderName, receiverId, receiverName, content } = req.body;
+    try {
+      db.prepare(`
+        INSERT INTO roleplay_messages (senderId, senderName, receiverId, receiverName, content) 
+        VALUES (?, ?, ?, ?, ?)
+      `).run(senderId, senderName, receiverId, receiverName, content);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 2. 获取两个玩家之间的对戏记录 (并在读取时将对方发来的消息标为已读)
+  app.get('/api/roleplay/conversation/:userId/:otherId', (req, res) => {
+    const { userId, otherId } = req.params;
+    try {
+      const messages = db.prepare(`
+        SELECT * FROM roleplay_messages 
+        WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?)
+        ORDER BY createdAt ASC
+      `).all(userId, otherId, otherId, userId);
+      
+      // 将别人发给我的消息标记为已读
+      db.prepare('UPDATE roleplay_messages SET isRead = 1 WHERE receiverId = ? AND senderId = ?').run(userId, otherId);
+      
+      res.json({ success: true, messages });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 3. 获取我的未读消息数量 (用于前端显示红点)
+  app.get('/api/roleplay/unread/:userId', (req, res) => {
+    const { userId } = req.params;
+    try {
+      const result = db.prepare('SELECT COUNT(*) as count FROM roleplay_messages WHERE receiverId = ? AND isRead = 0').get(userId) as any;
+      res.json({ success: true, count: result.count });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 4. 管理员获取全服所有对戏记录
+  app.get('/api/admin/roleplay_logs', (req, res) => {
+    try {
+      const logs = db.prepare('SELECT * FROM roleplay_messages ORDER BY createdAt DESC').all();
+      res.json({ success: true, logs });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
   app.post('/api/users', (req, res) => {
     const { name, role, mentalRank, physicalRank, gold, ability, spiritName, spiritType } = req.body;
     try {
