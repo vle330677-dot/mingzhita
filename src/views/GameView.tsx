@@ -34,10 +34,7 @@ const fixedNPCs: NPC[] = [
   { id: 'npc_guild_staff', name: '接待员 玛丽', role: '公会员工', locationId: 'guild', description: '永远挂着职业微笑的接待员，负责处理繁杂的委托任务。', icon: <ScrollText size={14} /> }
 ];
 
-interface Commission { id: string; publisher: string; title: string; content: string; difficulty: string; status: 'open' | 'accepted'; acceptedBy?: string; }
-const initialCommissions: Commission[] = [
-  { id: 'c1', publisher: '东区贵妇', title: '寻找走失的波斯猫', content: '它跑到贫民区去了，找到重谢！', difficulty: 'D', status: 'open' }
-];
+interface Commission { id: string; publisherId: number; publisherName: string; title: string; content: string; difficulty: string; status: 'open' | 'accepted'; acceptedById?: number; acceptedByName?: string; }
 
 export function GameView({ user, setUser, onNavigate }: Props) {
   // 基础状态
@@ -45,7 +42,10 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   const [showBackpack, setShowBackpack] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [userLocationId, setUserLocationId] = useState<string | null>(null);
+  
+  // 从 user 对象中初始化位置（如果有的话）
+  const [userLocationId, setUserLocationId] = useState<string | null>((user as any).currentLocation || null);
+  const [allPlayers, setAllPlayers] = useState<any[]>([]); // 存储所有在线玩家位置
   
   // 交互面板状态
   const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
@@ -56,57 +56,135 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   const [craftsmanLearnCount, setCraftsmanLearnCount] = useState(0);
 
   // === 公会委托的专属状态 ===
-  const [commissions, setCommissions] = useState<Commission[]>(initialCommissions);
+  const [commissions, setCommissions] = useState<Commission[]>([]);
   const [guildView, setGuildView] = useState<'menu' | 'publish' | 'board'>('menu');
   const [newCommission, setNewCommission] = useState({ title: '', content: '', difficulty: 'D' });
 
   // 辅助函数
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
   
-  const handleLocationAction = (action: 'enter' | 'explore' | 'stay') => {
+  // 初始化拉取数据
+  useEffect(() => {
+    fetchItems();
+    fetchMapPlayers();
+    fetchCommissions();
+    // 定时刷新地图玩家和委托板（每 10 秒）
+    const interval = setInterval(() => {
+      fetchMapPlayers();
+      fetchCommissions();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [user.id]);
+
+  // === API 调用函数 ===
+  const fetchItems = async () => {
+    const res = await fetch(`/api/users/${user.id}/items`);
+    const data = await res.json();
+    if (data.success) setItems(data.items);
+  };
+
+  const fetchCommissions = async () => {
+    const res = await fetch('/api/commissions');
+    const data = await res.json();
+    if (data.success) setCommissions(data.commissions);
+  };
+
+  const fetchMapPlayers = async () => {
+    // 拉取所有玩家数据用于在地图上显示头像
+    const res = await fetch('/api/admin/users');
+    const data = await res.json();
+    if (data.success) {
+      // 过滤掉没位置、待审核、已死亡的玩家
+      const activePlayers = data.users.filter((p: any) => p.currentLocation && p.status !== 'pending' && p.status !== 'dead');
+      setAllPlayers(activePlayers);
+      // 同步当前玩家的位置状态
+      const me = activePlayers.find((p: any) => p.id === user.id);
+      if (me && me.currentLocation) setUserLocationId(me.currentLocation);
+    }
+  };
+
+  const handleLocationAction = async (action: 'enter' | 'explore' | 'stay') => {
     if (!selectedLocation) return;
+
     if (action === 'explore') {
       if (Math.random() > 0.4) {
-        const item = selectedLocation.lootTable[Math.floor(Math.random() * selectedLocation.lootTable.length)];
-        setItems(prev => [...prev, { id: Date.now().toString(), name: item, description: `在${selectedLocation.name}闲逛获得` }]);
-        showToast(`【掉落】发现了「${item}」！已放入背包。`);
+        const itemName = selectedLocation.lootTable[Math.floor(Math.random() * selectedLocation.lootTable.length)];
+        // 【写入数据库】闲逛掉落
+        const res = await fetch(`/api/users/${user.id}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: itemName, description: `在${selectedLocation.name}闲逛获得` })
+        });
+        const data = await res.json();
+        if (data.success) {
+          fetchItems(); // 重新拉取背包
+          showToast(`【掉落】发现了「${itemName}」！已放入背包。`);
+        }
       } else {
         showToast(`你在 ${selectedLocation.name} 转了半天，一无所获。`);
       }
-    } else if (action === 'stay') {
-      setUserLocationId(selectedLocation.id);
-      showToast(`你决定在 ${selectedLocation.name} 驻扎休息。`);
-    } else {
+    } 
+    else if (action === 'stay') {
+      // 【写入数据库】驻留更新位置
+      const res = await fetch(`/api/users/${user.id}/location`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationId: selectedLocation.id })
+      });
+      if (res.ok) {
+        setUserLocationId(selectedLocation.id);
+        fetchMapPlayers(); // 刷新地图头像
+        showToast(`你决定在 ${selectedLocation.name} 驻扎休息。`);
+      }
+    } 
+    else {
       showToast(`尝试进入 ${selectedLocation.name} 的内部 (建设中)`);
     }
     setSelectedLocation(null);
   };
 
-  // 聚合当前地点的所有单位 (固定NPC + 玩家自己)
-  const getEntitiesAtLocation = (locId: string) => {
-    const entities: any[] = fixedNPCs.filter(npc => npc.locationId === locId);
-    if (userLocationId === locId) entities.push({ id: user.id, isUser: true, name: user.name, role: user.role });
-    return entities;
-  };
-
-  // --- 公会任务处理 ---
-  const handlePublishCommission = () => {
+  // --- 公会任务处理 (写入数据库) ---
+  const handlePublishCommission = async () => {
     if (!newCommission.title || !newCommission.content) { showToast('标题和内容不能为空！'); return; }
-    const newQuest: Commission = {
-      id: Date.now().toString(), publisher: user.name, title: newCommission.title, content: newCommission.content, difficulty: newCommission.difficulty, status: 'open'
-    };
-    setCommissions([newQuest, ...commissions]);
-    setGuildView('menu');
-    setNewCommission({ title: '', content: '', difficulty: 'D' });
-    showToast('委托发布成功！');
+    
+    const res = await fetch('/api/commissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: Date.now().toString(),
+        publisherId: user.id,
+        publisherName: user.name,
+        title: newCommission.title,
+        content: newCommission.content,
+        difficulty: newCommission.difficulty
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      fetchCommissions();
+      setGuildView('menu');
+      setNewCommission({ title: '', content: '', difficulty: 'D' });
+      showToast('委托发布成功！');
+    }
   };
 
-  const handleAcceptCommission = (id: string) => {
-    setCommissions(commissions.map(c => c.id === id ? { ...c, status: 'accepted', acceptedBy: user.name } : c));
-    showToast('成功接取委托！');
+  const handleAcceptCommission = async (id: string) => {
+    const res = await fetch(`/api/commissions/${id}/accept`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, userName: user.name })
+    });
+    const data = await res.json();
+    if (data.success) {
+      fetchCommissions();
+      showToast('成功接取委托！');
+    } else {
+      showToast(data.message || '接取失败，手慢了！');
+      fetchCommissions(); // 刷新一下看看是不是被别人抢了
+    }
   };
 
-  // --- 手艺人学习处理 ---
+  // --- 手艺人学习处理 (本地状态模拟) ---
   const handleLearnSkill = () => {
     if (craftsmanLearnCount >= 3) {
       showToast('老乔：今天老子累了，明天再来！'); return;
@@ -115,6 +193,18 @@ export function GameView({ user, setUser, onNavigate }: Props) {
     const randomSkill = skills[Math.floor(Math.random() * skills.length)];
     setCraftsmanLearnCount(prev => prev + 1);
     showToast(`【领悟】你跟着老乔学习，掌握了新技能：「${randomSkill}」！`);
+  };
+
+  // 聚合当前地点的所有单位 (固定NPC + 数据库里的真实玩家)
+  const getEntitiesAtLocation = (locId: string) => {
+    const entities: any[] = fixedNPCs.filter(npc => npc.locationId === locId);
+    
+    // 找出数据库中当前位置在这个地点的玩家
+    const playersHere = allPlayers.filter(p => p.currentLocation === locId);
+    playersHere.forEach(p => {
+      entities.push({ id: p.id, isUser: true, name: p.name, role: p.role, avatarUrl: p.avatarUrl });
+    });
+    return entities;
   };
 
   return (
@@ -140,7 +230,9 @@ export function GameView({ user, setUser, onNavigate }: Props) {
                 <div className="flex -space-x-2 mb-1">
                   {entities.map(ent => (
                     <div key={ent.id} onClick={() => !ent.isUser && setActiveNPC(ent)} className={`w-6 h-6 rounded-full border-2 shadow-sm bg-gray-200 flex items-center justify-center overflow-hidden cursor-pointer ${ent.isUser ? 'border-amber-400 z-10 scale-110 cursor-default' : 'border-white hover:scale-110'}`} title={ent.name}>
-                       {ent.isUser ? <span className="text-[10px] font-bold text-gray-800">{ent.name[0]}</span> : <span className="text-gray-600">{ent.icon}</span>}
+                       {ent.isUser ? (
+                         ent.avatarUrl ? <img src={ent.avatarUrl} className="w-full h-full object-cover"/> : <span className="text-[10px] font-bold text-gray-800">{ent.name[0]}</span>
+                       ) : <span className="text-gray-600">{ent.icon}</span>}
                     </div>
                   ))}
                 </div>
@@ -166,13 +258,14 @@ export function GameView({ user, setUser, onNavigate }: Props) {
               </div>
               <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-100 h-28 overflow-y-auto text-sm text-gray-700">{selectedLocation.description}</div>
               
-              {/* 显示该地点的 NPC 和玩家 */}
               <div className="mb-6">
                 <div className="text-xs font-bold text-gray-400 mb-2 uppercase">当前在此地的人 (点击交互)</div>
                 <div className="flex flex-wrap gap-2">
                   {getEntitiesAtLocation(selectedLocation.id).map(ent => (
                     <div key={ent.id} onClick={() => { if(!ent.isUser) { setSelectedLocation(null); setActiveNPC(ent); } }} className={`flex items-center gap-2 bg-white border border-gray-200 rounded-full px-2 py-1 shadow-sm ${ent.isUser ? '' : 'cursor-pointer hover:border-emerald-400 hover:bg-emerald-50'}`}>
-                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center text-gray-600">{ent.isUser ? <UserIcon size={12}/> : ent.icon}</div>
+                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden text-gray-600">
+                        {ent.isUser ? (ent.avatarUrl ? <img src={ent.avatarUrl} className="w-full h-full object-cover"/> : <UserIcon size={12}/>) : ent.icon}
+                      </div>
                       <span className="text-xs font-medium text-gray-700 pr-1">{ent.name}</span>
                     </div>
                   ))}
@@ -200,9 +293,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
               
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200 text-gray-600 shadow-inner">
-                    {activeNPC.icon}
-                  </div>
+                  <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center border border-gray-200 text-gray-600 shadow-inner">{activeNPC.icon}</div>
                   <div>
                     <h3 className="font-black text-xl text-gray-900">{activeNPC.name}</h3>
                     <p className="text-xs font-bold text-amber-600">{activeNPC.role}</p>
@@ -284,13 +375,13 @@ export function GameView({ user, setUser, onNavigate }: Props) {
                           <div key={c.id} className={`p-3 rounded-xl border ${c.status === 'accepted' ? 'bg-gray-50 border-gray-200 opacity-75' : 'bg-white border-gray-300 shadow-sm'}`}>
                             <div className="flex justify-between items-start mb-1">
                               <span className="font-bold text-sm text-gray-900">{c.title} <span className="text-xs text-red-500 ml-1">[{c.difficulty}级]</span></span>
-                              <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded text-gray-600">{c.publisher}</span>
+                              <span className="text-[10px] bg-gray-200 px-2 py-0.5 rounded text-gray-600">{c.publisherName}</span>
                             </div>
                             <p className="text-xs text-gray-600 mb-3">{c.content}</p>
                             {c.status === 'open' ? (
                               <button onClick={() => handleAcceptCommission(c.id)} className="w-full py-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 hover:bg-emerald-100">接受委托</button>
                             ) : (
-                              <button disabled className="w-full py-2 bg-gray-200 text-gray-500 text-xs font-bold rounded-lg">已被 {c.acceptedBy} 接受</button>
+                              <button disabled className="w-full py-2 bg-gray-200 text-gray-500 text-xs font-bold rounded-lg">已被 {c.acceptedByName} 接受</button>
                             )}
                           </div>
                         ))}
@@ -305,7 +396,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
         )}
       </AnimatePresence>
 
-      {/* --- 右下角背包和设置入口 (保持原样) --- */}
+      {/* --- 右下角背包和设置入口 --- */}
       <div className="absolute bottom-6 right-6 flex gap-3 z-30">
         <button onClick={() => setShowBackpack(true)} className="w-14 h-14 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center text-gray-700 hover:scale-105 transition-all">
           <Backpack size={24} />
