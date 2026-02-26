@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Backpack, X, Upload } from 'lucide-react';
+import { Settings, Backpack, X, Upload, MapPin } from 'lucide-react';
 import { ViewState } from '../App';
 import { User, Tombstone, Item } from '../types';
 
@@ -9,6 +9,22 @@ interface Props {
   setUser: (user: User | null) => void;
   onNavigate: (view: ViewState) => void;
 }
+
+// === 新增：地图地点数据结构 ===
+interface MapLocation {
+  id: string;
+  name: string;
+  x: number; // 百分比
+  y: number; // 百分比
+  description: string;
+}
+
+const mapLocations: MapLocation[] = [
+  { id: 'tower_of_life', name: '命之塔', x: 50, y: 45, description: '高耸入云的水晶之塔，散发着幽蓝的光芒，这里是世界的中心。' },
+  { id: 'slums', name: '贫民区', x: 25, y: 55, description: '破旧的房屋拥挤在一起，鱼龙混杂，但也可能藏着黑市的秘密。' },
+  { id: 'rich_area', name: '富人区', x: 75, y: 50, description: '华丽的庄园和整洁的街道，财富与权力的聚集地。' }
+];
+// =================================
 
 export function GameView({ user, setUser, onNavigate }: Props) {
   const [showSettings, setShowSettings] = useState(false);
@@ -20,6 +36,10 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   const [items, setItems] = useState<Item[]>([]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // === 新增：控制地点弹窗的状态 ===
+  const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,328 +60,143 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target?.result as string;
-      const res = await fetch(`/api/users/${user.id}/avatar`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarUrl: base64 })
-      });
-      if (res.ok) {
-        setUser({ ...user, avatarUrl: base64 });
-      }
-    };
-    reader.readAsDataURL(file);
+    // ... 保持原有头像上传逻辑不变
   };
 
   const handleDeath = async () => {
-    if (!deathDesc.trim()) return;
-    const endpoint = deathType === 'die' ? 'die' : 'ghost';
-    const res = await fetch(`/api/users/${user.id}/${endpoint}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deathDescription: deathDesc })
-    });
-    if (res.ok) {
-      if (deathType === 'die') {
-        setUser(null);
-        onNavigate('WELCOME');
-      } else {
-        // Become ghost
-        const updatedUser = await fetch(`/api/users/${user.name}`).then(r => r.json());
-        if (updatedUser.success) {
-          setUser(updatedUser.user);
-          setShowDeathModal(false);
-          setShowSettings(false);
-          setDeathDesc('');
-        }
-      }
+    // ... 保持原有死亡逻辑不变
+  };
+
+  // === 新增：地点操作处理函数 ===
+  const handleAction = (action: 'enter' | 'explore' | 'stay') => {
+    if (!selectedLocation) return;
+    
+    switch (action) {
+      case 'enter':
+        alert(`尝试进入 ${selectedLocation.name} 的内部 (待开发)`);
+        break;
+      case 'explore':
+        alert(`你在 ${selectedLocation.name} 闲逛了一圈 (后续将接入掉落逻辑)`);
+        break;
+      case 'stay':
+        alert(`你选择留在 ${selectedLocation.name} (后续将更新服务器状态显示头像)`);
+        break;
     }
+    setSelectedLocation(null); // 执行完操作后关闭弹窗
   };
 
   return (
     <div className="min-h-screen bg-[#f5f5f0] relative overflow-hidden font-sans">
-      {/* Map Area (Background) */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-8 left-8 flex flex-wrap gap-4 pointer-events-auto max-w-[50%]">
+      
+      {/* === 修改：地图区域 (Background) === */}
+      <div 
+        className="absolute inset-0 pointer-events-auto bg-cover bg-center"
+        style={{ backgroundImage: "url('/map_background.jpg')" }} // 注意这里的图片名字必须和 public 里的图片一致
+      >
+        <div className="absolute inset-0 bg-black/10 pointer-events-none" /> {/* 轻微遮罩让字更清晰 */}
+        
+        {/* 渲染地图上的交互点 */}
+        {mapLocations.map((loc) => (
+          <button
+            key={loc.id}
+            onClick={() => setSelectedLocation(loc)}
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 group flex flex-col items-center justify-center hover:scale-110 transition-transform z-10"
+            style={{ left: `${loc.x}%`, top: `${loc.y}%` }}
+          >
+            <div className="bg-red-600 p-1.5 rounded-full shadow-lg border-2 border-white mb-1">
+              <MapPin size={18} className="text-white" />
+            </div>
+            <span className="px-2 py-0.5 bg-black/70 text-white text-xs font-bold rounded shadow-sm backdrop-blur-sm whitespace-nowrap">
+              {loc.name}
+            </span>
+          </button>
+        ))}
+
+        {/* 原本的墓碑层 (调整层级防止被地图遮挡) */}
+        <div className="absolute top-8 left-8 flex flex-wrap gap-4 pointer-events-auto max-w-[50%] z-20">
           {tombstones.map(t => (
             <TombstoneUI key={t.id} tombstone={t} />
           ))}
         </div>
       </div>
+      {/* ================================== */}
 
-      {/* Top Right Profile */}
-      <div className="absolute top-6 right-6 bg-white/90 backdrop-blur-md p-4 rounded-3xl shadow-sm border border-gray-200/50 flex items-start gap-4 z-10 w-80">
-        <div className="relative group">
-          <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gray-100 border border-gray-200">
-            {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400">
-                <Upload size={20} />
-              </div>
-            )}
-          </div>
-          <div 
-            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload size={20} className="text-white" />
-          </div>
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
-        </div>
-        
-        <div className="flex-1">
-          <h3 
-            className="font-bold text-lg text-gray-900 leading-tight cursor-pointer hover:text-sky-700 transition-colors"
-            onClick={() => setShowProfileModal(true)}
-          >
-            {user.name}
-          </h3>
-          <p className="text-xs font-medium text-emerald-700 mb-2">{user.role}</p>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-gray-600">
-            <div>精神: <span className="font-semibold text-gray-900">{user.mentalRank}</span></div>
-            <div>肉体: <span className="font-semibold text-gray-900">{user.physicalRank}</span></div>
-            <div className="col-span-2">精神体: <span className="font-semibold text-gray-900">{user.spiritName}</span></div>
-            <div className="col-span-2">能力: <span className="font-semibold text-sky-700">{user.ability}</span></div>
-            <div className="col-span-2">金币: <span className="font-semibold text-amber-600">{user.gold}</span></div>
-          </div>
-        </div>
+      {/* Top Right Profile (保持不变) */}
+      <div className="absolute top-6 right-6 bg-white/90 backdrop-blur-md p-4 rounded-3xl shadow-sm border border-gray-200/50 flex items-start gap-4 z-30 w-80">
+        {/* ... 原有代码保持不变 ... */}
       </div>
 
-      {/* Bottom Right Controls */}
-      <div className="absolute bottom-6 right-6 flex gap-3 z-10">
-        <button 
-          onClick={() => setShowBackpack(true)}
-          className="w-14 h-14 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 hover:scale-105 transition-all"
-        >
-          <Backpack size={24} />
-        </button>
-        <button 
-          onClick={() => setShowSettings(true)}
-          className="w-14 h-14 bg-gray-900 rounded-full shadow-md border border-gray-800 flex items-center justify-center text-white hover:bg-gray-800 hover:scale-105 transition-all"
-        >
-          <Settings size={24} />
-        </button>
+      {/* Bottom Right Controls (保持不变) */}
+      <div className="absolute bottom-6 right-6 flex gap-3 z-30">
+        {/* ... 原有代码保持不变 ... */}
       </div>
 
-      {/* Backpack Modal */}
-      <AnimatePresence>
-        {showBackpack && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="absolute bottom-24 right-6 w-80 bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden z-20 flex flex-col max-h-[60vh]"
-          >
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-bold text-gray-900">背包</h3>
-              <button onClick={() => setShowBackpack(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1">
-              {items.length === 0 ? (
-                <div className="text-center text-gray-400 py-8 text-sm">背包空空如也</div>
-              ) : (
-                <div className="grid grid-cols-4 gap-2">
-                  {items.map(item => (
-                    <div 
-                      key={item.id} 
-                      onClick={() => setSelectedItem(item)}
-                      className="aspect-square bg-gray-100 rounded-xl border border-gray-200 flex items-center justify-center cursor-pointer hover:border-gray-400 transition-colors"
-                    >
-                      <span className="text-xs truncate px-1">{item.name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            {selectedItem && (
-              <div className="p-4 border-t border-gray-100 bg-gray-50">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-bold text-sm">{selectedItem.name}</h4>
-                  <button onClick={() => setSelectedItem(null)} className="text-gray-400"><X size={16} /></button>
-                </div>
-                <p className="text-xs text-gray-600 mb-4">{selectedItem.description}</p>
-                <div className="flex gap-2">
-                  <button className="flex-1 py-2 bg-gray-900 text-white text-xs rounded-lg font-medium">使用</button>
-                  <button className="flex-1 py-2 bg-red-50 text-red-600 text-xs rounded-lg font-medium border border-red-100 hover:bg-red-100">丢弃</button>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Profile Modal */}
-      <AnimatePresence>
-        {showProfileModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-                <h3 className="text-2xl font-black text-gray-900">角色档案：{user.name}</h3>
-                <button onClick={() => setShowProfileModal(false)} className="text-gray-400 hover:text-gray-600">
-                  <X size={24} />
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-4">
-                  <ProfileField label="姓名" value={user.name} />
-                  <ProfileField label="所属人群" value={user.role} />
-                  <ProfileField label="精神力" value={user.mentalRank} />
-                  <ProfileField label="肉体强度" value={user.physicalRank} />
-                  <ProfileField label="能力" value={user.ability} />
-                  <ProfileField label="精神体" value={user.spiritName} />
-                  <ProfileField label="个人资料" value={user.profileText} isLong />
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Settings Modal */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl"
-            >
-              <h3 className="text-xl font-bold text-gray-900 mb-6 text-center">设置</h3>
-              <div className="flex flex-col gap-3">
-                <button 
-                  onClick={() => { setDeathType('die'); setShowDeathModal(true); }}
-                  className="w-full py-4 bg-red-50 text-red-600 rounded-2xl font-bold hover:bg-red-100 transition-colors border border-red-100"
-                >
-                  我不玩了！我要死了换皮！
-                </button>
-                <button 
-                  onClick={() => { setDeathType('ghost'); setShowDeathModal(true); }}
-                  className="w-full py-4 bg-purple-50 text-purple-700 rounded-2xl font-bold hover:bg-purple-100 transition-colors border border-purple-100"
-                >
-                  我要当鬼
-                </button>
-                <button 
-                  onClick={() => setShowSettings(false)}
-                  className="w-full py-4 bg-gray-100 text-gray-700 rounded-2xl font-bold hover:bg-gray-200 transition-colors mt-2"
-                >
-                  什么事都没有
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Death Input Modal */}
-      <AnimatePresence>
-        {showDeathModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-[60] flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl"
-            >
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                {deathType === 'die' ? '死亡宣告' : '化身为鬼'}
-              </h3>
-              <p className="text-sm text-gray-500 mb-6">请留下你最后的文字描述...</p>
-              <textarea
-                value={deathDesc}
-                onChange={e => setDeathDesc(e.target.value)}
-                placeholder="例如：在一次探索中遭遇了不可名状的恐惧..."
-                className="w-full h-32 p-4 bg-gray-50 border border-gray-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent mb-6 text-sm"
-              />
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setShowDeathModal(false)}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200"
-                >
-                  取消
-                </button>
-                <button 
-                  onClick={handleDeath}
-                  disabled={!deathDesc.trim()}
-                  className="flex-1 py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 disabled:opacity-50"
-                >
-                  确认
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function ProfileField({ label, value, isLong }: { label: string, value?: string, isLong?: boolean }) {
-  return (
-    <div className={`bg-gray-50 rounded-xl p-3 border border-gray-100 ${isLong ? 'h-full' : ''}`}>
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap">{value || '未知'}</div>
-    </div>
-  );
-}
-
-function TombstoneUI({ tombstone }: { tombstone: Tombstone; key?: React.Key }) {
-  const [showInfo, setShowInfo] = useState(false);
-
-  return (
-    <div className="relative">
-      <div 
-        onClick={() => setShowInfo(!showInfo)}
-        className="w-12 h-16 bg-gray-300 rounded-t-full border-2 border-gray-400 shadow-sm flex items-center justify-center cursor-pointer hover:bg-gray-400 transition-colors"
-      >
-        <span className="text-[10px] font-serif text-gray-600 font-bold rotate-90 tracking-widest">RIP</span>
-      </div>
+      {/* Backpack, Profile, Settings, Death Modals ... */}
+      {/* ... 原有的 Modal 代码请全部保留在这里 ... */}
       
+
+      {/* === 新增：地点交互弹窗 === */}
       <AnimatePresence>
-        {showInfo && (
+        {selectedLocation && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.9 }}
-            className="absolute top-full left-0 mt-2 w-64 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-gray-200 z-30"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
           >
-            <h4 className="font-bold text-gray-900 border-b border-gray-100 pb-2 mb-2">{tombstone.name} 的墓碑</h4>
-            <div className="text-xs text-gray-600 space-y-1 mb-3">
-              <p>生前身份: {tombstone.role}</p>
-              <p>精神: {tombstone.mentalRank} / 肉体: {tombstone.physicalRank}</p>
-              <p>能力: {tombstone.ability}</p>
-              <p>精神体: {tombstone.spiritName}</p>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-xl text-xs text-gray-700 italic border border-gray-100">
-              "{tombstone.deathDescription}"
-            </div>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl relative overflow-hidden"
+            >
+              {/* 弹窗顶部装饰 */}
+              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-500 to-teal-500" />
+              
+              <div className="flex justify-between items-center mb-4 mt-2">
+                <h3 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+                  <MapPin className="text-emerald-600" />
+                  {selectedLocation.name}
+                </h3>
+                <button onClick={() => setSelectedLocation(null)} className="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-1 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {selectedLocation.description}
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">您要做什么？</div>
+                <button 
+                  onClick={() => handleAction('enter')}
+                  className="w-full py-3.5 bg-emerald-50 text-emerald-700 rounded-xl font-bold hover:bg-emerald-100 transition-colors border border-emerald-200 shadow-sm"
+                >
+                  进入
+                </button>
+                <button 
+                  onClick={() => handleAction('explore')}
+                  className="w-full py-3.5 bg-sky-50 text-sky-700 rounded-xl font-bold hover:bg-sky-100 transition-colors border border-sky-200 shadow-sm"
+                >
+                  闲逛一下
+                </button>
+                <button 
+                  onClick={() => handleAction('stay')}
+                  className="w-full py-3.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-md"
+                >
+                  什么都不做 (停留驻扎)
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ============================ */}
+
     </div>
   );
 }
+
+// ... 底部保留原有的 ProfileField 和 TombstoneUI 组件 ...
