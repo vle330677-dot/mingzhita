@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Backpack, X, Upload, MapPin, Bell, User as UserIcon, ScrollText, Hammer, HandCoins, UserMinus } from 'lucide-react';
+import { Settings, Backpack, X, Upload, MapPin, Bell, User as UserIcon, ScrollText, Hammer, HandCoins } from 'lucide-react';
 import { ViewState } from '../App';
 import { User, Tombstone, Item } from '../types';
 
-// === 新增：技能类型定义 ===
 interface Skill {
   id: number;
   userId: number;
@@ -18,7 +17,7 @@ interface Props {
   onNavigate: (view: ViewState) => void;
 }
 
-// === 1. 地图与掉落数据 (保持不变) ===
+// === 地图与掉落数据 ===
 interface MapLocation { id: string; name: string; x: number; y: number; description: string; lootTable: string[]; }
 const mapLocations: MapLocation[] = [
   { id: 'tower_of_life', name: '命之塔', x: 50, y: 50, description: '神圣而又洁白的塔...', lootTable: ['高阶精神结晶'] },
@@ -34,7 +33,7 @@ const mapLocations: MapLocation[] = [
   { id: 'observers', name: '观察者', x: 65, y: 15, description: '遍布世界的眼线...', lootTable: ['加密的微型胶卷'] }
 ];
 
-// === 2. NPC 与委托数据结构 (保持不变) ===
+// === NPC 与委托数据结构 ===
 interface NPC { id: string; name: string; role: string; locationId: string; description: string; icon: React.ReactNode; }
 const fixedNPCs: NPC[] = [
   { id: 'npc_merchant', name: '拍卖商人 贾斯汀', role: '东区商人', locationId: 'rich_area', description: '浑身散发着金钱气息的精明商人，只要有利润，一切好商量。', icon: <HandCoins size={14} /> },
@@ -45,25 +44,22 @@ const fixedNPCs: NPC[] = [
 interface Commission { id: string; publisherId: number; publisherName: string; title: string; content: string; difficulty: string; status: 'open' | 'accepted'; acceptedById?: number; acceptedByName?: string; }
 
 export function GameView({ user, setUser, onNavigate }: Props) {
-  // 基础状态
   const [showSettings, setShowSettings] = useState(false);
   const [showBackpack, setShowBackpack] = useState(false);
-  const [items, setItems] = useState<Item[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]); // 新增：技能状态
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
   
-  // 面板显示状态
+  // === 还原：角色详细资料弹窗控制 ===
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [items, setItems] = useState<Item[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [showLeftPanel, setShowLeftPanel] = useState(true);
-
-  // 从 user 对象中初始化位置
   const [userLocationId, setUserLocationId] = useState<string | null>((user as any).currentLocation || null);
   const [allPlayers, setAllPlayers] = useState<any[]>([]); 
-  
-  // 交互面板状态
   const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
   const [activeNPC, setActiveNPC] = useState<NPC | null>(null);
 
-  // NPC状态
   const [craftsmanTalkCount, setCraftsmanTalkCount] = useState(0);
   const [craftsmanLearnCount, setCraftsmanLearnCount] = useState(0);
   const [commissions, setCommissions] = useState<Commission[]>([]);
@@ -72,35 +68,19 @@ export function GameView({ user, setUser, onNavigate }: Props) {
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
   
-  // 初始化拉取数据
   useEffect(() => {
     fetchItems();
-    fetchSkills(); // 拉取技能
+    fetchSkills();
     fetchMapPlayers();
     fetchCommissions();
     const interval = setInterval(() => { fetchMapPlayers(); fetchCommissions(); }, 10000);
     return () => clearInterval(interval);
   }, [user.id]);
 
-  // === API 调用函数 ===
-  const fetchItems = async () => {
-    const res = await fetch(`/api/users/${user.id}/items`);
-    const data = await res.json();
-    if (data.success) setItems(data.items);
-  };
-
-  const fetchSkills = async () => {
-    const res = await fetch(`/api/users/${user.id}/skills`);
-    const data = await res.json();
-    if (data.success) setSkills(data.skills);
-  };
-
-  const fetchCommissions = async () => {
-    const res = await fetch('/api/commissions');
-    const data = await res.json();
-    if (data.success) setCommissions(data.commissions);
-  };
-
+  const fetchItems = async () => { const res = await fetch(`/api/users/${user.id}/items`); const data = await res.json(); if (data.success) setItems(data.items); };
+  const fetchSkills = async () => { const res = await fetch(`/api/users/${user.id}/skills`); const data = await res.json(); if (data.success) setSkills(data.skills); };
+  const fetchCommissions = async () => { const res = await fetch('/api/commissions'); const data = await res.json(); if (data.success) setCommissions(data.commissions); };
+  
   const fetchMapPlayers = async () => {
     const res = await fetch('/api/admin/users');
     const data = await res.json();
@@ -112,6 +92,29 @@ export function GameView({ user, setUser, onNavigate }: Props) {
     }
   };
 
+  // === 还原：头像上传处理 ===
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      const res = await fetch(`/api/users/${user.id}/avatar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatarUrl: base64 })
+      });
+      if (res.ok) {
+        setUser({ ...user, avatarUrl: base64 });
+        showToast('头像上传成功！');
+      } else {
+        showToast('头像上传失败，图片可能过大。');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleLocationAction = async (action: 'enter' | 'explore' | 'stay') => {
     if (!selectedLocation) return;
     if (action === 'explore') {
@@ -120,9 +123,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
         const res = await fetch(`/api/users/${user.id}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: itemName, description: `在${selectedLocation.name}闲逛获得` }) });
         const data = await res.json();
         if (data.success) { fetchItems(); showToast(`【掉落】发现了「${itemName}」！已放入背包。`); }
-      } else {
-        showToast(`你在 ${selectedLocation.name} 转了半天，一无所获。`);
-      }
+      } else { showToast(`你在 ${selectedLocation.name} 转了半天，一无所获。`); }
     } else if (action === 'stay') {
       const res = await fetch(`/api/users/${user.id}/location`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationId: selectedLocation.id }) });
       if (res.ok) { setUserLocationId(selectedLocation.id); fetchMapPlayers(); showToast(`你决定在 ${selectedLocation.name} 驻扎休息。`); }
@@ -130,7 +131,6 @@ export function GameView({ user, setUser, onNavigate }: Props) {
     setSelectedLocation(null);
   };
 
-  // --- 公会任务处理 (写入数据库) ---
   const handlePublishCommission = async () => {
     if (!newCommission.title || !newCommission.content) { showToast('标题和内容不能为空！'); return; }
     const res = await fetch('/api/commissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: Date.now().toString(), publisherId: user.id, publisherName: user.name, title: newCommission.title, content: newCommission.content, difficulty: newCommission.difficulty }) });
@@ -144,34 +144,18 @@ export function GameView({ user, setUser, onNavigate }: Props) {
     if (data.success) { fetchCommissions(); showToast('成功接取委托！'); } else { showToast(data.message || '接取失败，手慢了！'); fetchCommissions(); }
   };
 
-  // --- 真实接入：手艺人学习技能 ---
   const handleLearnSkill = async () => {
     if (craftsmanLearnCount >= 3) { showToast('老乔：今天老子累了，明天再来！'); return; }
     const skillPool = ['机械打磨', '防毒面具制作', '器械维修', '绷带制作'];
     const randomSkillName = skillPool[Math.floor(Math.random() * skillPool.length)];
-    
-    // 调用 API 保存技能
-    const res = await fetch(`/api/users/${user.id}/skills`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: randomSkillName })
-    });
-    
-    if (res.ok) {
-      setCraftsmanLearnCount(prev => prev + 1);
-      fetchSkills(); // 刷新技能列表
-      showToast(`【领悟】你跟着老乔学习，掌握/提升了技能：「${randomSkillName}」！`);
-    }
+    const res = await fetch(`/api/users/${user.id}/skills`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: randomSkillName }) });
+    if (res.ok) { setCraftsmanLearnCount(prev => prev + 1); fetchSkills(); showToast(`【领悟】你跟着老乔学习，掌握/提升了技能：「${randomSkillName}」！`); }
   };
 
-  // --- 真实接入：遗忘技能 ---
   const handleForgetSkill = async (skillId: number, skillName: string) => {
     if(!window.confirm(`确定要遗忘技能「${skillName}」吗？`)) return;
     const res = await fetch(`/api/skills/${skillId}`, { method: 'DELETE' });
-    if (res.ok) {
-      fetchSkills();
-      showToast(`你遗忘了技能：「${skillName}」`);
-    }
+    if (res.ok) { fetchSkills(); showToast(`你遗忘了技能：「${skillName}」`); }
   };
 
   const getEntitiesAtLocation = (locId: string) => {
@@ -187,7 +171,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
       {/* Toast 提示 */}
       <AnimatePresence>
         {toastMsg && (
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-gray-900/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-xl z-50 flex items-center gap-3 border border-gray-700 text-sm">
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-gray-900/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-xl z-[100] flex items-center gap-3 border border-gray-700 text-sm">
             <Bell size={16} className="text-amber-400" /> {toastMsg}
           </motion.div>
         )}
@@ -219,7 +203,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
       </div>
 
       {/* ========================================================= */}
-      {/* 还原：左上角经典角色面板 */}
+      {/* 左上角角色面板 (包含头像上传与资料弹窗入口) */}
       {/* ========================================================= */}
       <AnimatePresence>
         {showLeftPanel ? (
@@ -227,19 +211,37 @@ export function GameView({ user, setUser, onNavigate }: Props) {
             initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }}
             className="absolute top-6 left-6 w-64 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-gray-200/50 p-4 z-30"
           >
-            {/* 头像与隐藏按钮 */}
             <div className="flex justify-between items-start mb-4">
-              <div className="w-14 h-14 rounded-full border-2 border-sky-600 overflow-hidden bg-gray-100 flex items-center justify-center">
-                {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon size={24} className="text-gray-400"/>}
+              
+              {/* 还原：头像点击上传功能 */}
+              <div 
+                className="relative group cursor-pointer" 
+                onClick={() => fileInputRef.current?.click()}
+                title="点击更换头像"
+              >
+                <div className="w-14 h-14 rounded-full border-2 border-sky-600 overflow-hidden bg-gray-100 flex items-center justify-center">
+                  {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon size={24} className="text-gray-400"/>}
+                </div>
+                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Upload size={16} className="text-white" />
+                </div>
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
               </div>
+
               <button onClick={() => setShowLeftPanel(false)} className="text-xs font-bold text-gray-400 hover:text-gray-700">Hide</button>
             </div>
 
-            {/* 基本信息表格 */}
             <div className="space-y-2 text-sm mb-4">
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">名字:</span>
-                <span className="font-bold text-gray-900">{user.name}</span>
+                {/* 还原：点击名字弹出详细档案 */}
+                <span 
+                  className="font-bold text-sky-700 cursor-pointer hover:underline"
+                  onClick={() => setShowProfileModal(true)}
+                  title="查看详细档案"
+                >
+                  {user.name}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">身份:</span>
@@ -251,11 +253,10 @@ export function GameView({ user, setUser, onNavigate }: Props) {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-500">组织/职位:</span>
-                <span className="font-bold text-sky-600">{user.faction || '无'} / {user.factionRole || '平民'}</span>
+                <span className="font-bold text-sky-600 truncate max-w-[120px] text-right">{user.faction || '无'} / {user.factionRole || '平民'}</span>
               </div>
             </div>
 
-            {/* 进度条：精神与肉体 */}
             <div className="space-y-3 mb-4 border-t border-gray-100 pt-3">
               <div>
                 <div className="flex justify-between text-xs mb-1">
@@ -273,7 +274,6 @@ export function GameView({ user, setUser, onNavigate }: Props) {
               </div>
             </div>
 
-            {/* 新增：技能列表区域 */}
             <div className="border-t border-gray-100 pt-3">
               <div className="text-xs text-gray-500 mb-2 font-bold">已掌握技能 ({skills.length})</div>
               <div className="space-y-2 max-h-24 overflow-y-auto pr-1">
@@ -281,10 +281,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
                 {skills.map(skill => (
                   <div key={skill.id} className="flex justify-between items-center bg-gray-50 rounded px-2 py-1 border border-gray-100 group">
                     <span className="text-xs font-medium text-gray-800">{skill.name} <span className="text-amber-600 text-[10px]">Lv.{skill.level}</span></span>
-                    <button 
-                      onClick={() => handleForgetSkill(skill.id, skill.name)}
-                      className="opacity-0 group-hover:opacity-100 text-[10px] text-red-500 hover:bg-red-50 px-1.5 rounded transition-all"
-                    >
+                    <button onClick={() => handleForgetSkill(skill.id, skill.name)} className="opacity-0 group-hover:opacity-100 text-[10px] text-red-500 hover:bg-red-50 px-1.5 rounded transition-all">
                       遗忘
                     </button>
                   </div>
@@ -293,12 +290,58 @@ export function GameView({ user, setUser, onNavigate }: Props) {
             </div>
           </motion.div>
         ) : (
-          <button 
-            onClick={() => setShowLeftPanel(true)} 
-            className="absolute top-6 left-6 z-30 bg-white/90 backdrop-blur shadow-md rounded-full px-4 py-2 text-sm font-bold text-gray-700 hover:scale-105 transition-transform"
-          >
+          <button onClick={() => setShowLeftPanel(true)} className="absolute top-6 left-6 z-30 bg-white/90 backdrop-blur shadow-md rounded-full px-4 py-2 text-sm font-bold text-gray-700 hover:scale-105 transition-transform">
             显示角色面板
           </button>
+        )}
+      </AnimatePresence>
+      {/* ========================================================= */}
+
+
+      {/* ========================================================= */}
+      {/* 还原：极其详细的角色档案弹窗 (关联后台数据) */}
+      {/* ========================================================= */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+              className="bg-white rounded-3xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full border border-gray-200 overflow-hidden bg-gray-100">
+                    {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-2 text-gray-400"/>}
+                  </div>
+                  <h3 className="text-2xl font-black text-gray-900">角色档案：{user.name}</h3>
+                </div>
+                <button onClick={() => setShowProfileModal(false)} className="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full p-2 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <ProfileField label="所属人群" value={user.role} />
+                <ProfileField label="性别" value={(user as any).gender} />
+                <ProfileField label="年龄" value={(user as any).age} />
+                <ProfileField label="身高" value={(user as any).height} />
+                <ProfileField label="阵营/职位" value={`${(user as any).faction || '无'} / ${(user as any).factionRole || '无'}`} />
+                <ProfileField label="性向" value={(user as any).orientation} />
+                <ProfileField label="精神力" value={user.mentalRank} />
+                <ProfileField label="肉体强度" value={user.physicalRank} />
+                <ProfileField label="能力" value={user.ability} />
+                <ProfileField label="精神体" value={user.spiritName} />
+                
+                <div className="col-span-2"><ProfileField label="外貌特征" value={(user as any).appearance} isLong /></div>
+                <div className="col-span-2"><ProfileField label="性格特征" value={(user as any).personality} isLong /></div>
+                <div className="col-span-2"><ProfileField label="背景故事" value={(user as any).background} isLong /></div>
+                <div className="col-span-2"><ProfileField label="详细资料 (系统/管理员录入)" value={user.profileText} isLong /></div>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
       {/* ========================================================= */}
@@ -462,6 +505,18 @@ export function GameView({ user, setUser, onNavigate }: Props) {
         </button>
       </div>
 
+    </div>
+  );
+}
+
+// === 提取的档案字段渲染组件 ===
+function ProfileField({ label, value, isLong }: { label: string; value?: string; isLong?: boolean }) {
+  return (
+    <div className={`bg-gray-50 rounded-xl p-3 border border-gray-100 ${isLong ? "h-full" : ""}`}>
+      <div className="text-xs text-gray-500 mb-1">{label}</div>
+      <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap">
+        {value || "未知"}
+      </div>
     </div>
   );
 }
