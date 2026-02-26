@@ -1,7 +1,8 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
-import { GoogleGenAI } from '@google/genai';
+// 移除对 GoogleGenAI 的引入，不再需要
+// import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -132,67 +133,41 @@ async function startServer() {
 
   app.post('/api/admin/upload-profile', async (req, res) => {
     const { name, text, imageBase64, mimeType } = req.body;
+    
+    // --- 修改部分开始：使用假数据代替 AI 处理 ---
+    
     let profileText = text || '';
-
-    if (imageBase64 && mimeType) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [
-            {
-              inlineData: {
-                data: imageBase64.split(',')[1] || imageBase64,
-                mimeType: mimeType
-              }
-            },
-            { text: "Extract all text from this image. This is a user profile." }
-          ]
-        });
-        profileText = response.text || '';
-      } catch (error) {
-        console.error('OCR Error:', error);
-        return res.status(500).json({ success: false, message: '图片识别失败' });
-      }
-    }
-
     let parsedData: any = {};
-    if (profileText) {
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `Parse the following user profile text and extract these fields into a JSON object based on the "命之塔档案" template:
-          - name: 姓名（英文名附上中译）
-          - gender: 性别（现版本仅开放男女性别）
-          - height: 身高（默认单位cm，请注意符合年龄）
-          - age: 年龄（5-65）
-          - orientation: 性向/属性（圣所幼崽强制性向为xal无性恋）
-          - role: 所属人群（哨兵/向导/普通人/鬼魂）
-          - mentalRank: 精神力（等级C-SSS，普通人直接填无）
-          - physicalRank: 肉体强度（鬼魂直接填无）
-          - ability: 能力（限两项，鬼魂限一项，普通人无）
-          - spiritName: 精神体（普通人与鬼魂填无）
-          - faction: 势力（阵营）
-          - factionRole: 所处势力（阵营）的职位
-          - personality: 性格
-          - appearance: 容貌
-          - clothing: 衣着
-          - background: 身世
-          
-          If a field is not found, leave it empty.
-          
-          Profile Text:
-          ${profileText}`,
-          config: {
-            responseMimeType: "application/json",
-          }
-        });
-        parsedData = JSON.parse(response.text || '{}');
-      } catch (e) {
-        console.error('Parse Error:', e);
-      }
+
+    // 1. 如果上传了图片，不再调用 Gemini 识别，而是模拟识别结果
+    if (imageBase64 && mimeType) {
+       console.log("Mocking OCR for image...");
+       profileText = "【模拟识别结果】\n姓名：测试角色\n性别：女\n年龄：20\n所属人群：向导\n精神力：A\n这是由系统自动生成的模拟档案文本，因为AI功能已被关闭。";
     }
+
+    // 2. 如果有文本（无论是原生的还是刚“模拟”识别出的），不再调用 Gemini 解析，而是返回固定的 JSON 结构
+    if (profileText) {
+       console.log("Mocking JSON parsing for profile text...");
+       parsedData = {
+         gender: "女 (模拟)",
+         height: "165cm (模拟)",
+         age: "20 (模拟)",
+         orientation: "异性恋 (模拟)",
+         faction: "测试阵营 (模拟)",
+         factionRole: "干员 (模拟)",
+         personality: "开朗勇敢 (模拟)",
+         appearance: "短发 (模拟)",
+         clothing: "制服 (模拟)",
+         background: "这是由于关闭了AI功能而生成的测试背景数据。(模拟)",
+         role: "向导",
+         mentalRank: "A",
+         physicalRank: "C",
+         ability: "精神安抚",
+         spiritName: "白猫"
+       };
+    }
+    
+    // --- 修改部分结束 ---
 
     try {
       const user = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
