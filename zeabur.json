@@ -1,0 +1,4 @@
+{
+  "buildType": "nodejs",
+  "startCommand": "npm run start"
+}
