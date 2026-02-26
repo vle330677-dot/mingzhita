@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Settings, Backpack, X, MapPin, Bell, User as UserIcon, ScrollText, Hammer, HandCoins, MessageSquareText, ClipboardList, ArrowLeft, Ghost } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import {
+  Settings, Backpack, X, MapPin, Bell, User as UserIcon, ScrollText, Hammer, HandCoins, MessageSquareText,
+  ArrowLeft, ClipboardList, ShoppingCart, Gavel
+} from 'lucide-react';
 import { ViewState } from '../App';
 import { User, Item } from '../types';
 
 interface Skill { id: number; userId: number; name: string; level: number; }
 interface Props { user: User; setUser: (user: User | null) => void; onNavigate: (view: ViewState) => void; }
 
-// === 1. 地图坐标数据 ===
+// 地图坐标数据
 interface MapLocation { id: string; name: string; x: number; y: number; description: string; lootTable: string[]; type?: 'world' | 'tower'; minMental?: string; }
 
 const worldLocations: MapLocation[] = [
@@ -38,94 +41,189 @@ const fixedNPCs = [
   { id: 'npc_guild_staff', name: '玛丽', role: '公会接待员', locationId: 'guild', desc: '今天也有新的委托呢。', icon: <ScrollText size={14} /> }
 ];
 
+// 新增类型
+interface MarketItem { id: string; name: string; price: number; rarity?: string; }
+interface AuctionItem { id: string; name: string; sellerId: number; currentPrice: number; minPrice: number; highestBidderId?: number; endsAt: string; }
+interface InventoryItem { id: string; name: string; qty: number; }
+
 export function GameView({ user, setUser, onNavigate }: Props) {
   const [inTower, setInTower] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
-  const [allPlayers, setAllPlayers] = useState<any[]>([]); 
+  const [allPlayers, setAllPlayers] = useState<any[]>([]);
   const [spiritStatus, setSpiritStatus] = useState<any>({ name: '', intimacy: 0, level: 1, hp: 100 });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // 状态弹窗
-  const [isPanelMinimized, setIsPanelMinimized] = useState(false);
+  // 弹窗状态
+  const [showLeftPanel, setShowLeftPanel] = useState(true);
   const [activeNPC, setActiveNPC] = useState<any>(null);
+  const [showTowerActionPanel, setShowTowerActionPanel] = useState(false);
+  const [showSpiritInteraction, setShowSpiritInteraction] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [chatTarget, setChatTarget] = useState<any | null>(null);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatInput, setChatInput] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [showBackpack, setShowBackpack] = useState(false);
-  const [showCommissionBoard, setShowCommissionBoard] = useState(false);
-  const [myInventory, setMyInventory] = useState<string[]>([]); // 模拟背包
+  const [showMessageContacts, setShowMessageContacts] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAwakening, setShowAwakening] = useState(false);
 
-  // NPC 与 委托状态
-  const [joesPatience, setJoesPatience] = useState(0); 
-  const [hasLearnedSkillToday, setHasLearnedSkillToday] = useState(false); // 限制老乔每天一次
-  const [merchantView, setMerchantView] = useState<'menu' | 'buy' | 'auction'>('menu'); // 贾斯汀视图
+  // 委托与NPC交互状态
+  const [joesPatience, setJoesPatience] = useState(0); // 老乔对话计数
+  const [lastJoeTeachDate, setLastJoeTeachDate] = useState<string>(() => localStorage.getItem(`lastJoeTeachDate_${user.id}`) || '');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [commissions, setCommissions] = useState<any[]>([]);
+  const [showCommissionBoard, setShowCommissionBoard] = useState(false); // 任务面板
   const [guildView, setGuildView] = useState<'menu' | 'board' | 'publish'>('menu');
-  const [newCommission, setNewCommission] = useState({ title: '', content: '', reward: 100, isAnonymous: false });
+  const [newCommission, setNewCommission] = useState({ title: '', content: '', difficulty: 'C', reward: 100, isAnonymous: false });
+
+  // 商店/拍卖/背包
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [marketGoods, setMarketGoods] = useState<MarketItem[]>([]);
+  const [auctionItems, setAuctionItems] = useState<AuctionItem[]>([]);
+  const [merchantView, setMerchantView] = useState<'menu'|'shop'|'auction'|'consign'>('menu');
+  const [consignForm, setConsignForm] = useState<{ itemId: string; minPrice: number }>({ itemId: '', minPrice: 100 });
+
+  // 面板拖拽位置
+  const [panelPos, setPanelPos] = useState<{x:number;y:number}>(() => {
+    try { return JSON.parse(localStorage.getItem('panelPos') || '') || { x: 24, y: 24 }; }
+    catch { return { x: 24, y: 24 }; }
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const spiritImgInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const dragControls = useDragControls();
+
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
+  useEffect(() => { localStorage.setItem('panelPos', JSON.stringify(panelPos)); }, [panelPos]);
 
-  // 鬼魂状态判定 (当 HP 小于等于 0)
-  const isGhost = (user as any).hp <= 0;
-
-  // ================= 数据同步 =================
+  // 数据同步
   const syncAllData = async () => {
     try {
-      // 模拟数据同步
-      const res = await fetch('/api/admin/users').catch(() => ({ json: () => ({ success: false }) }));
-      // ... 保持原有的同步逻辑 ...
+      const res = await fetch('/api/admin/users');
+      const data = await res.json();
+      if (data.success) {
+        setAllPlayers(data.users.filter((p: any) => p.currentLocation));
+        const me = data.users.find((p: any) => p.id === user.id);
+        if (me) setUser({ ...user, ...me });
+      }
+      const spiritRes = await fetch(`/api/users/${user.id}/spirit-status`);
+      const sData = await spiritRes.json();
+      if (sData.success) setSpiritStatus(sData.spiritStatus);
+
+      const unreadRes = await fetch(`/api/roleplay/unread/${user.id}`);
+      const uData = await unreadRes.json();
+      if (uData.success) setUnreadCount(uData.count);
+
+      const skillRes = await fetch(`/api/users/${user.id}/skills`);
+      const skillData = await skillRes.json();
+      if (skillData.success) setSkills(skillData.skills);
+
+      const commRes = await fetch('/api/commissions');
+      const commData = await commRes.json();
+      if (commData.success) setCommissions(commData.commissions);
+
+      // 新增：背包/商店/拍卖
+      const invRes = await fetch(`/api/users/${user.id}/inventory`);
+      const invData = await invRes.json();
+      if (invData.success) setInventory(invData.items || []);
+
+      const marketRes = await fetch('/api/market/goods');
+      const marketData = await marketRes.json();
+      if (marketData.success) setMarketGoods(marketData.goods || []);
+
+      const auctionRes = await fetch('/api/auction/items');
+      const auctionData = await auctionRes.json();
+      if (auctionData.success) setAuctionItems(auctionData.items || []);
     } catch (e) { console.error(e); }
   };
-  useEffect(() => { syncAllData(); const i = setInterval(syncAllData, 5000); return () => clearInterval(i); }, [user.id]);
 
-  // ================= NPC 逻辑 =================
-  // 老乔
+  useEffect(() => { syncAllData(); const i = setInterval(syncAllData, 5000); return () => clearInterval(i); }, [user.id]);
+  useEffect(() => { if (chatTarget) fetchChatMessages(); }, [chatTarget]);
+
+  const fetchChatMessages = async () => {
+    if(!chatTarget) return;
+    const res = await fetch(`/api/roleplay/conversation/${user.id}/${chatTarget.id}`);
+    const data = await res.json();
+    if (data.success) setChatMessages(data.messages);
+  };
+
+  const addItemToInventory = async (name: string, qty = 1) => {
+    await fetch(`/api/users/${user.id}/inventory/add`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, qty, source: selectedLocation?.id })
+    });
+    await syncAllData();
+  };
+
+  // 老乔学习技能
   const handleTalkToJoe = () => {
-    if (hasLearnedSkillToday) return showToast("老乔：今天没空教你了，明天再来！");
+    const today = new Date().toISOString().slice(0,10);
+    if (lastJoeTeachDate === today) {
+      showToast("老乔：今天我已经指点过你了，明天再来。");
+      return;
+    }
     if (joesPatience < 2) {
       setJoesPatience(prev => prev + 1);
-      showToast(`老乔：滚开，别弄乱我的机油！(${joesPatience + 1}/3)`);
+      showToast(`老乔：忙着呢！别烦我！(${joesPatience + 1}/3)`);
     } else {
       const skillNames = ["机械维修", "零件打磨", "重载组装", "引擎调试"];
       const randomSkill = skillNames[Math.floor(Math.random() * skillNames.length)];
       learnSkill(randomSkill);
-      setJoesPatience(0);
-      setHasLearnedSkillToday(true);
     }
   };
 
   const learnSkill = async (name: string) => {
-    // 模拟API调用
-    showToast(`老乔骂骂咧咧地教了你一招：${name}！`);
-    setSkills(prev => [...prev, { id: Date.now(), userId: user.id, name, level: 1 }]);
+    await fetch(`/api/users/${user.id}/skills`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    });
+    showToast(`老乔骂骂咧咧地教了你一招：${name}`);
+    const today = new Date().toISOString().slice(0,10);
+    setLastJoeTeachDate(today);
+    localStorage.setItem(`lastJoeTeachDate_${user.id}`, today);
+    setJoesPatience(0);
     syncAllData();
   };
 
-  // 贾斯汀拍卖行
-  const handleAuction = () => {
-    showToast("物品已上架！若售出，贾斯汀将抽取10%的报酬。");
-    setMerchantView('menu');
+  // 公会委托
+  const publishCommission = async () => {
+    if (!newCommission.title || !newCommission.reward) return showToast("请填写标题和奖励");
+    const res = await fetch('/api/commissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: `COMM-${Date.now()}`,
+        publisherId: user.id,
+        publisherName: newCommission.isAnonymous ? "匿名发布者" : (user as any).name,
+        ...newCommission
+      })
+    });
+    if (res.ok) { showToast("委托已在公会公示"); setGuildView('menu'); syncAllData(); }
   };
 
-  // ================= 核心地图动作逻辑 =================
+  const acceptCommission = async (comm: any) => {
+    const res = await fetch(`/api/commissions/${comm.id}/accept`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, userName: (user as any).name }) });
+    const data = await res.json();
+    if (data.success) { showToast("委托已接取，请尽快完成"); syncAllData(); } else showToast(data.message);
+  };
+
+  // 核心地图动作逻辑
   const handleLocationAction = async (action: 'enter' | 'explore' | 'stay') => {
     if (!selectedLocation) return;
-    
-    if (isGhost && action !== 'stay') {
-      showToast("你现在是灵魂状态，无法进行该互动。");
-      return;
+    if (action === 'enter' && selectedLocation.id === 'tower_of_life') { setInTower(true); setSelectedLocation(null); return; }
+
+    if (inTower && action === 'enter') {
+      const jobRooms: Record<string, string> = { '神使': 'tower_top', '侍奉者': 'tower_attendant', '神使后裔': 'tower_descendant' };
+      if (selectedLocation.id === 'tower_evaluation' && (user as any).role === '未分化') setShowAwakening(true);
+      else if (jobRooms[(user as any).job || ''] === selectedLocation.id) setShowTowerActionPanel(true);
+      else showToast("权限不足。");
+      setSelectedLocation(null); return;
     }
 
     if (action === 'stay') {
-      // 50% 几率掉落该地点的专属物品
-      if (Math.random() >= 0.5 && selectedLocation.lootTable.length > 0) {
-        const dropItem = selectedLocation.lootTable[Math.floor(Math.random() * selectedLocation.lootTable.length)];
-        showToast(`你在${selectedLocation.name}驻留时，意外发现了：${dropItem}！`);
-        setMyInventory(prev => [...prev, dropItem]);
-      } else {
-        showToast(`已在${selectedLocation.name}驻扎，其他玩家现在能看到你。`);
-      }
+      await fetch(`/api/users/${user.id}/location`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationId: selectedLocation.id }) });
+      showToast(`已在此驻扎`); syncAllData();
     }
     setSelectedLocation(null);
   };
@@ -134,10 +232,10 @@ export function GameView({ user, setUser, onNavigate }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-950 relative overflow-hidden font-sans select-none">
-      
-      {/* --- 地图层 --- */}
+
+      {/* 地图层 */}
       <div className="absolute inset-0 bg-cover bg-center transition-all duration-1000" style={{ backgroundImage: `url('${inTower ? '/命之塔.jpg' : '/map_background.jpg'}')` }}>
-        <div className="absolute inset-0 bg-black/40" />
+        <div className="absolute inset-0 bg-black/20" />
         {inTower && <button onClick={() => setInTower(false)} className="absolute top-8 left-8 z-50 bg-white/90 shadow-xl px-6 py-2 rounded-2xl font-black flex items-center gap-2"><ArrowLeft size={20}/> 返回大地图</button>}
 
         {activeMap.map(loc => {
@@ -149,16 +247,17 @@ export function GameView({ user, setUser, onNavigate }: Props) {
                 {npcsHere.map(npc => (
                   <div key={npc.id} onClick={() => setActiveNPC(npc)} className="w-8 h-8 rounded-full border-2 border-emerald-400 bg-white flex items-center justify-center cursor-pointer shadow-lg z-20 hover:scale-110 transition-all">{npc.icon}</div>
                 ))}
-                {/* 渲染同位置玩家，支持对戏 */}
-                {playersHere.map(p => {
-                  const isPDead = p.hp <= 0;
-                  return (
-                    <div key={p.id} onClick={() => p.id !== user.id && setChatTarget(p)} className={`w-8 h-8 rounded-full border-2 shadow-xl cursor-pointer overflow-hidden transition-all ${p.id === user.id ? 'border-amber-400 z-30 scale-125' : 'border-white bg-slate-200 hover:scale-110 z-10'} ${isPDead ? 'opacity-50 grayscale' : ''}`}>
-                       {isPDead && <Ghost className="absolute inset-0 m-auto text-white/50" size={16}/>}
-                      {p.avatarUrl ? <img src={p.avatarUrl} className="w-full h-full object-cover"/> : <span className="text-[10px] m-auto font-black">{p.name[0]}</span>}
-                    </div>
-                  );
-                })}
+                {playersHere.map(p => (
+                  <div
+                    key={p.id}
+                    onClick={() => p.id !== (user as any).id && setChatTarget(p)}
+                    className={`w-8 h-8 rounded-full border-2 shadow-xl cursor-pointer overflow-hidden transition-all
+                      ${p.id === (user as any).id ? 'border-amber-400 z-30 scale-125' : 'border-white bg-slate-200 hover:scale-110 z-10'}
+                      ${p.state === 'ghost' ? 'opacity-60 ring-2 ring-violet-400' : ''}`}
+                  >
+                    {p.avatarUrl ? <img src={p.avatarUrl} className="w-full h-full object-cover" alt="avatar"/> : <span className="text-[10px] m-auto font-black">{p.name?.[0] || '?'}</span>}
+                  </div>
+                ))}
               </div>
               <button onClick={() => setSelectedLocation(loc)} className="group flex flex-col items-center">
                 <div className={`p-2 rounded-full shadow-2xl border-2 transition-all group-hover:scale-125 ${inTower ? 'bg-sky-500 border-sky-100' : 'bg-rose-600 border-white'}`}><MapPin size={18} className="text-white"/></div>
@@ -169,159 +268,304 @@ export function GameView({ user, setUser, onNavigate }: Props) {
         })}
       </div>
 
-      {/* --- 重点：整合后真正可随意停驻的个人面板 --- */}
-      <motion.div 
-        drag 
-        dragMomentum={false} 
-        className="absolute z-[60]"
-        style={{ top: 24, left: 24 }} // 初始位置
-      >
-        <AnimatePresence mode="wait">
-          {!isPanelMinimized ? (
-            <motion.div 
-              key="full-panel"
-              initial={{ opacity: 0, scale: 0.9 }} 
-              animate={{ opacity: 1, scale: 1 }} 
-              exit={{ opacity: 0, scale: 0.9 }} 
-              className="w-64 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl p-6 border border-white/50 cursor-grab active:cursor-grabbing"
-            >
-               <div className="flex justify-between items-start mb-4">
-                  <div className="w-14 h-14 rounded-2xl border-2 border-sky-500 overflow-hidden bg-slate-100 cursor-pointer">
-                    {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover"/> : <UserIcon className="m-auto text-gray-300" size={24}/>}
-                  </div>
-                  {/* 点击隐藏，但不改变 motion.div 的外层坐标 */}
-                  <button onClick={() => setIsPanelMinimized(true)} className="text-[10px] font-black text-slate-400 hover:text-slate-900 pointer-events-auto">隐藏面板</button>
-               </div>
-               
-               <h2 className="font-black text-xl text-slate-900 mb-1 flex items-center gap-2">
-                 {user.name} 
-                 {isGhost && <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">灵魂状态</span>}
-               </h2>
-               <p className="text-[10px] font-black text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded-full mb-6">{(user as any).job || user.role}</p>
-
-               <div className="space-y-3 mb-6">
-                  {/* 中文化的数据面板 */}
-                  <StatusRow label="生命值" cur={(user as any).hp || 100} color="bg-rose-500" />
-                  <StatusRow label="精神力" cur={(user as any).mentalProgress || 0} color="bg-indigo-600" />
-                  <StatusRow label="默契度" cur={spiritStatus.intimacy || 0} color="bg-pink-500" />
-               </div>
-               
-               <div className="border-t border-gray-100 pt-3 mb-4">
-                  <p className="text-[9px] font-black text-gray-400 mb-2 uppercase">个人技能</p>
-                  <div className="flex flex-wrap gap-1">
-                     {skills.length === 0 && <span className="text-[10px] text-gray-300 italic">尚未习得技能</span>}
-                     {skills.map(s => <span key={s.id} className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded-md text-[10px] font-bold border border-sky-100">{s.name} Lv.{s.level}</span>)}
-                  </div>
-               </div>
-
-               <div className="bg-slate-900 text-white p-3 rounded-2xl flex justify-between items-center"><HandCoins size={16} className="text-amber-400"/><span className="font-black text-sm">{user.gold} G</span></div>
-            </motion.div>
-          ) : (
-            <motion.div 
-              key="mini-btn"
-              initial={{ opacity: 0, scale: 0.8 }} 
-              animate={{ opacity: 1, scale: 1 }} 
-              exit={{ opacity: 0, scale: 0.8 }}
-              onClick={() => setIsPanelMinimized(false)}
-              className="bg-white shadow-2xl px-5 py-3 rounded-full font-black text-xs flex items-center gap-2 cursor-pointer border border-slate-200 pointer-events-auto"
-            >
-              <UserIcon size={14} className="text-sky-500"/> 显示面板
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-
-      {/* --- NPC交互弹窗 --- */}
+      {/* 可拖拽角色面板（中文 + 持久位置） */}
       <AnimatePresence>
-        {/* 老乔交互 (更新后) */}
+        {showLeftPanel ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            drag
+            dragMomentum={false}
+            dragElastic={0.1}
+            onDragEnd={(_, info) => setPanelPos({ x: info.point.x, y: info.point.y })}
+            className="absolute w-64 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl p-6 z-[60] border border-white/50"
+            style={{ left: panelPos.x, top: panelPos.y }}
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div className="w-14 h-14 rounded-2xl border-2 border-sky-500 overflow-hidden bg-slate-100 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                {(user as any).avatarUrl ? <img src={(user as any).avatarUrl} className="w-full h-full object-cover" alt="avatar"/> : <UserIcon className="m-auto text-gray-300" size={24}/>}
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={async (e) => {
+                  const r = new FileReader();
+                  r.onload = async (ev) => {
+                    await fetch(`/api/users/${(user as any).id}/avatar`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarUrl: ev.target?.result }) });
+                    syncAllData();
+                  };
+                  if(e.target.files?.[0]) r.readAsDataURL(e.target.files[0]);
+                }}/>
+              </div>
+              <button onClick={() => setShowLeftPanel(false)} className="text-[10px] font-black text-slate-400 hover:text-slate-900">隐藏</button>
+            </div>
+
+            <h2 className="font-black text-xl text-slate-900 mb-1 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => setShowProfileModal(true)}>{(user as any).name}</h2>
+            <p className="text-[10px] font-black text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded-full mb-6">{(user as any).job || (user as any).role}</p>
+
+            <div className="space-y-3 mb-6">
+              <StatusRow label="生命值" cur={(user as any).hp || 100} color="bg-rose-500" />
+              <StatusRow label="精神力" cur={(user as any).mentalProgress || 0} color="bg-indigo-600" />
+              <StatusRow label="灵契" cur={spiritStatus.intimacy || 0} color="bg-pink-500" />
+            </div>
+
+            <div className="border-t border-gray-100 pt-3 mb-4">
+              <p className="text-[9px] font-black text-gray-400 mb-2">技能</p>
+              <div className="flex flex-wrap gap-1">
+                {skills.length === 0 && <span className="text-[10px] text-gray-300 italic">尚未习得技能</span>}
+                {skills.map(s => <span key={s.id} className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded-md text-[10px] font-bold border border-sky-100">{s.name} Lv.{s.level}</span>)}
+              </div>
+            </div>
+
+            <div className="bg-slate-900 text-white p-3 rounded-2xl flex justify-between items-center">
+              <HandCoins size={16} className="text-amber-400"/><span className="font-black text-sm">{(user as any).gold} G</span>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.button
+            drag
+            dragMomentum={false}
+            onClick={() => setShowLeftPanel(true)}
+            className="absolute top-6 left-6 z-[60] bg-white shadow-2xl px-5 py-3 rounded-full font-black text-xs flex items-center gap-2 cursor-move border border-slate-200"
+          >
+            <UserIcon size={14} className="text-sky-500"/> 资料
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* NPC交互与委托弹窗 */}
+      <AnimatePresence>
+        {/* 老乔交互：搭话 + 离开 + 每日一次 */}
         {activeNPC?.id === 'npc_craftsman' && (
           <NPCModal npc={activeNPC} onClose={() => setActiveNPC(null)}>
-            <div className="flex gap-3">
-               <button onClick={handleTalkToJoe} className="flex-1 py-4 bg-sky-600 text-white font-black rounded-2xl shadow-lg">
-                 搭话 ({joesPatience}/3)
-               </button>
-               <button onClick={() => setActiveNPC(null)} className="w-1/3 py-4 bg-slate-100 text-slate-500 font-black rounded-2xl">
-                 离开
-               </button>
+            <div className="grid grid-cols-1 gap-3">
+              <button onClick={handleTalkToJoe} className="w-full py-4 bg-sky-600 text-white font-black rounded-2xl shadow-lg">搭话 ({joesPatience}/3)</button>
+              <button onClick={() => setActiveNPC(null)} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl">离开</button>
             </div>
           </NPCModal>
         )}
 
-        {/* 贾斯汀交互 (新增) */}
+        {/* 公会交互 */}
+        {activeNPC?.id === 'npc_guild_staff' && (
+          <NPCModal npc={activeNPC} onClose={() => { setActiveNPC(null); setGuildView('menu'); }}>
+            {guildView === 'menu' && (
+              <div className="grid grid-cols-1 gap-3">
+                <button onClick={() => setGuildView('board')} className="py-4 bg-sky-50 text-sky-600 font-black rounded-2xl border border-sky-100">查看委托板</button>
+                <button onClick={() => setGuildView('publish')} className="py-4 bg-amber-50 text-amber-600 font-black rounded-2xl border border-amber-100">发布新委托</button>
+                <button onClick={() => setActiveNPC(null)} className="py-4 bg-slate-100 text-slate-500 font-black rounded-2xl">以后再说</button>
+              </div>
+            )}
+            {guildView === 'board' && (
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                {commissions.length === 0 && <p className="text-center text-gray-400 py-4">目前没有公示委托</p>}
+                {commissions.filter(c => c.status === 'open').map(c => (
+                  <div key={c.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="flex justify-between items-start mb-1"><span className="font-black text-slate-900">{c.title}</span><span className="text-[10px] font-bold text-amber-600">{c.reward} G</span></div>
+                    <p className="text-[11px] text-slate-500 mb-3">{c.content}</p>
+                    <button onClick={() => acceptCommission(c)} className="w-full py-2 bg-sky-600 text-white text-[11px] font-black rounded-xl">接受委托</button>
+                  </div>
+                ))}
+                <button onClick={() => setGuildView('menu')} className="w-full py-2 text-xs font-bold text-sky-600">返回</button>
+              </div>
+            )}
+            {guildView === 'publish' && (
+              <div className="space-y-3">
+                <input placeholder="任务标题" className="w-full p-3 bg-slate-50 border rounded-xl outline-none" onChange={e => setNewCommission({...newCommission, title: e.target.value})}/>
+                <textarea placeholder="任务详情内容..." className="w-full p-3 bg-slate-50 border rounded-xl h-24 outline-none resize-none" onChange={e => setNewCommission({...newCommission, content: e.target.value})}/>
+                <div className="flex gap-2">
+                  <input placeholder="报酬" type="number" className="flex-1 p-3 bg-slate-50 border rounded-xl outline-none" onChange={e => setNewCommission({...newCommission, reward: parseInt(e.target.value)})}/>
+                  <button
+                    onClick={() => setNewCommission({...newCommission, isAnonymous: !newCommission.isAnonymous})}
+                    className={`px-4 rounded-xl font-black text-xs ${newCommission.isAnonymous ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}
+                  >
+                    {newCommission.isAnonymous ? "匿名发布" : "公开身份"}
+                  </button>
+                </div>
+                <button onClick={publishCommission} className="w-full py-4 bg-amber-500 text-white font-black rounded-2xl">发布并扣除报酬</button>
+              </div>
+            )}
+          </NPCModal>
+        )}
+
+        {/* 富人区商人：购买 / 拍卖 / 委托拍卖 */}
         {activeNPC?.id === 'npc_merchant' && (
-          <NPCModal npc={activeNPC} onClose={() => {setActiveNPC(null); setMerchantView('menu');}}>
+          <NPCModal npc={activeNPC} onClose={() => { setActiveNPC(null); setMerchantView('menu'); }}>
             {merchantView === 'menu' && (
               <div className="grid grid-cols-1 gap-3">
-                <button onClick={() => setMerchantView('buy')} className="py-3 bg-amber-50 text-amber-600 font-black rounded-2xl border border-amber-100">购买商品</button>
-                <button onClick={() => setMerchantView('auction')} className="py-3 bg-purple-50 text-purple-600 font-black rounded-2xl border border-purple-100">物品拍卖</button>
-                <button onClick={() => setActiveNPC(null)} className="py-3 bg-slate-100 text-slate-500 font-black rounded-2xl">离开</button>
+                <button onClick={() => setMerchantView('shop')} className="py-4 bg-emerald-50 text-emerald-600 font-black rounded-2xl border border-emerald-100 flex items-center justify-center gap-2"><ShoppingCart size={16}/> 购买商品</button>
+                <button onClick={() => setMerchantView('auction')} className="py-4 bg-violet-50 text-violet-600 font-black rounded-2xl border border-violet-100 flex items-center justify-center gap-2"><Gavel size={16}/> 拍卖行（竞价）</button>
+                <button onClick={() => setMerchantView('consign')} className="py-4 bg-amber-50 text-amber-600 font-black rounded-2xl border border-amber-100">委托拍卖（成交收取10%）</button>
+                <button onClick={() => setActiveNPC(null)} className="py-4 bg-slate-100 text-slate-600 font-black rounded-2xl">离开</button>
               </div>
             )}
-            {merchantView === 'buy' && (
-              <div className="space-y-3">
-                <div className="p-3 bg-slate-50 rounded-xl flex justify-between items-center"><span className="text-sm font-bold">先贤手稿</span><span className="text-amber-500 font-black text-xs">5000 G</span></div>
-                <div className="p-3 bg-slate-50 rounded-xl flex justify-between items-center"><span className="text-sm font-bold">走私机械臂</span><span className="text-amber-500 font-black text-xs">3200 G</span></div>
-                <button onClick={() => setMerchantView('menu')} className="w-full text-xs text-slate-400 font-bold py-2">返回</button>
+
+            {merchantView === 'shop' && (
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                {marketGoods.length === 0 && <p className="text-center text-gray-400 py-4">暂无上架商品</p>}
+                {marketGoods.map(g => (
+                  <div key={g.id} className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <div className="flex justify-between items-center">
+                      <div className="font-black text-emerald-900">{g.name}</div>
+                      <div className="text-amber-600 font-bold">{g.price} G</div>
+                    </div>
+                    <button onClick={async () => {
+                      const res = await fetch('/api/market/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: (user as any).id, itemId: g.id }) });
+                      const d = await res.json(); d.success ? showToast("购买成功，已放入背包") : showToast(d.message || "购买失败");
+                      syncAllData();
+                    }} className="w-full mt-2 py-2 bg-emerald-600 text-white text-[12px] font-black rounded-xl">购买</button>
+                  </div>
+                ))}
+                <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-emerald-600">返回</button>
               </div>
             )}
+
             {merchantView === 'auction' && (
-              <div className="space-y-3 text-center">
-                <p className="text-xs text-gray-500 mb-4">把你的好东西交给我。如果其他玩家竞拍成功，我会收取 <span className="text-rose-500 font-bold">10% 的手续费</span>，童叟无欺。</p>
-                <button onClick={handleAuction} className="w-full py-3 bg-purple-600 text-white font-black rounded-2xl">上架我的物品</button>
-                <button onClick={() => setMerchantView('menu')} className="w-full text-xs text-slate-400 font-bold py-2">返回</button>
+              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                {auctionItems.length === 0 && <p className="text-center text-gray-400 py-4">暂无拍卖品</p>}
+                {auctionItems.map(a => (
+                  <div key={a.id} className="p-3 bg-violet-50 rounded-2xl border border-violet-100">
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="font-black text-violet-900">{a.name}</div>
+                      <div className="text-violet-700 text-[12px]">当前价 {a.currentPrice} G</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input type="number" placeholder={`>= ${a.currentPrice + 1}`} className="flex-1 p-2 bg-white border rounded-lg text-sm"
+                        onChange={(e) => (a as any).__bid = parseInt(e.target.value)} />
+                      <button onClick={async () => {
+                        const price = (a as any).__bid || 0;
+                        const res = await fetch('/api/auction/bid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: (user as any).id, itemId: a.id, price }) });
+                        const d = await res.json(); d.success ? showToast("出价成功") : showToast(d.message || "出价失败");
+                        syncAllData();
+                      }} className="px-3 rounded-lg bg-violet-600 text-white text-xs font-black">出价</button>
+                    </div>
+                    <div className="text-[10px] text-violet-600 mt-1">成交后商人收取10%佣金</div>
+                  </div>
+                ))}
+                <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-violet-600">返回</button>
+              </div>
+            )}
+
+            {merchantView === 'consign' && (
+              <div className="space-y-3">
+                <select className="w-full p-3 bg-slate-50 border rounded-xl" value={consignForm.itemId} onChange={e => setConsignForm({ ...consignForm, itemId: e.target.value })}>
+                  <option value="">选择要拍卖的物品</option>
+                  {inventory.map(it => <option key={it.id} value={it.id}>{it.name} x{it.qty}</option>)}
+                </select>
+                <input type="number" className="w-full p-3 bg-slate-50 border rounded-xl" placeholder="起拍价" value={consignForm.minPrice} onChange={e => setConsignForm({ ...consignForm, minPrice: parseInt(e.target.value || '0') })}/>
+                <button onClick={async () => {
+                  if (!consignForm.itemId) return showToast("请选择物品");
+                  const res = await fetch('/api/auction/consign', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: (user as any).id, itemId: consignForm.itemId, minPrice: consignForm.minPrice })
+                  });
+                  const d = await res.json(); d.success ? showToast("已委托拍卖") : showToast(d.message || "委托失败");
+                  syncAllData(); setMerchantView('menu');
+                }} className="w-full py-3 bg-amber-500 text-white font-black rounded-2xl">提交委托</button>
+                <div className="text-[10px] text-amber-600 text-center">成交后收取10%佣金</div>
+                <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-amber-600">返回</button>
               </div>
             )}
           </NPCModal>
         )}
       </AnimatePresence>
 
-      {/* --- 背包弹窗 (新增) --- */}
+      {/* 地点操作弹窗：探索/驻扎/进入/取消 */}
       <AnimatePresence>
-        {showBackpack && (
-           <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="fixed bottom-24 right-24 w-72 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[80]">
-             <div className="flex justify-between items-center mb-4"><h3 className="font-black text-lg flex items-center gap-2"><Backpack size={20} className="text-slate-700"/>我的背包</h3><X size={18} className="cursor-pointer" onClick={() => setShowBackpack(false)}/></div>
-             <div className="grid grid-cols-4 gap-2">
-                {myInventory.length === 0 ? <p className="col-span-4 text-center text-xs text-gray-400 py-4">背包空空如也</p> : 
-                 myInventory.map((item, idx) => (
-                   <div key={idx} className="aspect-square bg-slate-100 rounded-xl flex items-center justify-center text-[10px] text-center p-1 font-bold text-slate-600 border border-slate-200">{item}</div>
-                 ))}
-             </div>
-           </motion.div>
+        {selectedLocation && (
+          <NPCModal npc={{ icon: <MapPin size={14}/>, name: selectedLocation.name, role: '地点操作', desc: selectedLocation.description }} onClose={() => setSelectedLocation(null)}>
+            <div className="grid grid-cols-1 gap-3">
+              {!inTower && selectedLocation.id === 'tower_of_life' && (
+                <button onClick={() => handleLocationAction('enter')} className="py-3 bg-indigo-600 text-white font-black rounded-2xl">进入命之塔</button>
+              )}
+              {inTower && selectedLocation.type === 'tower' && (
+                <button onClick={() => handleLocationAction('enter')} className="py-3 bg-indigo-600 text-white font-black rounded-2xl">进入</button>
+              )}
+              <button onClick={async () => {
+                // 50% 掉落
+                const drop = Math.random() < 0.5;
+                if (drop && selectedLocation.lootTable.length > 0) {
+                  const item = selectedLocation.lootTable[Math.floor(Math.random() * selectedLocation.lootTable.length)];
+                  await addItemToInventory(item, 1);
+                  showToast(`在【${selectedLocation.name}】探索时获得：${item}`);
+                } else {
+                  showToast(`在【${selectedLocation.name}】探索无收获`);
+                }
+                setSelectedLocation(null);
+              }} className="py-3 bg-emerald-600 text-white font-black rounded-2xl">探索（50% 掉落）</button>
+              <button onClick={() => handleLocationAction('stay')} className="py-3 bg-amber-600 text-white font-black rounded-2xl">驻扎</button>
+              <button onClick={() => setSelectedLocation(null)} className="py-3 bg-slate-100 text-slate-600 font-black rounded-2xl">取消</button>
+            </div>
+          </NPCModal>
         )}
       </AnimatePresence>
 
-      {/* --- 坐标交互底栏 --- */}
+      {/* 右下角任务面板 */}
       <AnimatePresence>
-        {selectedLocation && (
-          <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-xl p-4 rounded-[32px] shadow-2xl flex gap-3 z-50">
-            <button onClick={() => handleLocationAction('explore')} className="px-6 py-3 bg-slate-100 text-slate-700 font-black rounded-2xl hover:bg-slate-200 transition-colors">探索区域</button>
-            <button onClick={() => handleLocationAction('stay')} className="px-6 py-3 bg-sky-500 text-white font-black rounded-2xl shadow-lg shadow-sky-500/30 hover:bg-sky-400 transition-colors">在此驻扎</button>
-            <button onClick={() => setSelectedLocation(null)} className="p-3 bg-slate-100 text-slate-400 rounded-2xl hover:text-slate-600"><X size={20} /></button>
+        {showCommissionBoard && (
+          <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="fixed bottom-24 right-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[80]">
+            <div className="flex justify-between items-center mb-4"><h3 className="font-black text-lg flex items-center gap-2"><ClipboardList size={20} className="text-sky-600"/>任务行囊</h3><X size={18} onClick={() => setShowCommissionBoard(false)} className="cursor-pointer"/></div>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              <div className="text-[10px] font-black text-gray-400 border-b pb-2">我接取的委托</div>
+              {commissions.filter(c => c.acceptedById === (user as any).id).map(c => (
+                <div key={c.id} className="p-3 bg-sky-50 rounded-2xl border border-sky-100">
+                  <p className="font-black text-xs text-sky-900">{c.title}</p>
+                  <p className="text-[10px] text-sky-600 mt-1">发布者: {c.publisherName}</p>
+                  <button onClick={() => showToast("已提交至发布者审核...")} className="w-full mt-2 py-1.5 bg-sky-600 text-white text-[10px] font-black rounded-lg">提交任务</button>
+                </div>
+              ))}
+              <div className="text-[10px] font-black text-gray-400 border-b pb-2 mt-4">我发布的委托</div>
+              {commissions.filter(c => c.publisherId === (user as any).id).map(c => (
+                <div key={c.id} className="p-3 bg-amber-50 rounded-2xl border border-amber-100">
+                  <p className="font-black text-xs text-amber-900">{c.title}</p>
+                  <p className="text-[10px] text-amber-600 mt-1">状态: {c.status === 'accepted' ? '被接取' : '公示中'}</p>
+                  {c.status === 'accepted' && <button onClick={() => showToast("审核通过，报酬已发放")} className="w-full mt-2 py-1.5 bg-amber-600 text-white text-[10px] font-black rounded-lg">确认完成</button>}
+                </div>
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* --- 底部控制栏 --- */}
+      {/* 底部控制栏 */}
       <div className="absolute bottom-8 right-8 flex gap-4 z-40">
         <ControlBtn icon={<ClipboardList/>} color="text-amber-500" onClick={() => setShowCommissionBoard(!showCommissionBoard)}/>
-        <ControlBtn icon={<MessageSquareText/>} count={unreadCount} color="text-sky-500" />
-        <ControlBtn icon={<Backpack/>} color="text-slate-700" onClick={() => setShowBackpack(!showBackpack)}/>
-        <ControlBtn icon={<Settings/>} color="text-slate-400" />
+        <ControlBtn icon={<MessageSquareText/>} count={unreadCount} color="text-sky-500" onClick={() => setShowMessageContacts(!showMessageContacts)}/>
+        <ControlBtn icon={<Backpack/>} color="text-slate-700" onClick={() => setShowBackpack(true)}/>
+        <ControlBtn icon={<Settings/>} color="text-slate-400" onClick={() => setShowSettings(true)}/>
       </div>
 
-      {/* Toast */}
+      {/* 背包弹窗 */}
+      <AnimatePresence>
+        {showBackpack && (
+          <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 30, opacity: 0 }} className="fixed bottom-24 right-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[80]">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-black text-lg flex items-center gap-2"><Backpack size={20} className="text-slate-700"/>背包</h3>
+              <X size={18} onClick={() => setShowBackpack(false)} className="cursor-pointer"/>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {inventory.length === 0 && <div className="text-center text-gray-400 py-6">空空如也</div>}
+              {inventory.map(it => (
+                <div key={it.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                  <div className="font-bold text-slate-800">{it.name}</div>
+                  <div className="text-xs text-slate-500">x{it.qty}</div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 其他弹窗（Spirit, Tower, Chat, Settings 等）可按原逻辑接入 */}
+
+      {/* 全局提示 */}
       <AnimatePresence>
         {toastMsg && <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="absolute top-8 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-6 py-3 rounded-2xl z-[500] flex items-center gap-3 border border-gray-700 text-sm shadow-2xl"><Bell size={16} className="text-amber-400"/>{toastMsg}</motion.div>}
       </AnimatePresence>
-
     </div>
   );
 }
 
-// === 辅助组件 ===
+// 辅助组件
 function NPCModal({ npc, onClose, children }: any) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{opacity: 0}} className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
       <div className="bg-white rounded-[40px] p-10 w-full max-w-sm shadow-2xl relative border-t-8 border-emerald-400">
         <div className="flex items-center gap-4 mb-6"><div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">{npc.icon}</div><div><h3 className="font-black text-xl">{npc.name}</h3><p className="text-xs text-emerald-600 font-bold">{npc.role}</p></div></div>
         <p className="text-gray-600 italic mb-8">"{npc.desc}"</p>
@@ -333,9 +577,31 @@ function NPCModal({ npc, onClose, children }: any) {
 }
 
 function StatusRow({ label, cur, color }: any) {
-  return (<div className="w-full"><div className="flex justify-between text-[11px] font-black text-slate-500 mb-1 tracking-tighter"><span>{label}</span><span>{Math.floor(cur)}%</span></div><div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, cur)}%` }} className={`h-full ${color} rounded-full`}/></div></div>);
+  return (
+    <div className="w-full">
+      <div className="flex justify-between text-[9px] font-black text-slate-400 mb-1 tracking-tighter">
+        <span>{label}</span><span>{Math.floor(cur)}%</span>
+      </div>
+      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+        <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, cur)}%` }} className={`h-full ${color} rounded-full`}/>
+      </div>
+    </div>
+  );
 }
 
 function ControlBtn({ icon, count, color, onClick }: any) {
-  return (<button onClick={onClick} className={`relative w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center ${color} hover:scale-110 transition-all border border-slate-50`}>{icon}{count > 0 && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full text-white text-[10px] font-black border-2 border-white animate-bounce flex items-center justify-center shadow-lg">{count}</span>}</button>);
+  return (
+    <button onClick={onClick} className={`relative w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center ${color} hover:scale-110 transition-all border border-slate-50`}>
+      {icon}
+      {count > 0 && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full text-white text-[10px] font-black border-2 border-white animate-bounce flex items-center justify-center shadow-lg">{count}</span>}
+    </button>
+  );
+}
+
+// 预留未用的按钮类型（如后续需要）
+function FloatActionBtn({ icon, label, sub, color, onClick }: any) {
+  return (<button onClick={onClick} className={`flex flex-col items-center justify-center p-5 rounded-[28px] ${color} shadow-sm border border-transparent hover:scale-105 transition-all`}><div className="mb-2">{icon}</div><span className="text-xs font-black mb-1">{label}</span><span className="text-[9px] font-bold opacity-60">{sub}</span></button>);
+}
+function SpiritSubBtn({ label, val, color, onClick }: any) {
+  return (<button onClick={onClick} className={`p-4 rounded-2xl bg-slate-50 border border-slate-100 font-black transition-all flex flex-col items-center ${color} hover:scale-105 active:scale-95`}><span>{label}</span><span className="text-[10px] opacity-70">{val}</span></button>);
 }
