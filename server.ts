@@ -95,6 +95,13 @@ db.exec(`
     level INTEGER DEFAULT 1,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
+  -- 新增：精神体详细状态表
+  CREATE TABLE IF NOT EXISTS spirit_status (
+    userId INTEGER PRIMARY KEY,
+    intimacy INTEGER DEFAULT 0,
+    status TEXT DEFAULT '良好',
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
 `);
 
 const addColumn = (table: string, col: string, type: string) => {
@@ -102,6 +109,26 @@ const addColumn = (table: string, col: string, type: string) => {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
   } catch (e) {} // 忽略列已存在的错误
 };
+// 确保旧数据库升级时加上命之塔系统所需的字段
+[
+  'job',             // 职位：神使/侍奉者/仆从等
+  'hp',              // 当前血量
+  'maxHp',           // 最大血量
+  'mp',              // 当前精神值
+  'maxMp',           // 最大精神值
+  'mentalProgress',  // 精神力升级百分比进度 (0-100)
+  'workCount',       // 今日已打工次数
+  'trainCount',      // 今日已训练次数
+  'lastResetDate'    // 上次重置计数的时间 (YYYY-MM-DD)
+].forEach(c => {
+  const type = (c === 'mentalProgress') ? 'REAL DEFAULT 0' : 
+               (c === 'hp' || c === 'maxHp' || c === 'mp' || c === 'maxMp' || c === 'workCount' || c === 'trainCount') ? 'INTEGER DEFAULT 0' : 
+               'TEXT';
+  addColumn('users', c, type);
+});
+
+// 初始化数值补丁
+db.prepare("UPDATE users SET hp = 100, maxHp = 100, mp = 100, maxMp = 100 WHERE hp IS NULL OR hp = 0").run();
 
 // 确保旧数据库升级时也能加上这些列
 ['gender', 'height', 'age', 'orientation', 'faction', 'factionRole', 'personality', 'appearance', 'clothing', 'background', 'currentLocation'].forEach(c => addColumn('users', c, 'TEXT'));
@@ -117,10 +144,105 @@ async function startServer() {
 
   // ================= API Routes 开始 =================
   
+  // ================= 命之塔系统 API =================
+
+  // 1. 获取精神体详细状态
+  app.get('/api/users/:id/spirit-status', (req, res) => {
+    const { id } = req.params;
+    try {
+      let status = db.prepare('SELECT * FROM spirit_status WHERE userId = ?').get(id);
+      if (!status) {
+        db.prepare('INSERT INTO spirit_status (userId) VALUES (?)').run(id);
+        status = { userId: id, intimacy: 0, status: '良好' };
+      }
+      res.json({ success: true, spiritStatus: status });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 2. 加入命之塔职位
+  app.post('/api/tower/join', (req, res) => {
+    const { userId, jobName } = req.body;
+    try {
+      db.prepare('UPDATE users SET job = ? WHERE id = ?').run(jobName, userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 3. 打工逻辑 (每天3次，获得20%月薪)
+  app.post('/api/tower/work', (req, res) => {
+    const { userId } = req.body;
+    try {
+      const user = db.prepare('SELECT job, workCount, gold FROM users WHERE id = ?').get(userId) as any;
+      if (user.workCount >= 3) return res.json({ success: false, message: '今日打工次数已满' });
+
+      // 根据职位计算报酬
+      const salaries: Record<string, number> = { '神使': 1000, '侍奉者': 1000, '神使后裔': 0, '仆从': 500 };
+      const baseSalary = salaries[user.job] || 0;
+      const reward = Math.floor(baseSalary * 0.2);
+
+      db.prepare('UPDATE users SET gold = gold + ?, workCount = workCount + ? WHERE id = ?')
+        .run(reward, 1, userId);
+
+      res.json({ success: true, reward, currentGold: user.gold + reward });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 4. 精神力训练成功 (进度+5%)
+  app.post('/api/tower/train', (req, res) => {
+    const { userId } = req.body;
+    try {
+      const user = db.prepare('SELECT trainCount, mentalProgress FROM users WHERE id = ?').get(userId) as any;
+      if (user.trainCount >= 5) return res.json({ success: false, message: '今日训练次数已满' });
+
+      const newProgress = Math.min(100, user.mentalProgress + 5);
+      db.prepare('UPDATE users SET mentalProgress = ?, trainCount = trainCount + ? WHERE id = ?')
+        .run(newProgress, 1, userId);
+
+      res.json({ success: true, newProgress });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 5. 休息恢复 (血条/精神力回复)
+  app.post('/api/tower/rest', (req, res) => {
+    const { userId } = req.body;
+    try {
+      db.prepare('UPDATE users SET hp = maxHp, mp = maxMp WHERE id = ?').run(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // 6. 精神体互动 (增加亲密度)
+  app.post('/api/tower/interact-spirit', (req, res) => {
+    const { userId } = req.body;
+    try {
+      db.prepare('UPDATE spirit_status SET intimacy = intimacy + 5 WHERE userId = ?').run(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
   // --- 原有用户与管理员 API ---
-  app.get('/api/users/:name', (req, res) => {
-    const user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.params.name);
+ app.get('/api/users/:name', (req, res) => {
+    const user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.params.name) as any;
     if (user) {
+      const today = new Date().toISOString().split('T')[0];
+      // 跨天检查，重置计数器
+      if (user.lastResetDate !== today) {
+        db.prepare('UPDATE users SET workCount = 0, trainCount = 0, lastResetDate = ? WHERE id = ?')
+          .run(today, user.id);
+        user.workCount = 0;
+        user.trainCount = 0;
+      }
       res.json({ success: true, user });
     } else {
       res.json({ success: false, message: 'User not found' });
