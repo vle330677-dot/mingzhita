@@ -160,9 +160,23 @@ const addColumn = (table: string, col: string, type: string) => {
 ['age', 'hp', 'maxHp', 'mp', 'maxMp', 'workCount', 'trainCount'].forEach((c) =>
   addColumn('users', c, 'INTEGER DEFAULT 0')
 );
-['faction', 'job', 'role', 'mentalRank', 'physicalRank', 'ability', 'spiritName', 'spiritType', 'avatarUrl', 'status', 'deathDescription', 'profileText', 'currentLocation', 'lastResetDate', 'lastCheckInDate'].forEach((c) =>
-  addColumn('users', c, 'TEXT')
-);
+[
+  'faction',
+  'job',
+  'role',
+  'mentalRank',
+  'physicalRank',
+  'ability',
+  'spiritName',
+  'spiritType',
+  'avatarUrl',
+  'status',
+  'deathDescription',
+  'profileText',
+  'currentLocation',
+  'lastResetDate',
+  'lastCheckInDate'
+].forEach((c) => addColumn('users', c, 'TEXT'));
 addColumn('users', 'isHidden', 'INTEGER DEFAULT 0');
 addColumn('users', 'mentalProgress', 'REAL DEFAULT 0');
 addColumn('roleplay_messages', 'locationId', 'TEXT');
@@ -190,16 +204,34 @@ const seedData = () => {
 
   const itemCount = db.prepare('SELECT COUNT(*) as count FROM global_items').get() as any;
   if (itemCount.count === 0) {
-    const insertItem = db.prepare('INSERT INTO global_items (name, description, locationTag, price) VALUES (?, ?, ?, ?)');
+    const insertItem = db.prepare(
+      'INSERT INTO global_items (name, description, locationTag, price) VALUES (?, ?, ?, ?)'
+    );
     initialItems.forEach((i) => insertItem.run(i.name, i.description, i.locationTag, i.price));
   }
 };
 seedData();
 
 // ================= 3. 辅助配置 =================
-const JOB_SALARIES: Record<string, number> = { 神使: 1000, 侍奉者: 1000, 神使后裔: 0, 仆从: 500 };
-const JOB_LIMITS: Record<string, number> = { 神使: 1, 侍奉者: 2, 神使后裔: 2, 仆从: 9999 };
-const getLocalToday = () => new Date().toISOString().split('T')[0];
+const JOB_SALARIES: Record<string, number> = {
+  神使: 1000,
+  侍奉者: 1000,
+  神使后裔: 0,
+  仆从: 500
+};
+const JOB_LIMITS: Record<string, number> = {
+  神使: 1,
+  侍奉者: 2,
+  神使后裔: 2,
+  仆从: 9999
+};
+
+// 本地日期（避免 UTC 偏差）
+const getLocalToday = () => {
+  const d = new Date();
+  const tzOffsetMs = d.getTimezoneOffset() * 60 * 1000;
+  return new Date(d.getTime() - tzOffsetMs).toISOString().split('T')[0];
+};
 
 // 级联删除
 const deleteUserCascade = db.transaction((userId: number) => {
@@ -218,6 +250,7 @@ const deleteUserCascade = db.transaction((userId: number) => {
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
+
   app.use(express.json({ limit: '50mb' }));
 
   // ================= 4. 管理员专属 API =================
@@ -236,6 +269,40 @@ async function startServer() {
   });
 
   // ================= 5. 游戏前端核心 API =================
+
+  // --- 同地点玩家列表（用于点击头像发起对戏）---
+  app.get('/api/locations/:locationId/players', (req, res) => {
+    const { locationId } = req.params;
+    const excludeId = Number(req.query.excludeId);
+
+    try {
+      let players: any[] = [];
+
+      if (Number.isFinite(excludeId)) {
+        players = db.prepare(`
+          SELECT id, name, avatarUrl, role, currentLocation, status
+          FROM users
+          WHERE currentLocation = ?
+            AND status IN ('approved', 'ghost')
+            AND id <> ?
+          ORDER BY id ASC
+        `).all(locationId, excludeId);
+      } else {
+        players = db.prepare(`
+          SELECT id, name, avatarUrl, role, currentLocation, status
+          FROM users
+          WHERE currentLocation = ?
+            AND status IN ('approved', 'ghost')
+          ORDER BY id ASC
+        `).all(locationId);
+      }
+
+      res.json({ success: true, players });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   app.post('/api/rescue/request', (req, res) => {
     const { patientId, healerId } = req.body;
     db.prepare('INSERT INTO rescue_requests (patientId, healerId) VALUES (?, ?)').run(patientId, healerId);
@@ -245,7 +312,9 @@ async function startServer() {
   app.get('/api/rescue/check/:userId', (req, res) => {
     const { userId } = req.params;
     const incoming = db
-      .prepare('SELECT r.*, u.name as patientName FROM rescue_requests r JOIN users u ON r.patientId = u.id WHERE r.healerId = ? AND r.status = "pending"')
+      .prepare(
+        'SELECT r.*, u.name as patientName FROM rescue_requests r JOIN users u ON r.patientId = u.id WHERE r.healerId = ? AND r.status = "pending"'
+      )
       .get(userId);
     const outgoing = db.prepare('SELECT * FROM rescue_requests WHERE patientId = ? ORDER BY id DESC LIMIT 1').get(userId);
     res.json({ success: true, incoming, outgoing });
@@ -321,7 +390,18 @@ async function startServer() {
       `UPDATE users
        SET role=?, age=?, faction=?, mentalRank=?, physicalRank=?, ability=?, spiritName=?, profileText=?, status=?
        WHERE id=?`
-    ).run(role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText, status || 'approved', req.params.id);
+    ).run(
+      role,
+      age,
+      faction,
+      mentalRank,
+      physicalRank,
+      ability,
+      spiritName,
+      profileText,
+      status || 'approved',
+      req.params.id
+    );
 
     res.json({ success: true });
   });
@@ -642,7 +722,9 @@ async function startServer() {
   app.get('/api/roleplay/conversation/:userId/:otherId', (req, res) => {
     const { userId, otherId } = req.params;
     const messages = db
-      .prepare('SELECT * FROM roleplay_messages WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?) ORDER BY createdAt ASC')
+      .prepare(
+        'SELECT * FROM roleplay_messages WHERE (senderId = ? AND receiverId = ?) OR (senderId = ? AND receiverId = ?) ORDER BY createdAt ASC'
+      )
       .all(userId, otherId, otherId, userId);
 
     db.prepare('UPDATE roleplay_messages SET isRead = 1 WHERE receiverId = ? AND senderId = ?').run(userId, otherId);
@@ -650,7 +732,9 @@ async function startServer() {
   });
 
   app.get('/api/roleplay/unread/:userId', (req, res) => {
-    const result = db.prepare('SELECT COUNT(*) as count FROM roleplay_messages WHERE receiverId = ? AND isRead = 0').get(req.params.userId) as any;
+    const result = db
+      .prepare('SELECT COUNT(*) as count FROM roleplay_messages WHERE receiverId = ? AND isRead = 0')
+      .get(req.params.userId) as any;
     res.json({ success: true, count: result.count || 0 });
   });
 
@@ -662,8 +746,9 @@ async function startServer() {
   app.post('/api/commissions', (req, res) => {
     const { id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous } = req.body;
     db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(reward || 0, publisherId);
-    db.prepare('INSERT INTO commissions (id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(id, publisherId, publisherName, title, content, difficulty || 'C', reward || 0, isAnonymous ? 1 : 0);
+    db.prepare(
+      'INSERT INTO commissions (id, publisherId, publisherName, title, content, difficulty, reward, isAnonymous) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, publisherId, publisherName, title, content, difficulty || 'C', reward || 0, isAnonymous ? 1 : 0);
     res.json({ success: true });
   });
 
@@ -682,7 +767,8 @@ async function startServer() {
     app.use('*', async (req, res, next) => {
       if (req.originalUrl.startsWith('/api')) return next();
       try {
-        let template = '<!DOCTYPE html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>';
+        let template =
+          '<!DOCTYPE html><html><head></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>';
         template = await vite.transformIndexHtml(req.originalUrl, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e) {
