@@ -101,9 +101,21 @@ export function GameView({ user, setUser, onNavigate }: Props) {
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
   useEffect(() => { localStorage.setItem('panelPos', JSON.stringify(panelPos)); }, [panelPos]);
-
+// 在 GameView 顶部补充 state
+  const [incomingRescue, setIncomingRescue] = useState<any>(null);
   // 数据同步
   const syncAllData = async () => {
+    try {
+      // 轮询急救状态
+      const rescueRes = await fetch(`/api/rescue/check/${user.id}`);
+      const rData = await rescueRes.json();
+      if (rData.success && rData.incoming) {
+        setIncomingRescue(rData.incoming);
+      } else {
+        setIncomingRescue(null);
+      }
+    } catch (e) {}
+  };
     try {
       const res = await fetch('/api/admin/users');
       const data = await res.json();
@@ -285,6 +297,134 @@ const handleTalkToJoe = () => {
           );
         })}
       </div>
+      {/* ================= 1. 对戏聊天窗口 ================= */}
+      
+      <AnimatePresence>
+        {chatTarget && (
+          <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} 
+            className="fixed bottom-24 left-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-4 z-[80] flex flex-col h-96">
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden"><img src={chatTarget.avatarUrl} className="w-full h-full object-cover"/></div>
+                <div><h3 className="font-black text-sm text-slate-900">{chatTarget.name}</h3><p className="text-[9px] text-sky-600 font-bold">{chatTarget.role}</p></div>
+              </div>
+              <X size={18} onClick={() => setChatTarget(null)} className="cursor-pointer text-slate-400 hover:text-slate-900"/>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-3">
+              {chatMessages.map(m => (
+                <div key={m.id} className={`flex flex-col ${m.senderId === (user as any).id ? 'items-end' : 'items-start'}`}>
+                  <span className="text-[9px] text-slate-400 mb-0.5">{m.senderName}</span>
+                  <div className={`px-3 py-2 rounded-2xl text-xs max-w-[85%] ${m.senderId === (user as any).id ? 'bg-sky-600 text-white rounded-br-sm' : 'bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
+                    {m.content}
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="flex gap-2">
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => {
+                if(e.key === 'Enter') {
+                  fetch('/api/roleplay', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ senderId: (user as any).id, senderName: (user as any).name, receiverId: chatTarget.id, receiverName: chatTarget.name, content: chatInput, locationId: (user as any).currentLocation }) }).then(() => { setChatInput(''); fetchChatMessages(); });
+                }
+              }} placeholder="输入对戏内容..." className="flex-1 p-3 bg-slate-50 border rounded-xl outline-none text-xs"/>
+              <button onClick={() => {
+                  fetch('/api/roleplay', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ senderId: (user as any).id, senderName: (user as any).name, receiverId: chatTarget.id, receiverName: chatTarget.name, content: chatInput, locationId: (user as any).currentLocation }) }).then(() => { setChatInput(''); fetchChatMessages(); });
+              }} className="px-4 bg-slate-900 text-white rounded-xl font-black text-xs">发送</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= 2. 设置/命运菜单 (死亡 / 变鬼) ================= */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[40px] p-8 w-full max-w-sm shadow-2xl relative">
+              <X onClick={() => setShowSettings(false)} className="absolute top-6 right-6 text-slate-400 cursor-pointer"/>
+              <h3 className="font-black text-xl mb-6">命运抉择</h3>
+              <div className="space-y-3">
+                <button onClick={() => {
+                  const text = prompt("请输入你的死亡谢幕戏 (将提交管理员审核):");
+                  if (text) fetch(`/api/users/${(user as any).id}/submit-death`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: 'pending_death', text }) }).then(() => { showToast("已提交死亡申请，请等待审核"); syncAllData(); setShowSettings(false); });
+                }} className="w-full py-4 bg-rose-50 text-rose-600 font-black rounded-2xl border border-rose-100">接受死亡</button>
+                
+                <button onClick={() => {
+                  const text = prompt("请输入你化作鬼魂的执念文本 (将提交管理员审核):");
+                  if (text) fetch(`/api/users/${(user as any).id}/submit-death`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: 'pending_ghost', text }) }).then(() => { showToast("已提交化鬼申请，请等待审核"); syncAllData(); setShowSettings(false); });
+                }} className="w-full py-4 bg-violet-50 text-violet-600 font-black rounded-2xl border border-violet-100">化作鬼魂</button>
+                
+                <button onClick={() => setShowSettings(false)} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl">什么都没有发生</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= 3. 濒死急救系统 (核心双重判定) ================= */}
+      {/* 3.1 濒死者视角强制锁屏 */}
+      {((user as any).hp <= 0 && (user as any).status === 'approved') && (
+        <div className="fixed inset-0 bg-rose-950/95 z-[999] flex flex-col items-center justify-center p-6 text-center backdrop-blur-md">
+          <div className="w-24 h-24 bg-rose-600/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+            <Heart size={48} className="text-rose-500"/>
+          </div>
+          <h1 className="text-4xl font-black text-white mb-4 tracking-widest">你快要死了！</h1>
+          <p className="text-rose-300 text-sm mb-12 max-w-xs leading-relaxed">你的生命值已归零。请立刻寻找同区域的治愈系向导对戏求救，或者接受命运的终结。</p>
+          
+          <div className="w-full max-w-xs space-y-4">
+            {/* 查找同区域治愈系向导 */}
+            <button onClick={() => {
+              const healers = allPlayers.filter(p => p.currentLocation === (user as any).currentLocation && p.role === '向导' && p.ability === '治疗系');
+              if (healers.length === 0) return showToast("当前区域没有治愈系向导！");
+              
+              // 简化的点对点求救：向区域内第一个向导发请求
+              const targetHealer = healers[0];
+              fetch('/api/rescue/request', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ patientId: (user as any).id, healerId: targetHealer.id }) })
+                .then(() => showToast(`已向 ${targetHealer.name} 发出绝望的呼救！请通过其他方式通知TA。`));
+            }} className="w-full py-4 bg-rose-600 text-white font-black rounded-2xl shadow-[0_0_40px_rgba(225,29,72,0.4)]">向附近的向导求救</button>
+            
+            <button onClick={async () => {
+              const res = await fetch(`/api/rescue/check/${(user as any).id}`);
+              const data = await res.json();
+              if (data.outgoing?.status === 'accepted') {
+                await fetch('/api/rescue/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ patientId: (user as any).id }) });
+                showToast("双重判定成功：你得救了！");
+                syncAllData();
+              } else {
+                showToast("向导还未确认救助，请继续等待或对戏催促...");
+              }
+            }} className="w-full py-4 bg-emerald-600 text-white font-black rounded-2xl">我得救了 (需向导先确认)</button>
+
+            <button onClick={() => setShowSettings(true)} className="w-full py-4 bg-transparent text-rose-500 font-bold rounded-2xl underline">放弃挣扎，接受死亡</button>
+          </div>
+        </div>
+      )}
+
+      {/* 3.2 审核等待锁屏 */}
+      {((user as any).status === 'pending_death' || (user as any).status === 'pending_ghost') && (
+        <div className="fixed inset-0 bg-slate-950/95 z-[1000] flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 border-4 border-slate-600 border-t-white rounded-full animate-spin mb-8"/>
+          <h1 className="text-2xl font-black text-white mb-2">命运结算中...</h1>
+          <p className="text-slate-400 text-sm">您的【死亡/变鬼】申请已提交，一切行动已锁定，请等待管理员批阅你的谢幕戏。</p>
+        </div>
+      )}
+
+     {/* 3.3 治愈系向导视角的救助提示框 */}
+  <AnimatePresence>
+    {incomingRescue && (
+      <motion.div initial={{ x: 100 }} animate={{ x: 0 }} className="fixed top-24 right-8 bg-white p-6 rounded-[32px] shadow-2xl border-4 border-rose-500 z-[90]">
+        <h3 className="font-black text-rose-600 mb-2 flex items-center gap-2"><Heart className="animate-pulse"/> 紧急救援请求！</h3>
+        <p className="text-xs font-bold text-slate-600 mb-4">【{incomingRescue.patientName}】正在死去，是否施展治愈系能力进行抢救？</p>
+        <div className="flex gap-2">
+          <button onClick={() => {
+            fetch('/api/rescue/accept', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ requestId: incomingRescue.id }) }).then(() => { showToast("已确认施救，等待对方确认得救！"); syncAllData(); });
+          }} className="flex-1 py-2 bg-rose-500 text-white font-black rounded-xl text-xs">确认救助</button>
+          <button onClick={() => setIncomingRescue(null)} className="flex-1 py-2 bg-slate-100 text-slate-500 font-black rounded-xl text-xs">无视</button>
+        </div>
+      </motion.div>
+    )}
+  </AnimatePresence>
 
       {/* 可拖拽角色面板（中文 + 持久位置） */}
       <AnimatePresence>
