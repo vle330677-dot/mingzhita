@@ -5,38 +5,6 @@ import {
   Trash2, MapPin, CheckCircle, XCircle, Edit3, ShieldAlert, Users 
 } from "lucide-react";
 
-// ================= 全局配置字典 (与前端地图、NPC、抽卡系统严格对齐) =================
-const FACTIONS = [
-  '物理系', '元素系', '精神系', '感知系', '信息系', '治疗系', '强化系', '炼金系', 
-  '圣所', '普通人' 
-];
-
-const LOCATIONS = [
-  { id: 'none', name: '无 / 全局通用' },
-  { id: 'tower_of_life', name: '大地图 - 命之塔' },
-  { id: 'london_tower', name: '大地图 - 伦敦塔' },
-  { id: 'sanctuary', name: '大地图 - 圣所' },
-  { id: 'guild', name: '大地图 - 公会' },
-  { id: 'slums', name: '大地图 - 贫民区' },
-  { id: 'rich_area', name: '大地图 - 富人区' },
-  { id: 'tower_guard', name: '大地图 - 守塔会' },
-  { id: 'demon_society', name: '大地图 - 恶魔会' },
-  { id: 'paranormal_office', name: '大地图 - 灵异管理所' },
-  { id: 'observers', name: '大地图 - 观察者' },
-  { id: 'tower_top', name: '塔内 - 神使层' },
-  { id: 'tower_attendant', name: '塔内 - 侍奉者层' },
-  { id: 'tower_descendant', name: '塔内 - 神使后裔层' },
-  { id: 'tower_training', name: '塔内 - 精神力训练所' },
-  { id: 'tower_evaluation', name: '塔内 - 评定所' }
-];
-
-const NPCS = [
-  { id: 'none', name: '无 / 非 NPC 专属' },
-  { id: 'npc_merchant', name: '贾斯汀 (拍卖商人)' },
-  { id: 'npc_craftsman', name: '老乔 (手艺人)' },
-  { id: 'npc_guild_staff', name: '玛丽 (公会接待)' }
-];
-
 export function AdminView() {
   const [activeTab, setActiveTab] = useState<'users' | 'logs' | 'items' | 'skills'>('users');
   const [users, setUsers] = useState<any[]>([]);
@@ -47,8 +15,9 @@ export function AdminView() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
 
   // 表单状态
-  const [newItem, setNewItem] = useState({ name: '', description: '', locationTag: '', npcId: '', price: 0 });
-  const [newSkill, setNewSkill] = useState({ name: '', faction: '物理系', description: '', npcId: '' });
+  const [newItem, setNewItem] = useState({ name: '', description: '', locationTag: '', price: 0 });
+  const [newSkill, setNewSkill] = useState({ name: '', faction: '强攻系', description: '' });
+  const factions = ['强攻系', '精神系', '敏捷系', '治愈系', '防御系', '感知系', '控制系', '召唤系', '圣所', '普通人'];
 
   useEffect(() => { fetchData(); }, [activeTab]);
 
@@ -58,28 +27,16 @@ export function AdminView() {
     try {
       const res = await fetch(endpoints[activeTab]);
       const data = await res.json();
-      if (activeTab === 'users') setUsers(data.users || []);
-      if (activeTab === 'logs') setLogs(data.logs || []);
-      if (activeTab === 'items') setItems(data.items || []);
-      if (activeTab === 'skills') setSkills(data.skills || []);
+      if (activeTab === 'users') setUsers(data.users);
+      if (activeTab === 'logs') setLogs(data.logs);
+      if (activeTab === 'items') setItems(data.items);
+      if (activeTab === 'skills') setSkills(data.skills);
     } catch (e) { console.error("Fetch Error:", e); }
     setLoading(false);
   };
 
   // --- 玩家审核与管理 ---
-  const handleStatusChange = async (id: number, status: string, userObj?: any) => {
-    // 处理批准变成鬼魂：重置物理，修改 role 为鬼魂
-    if (status === 'approved' && userObj?.status === 'pending_ghost') {
-      await fetch(`/api/admin/users/${id}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ ...userObj, role: '鬼魂', physicalRank: '无', status: 'approved' })
-      });
-      fetchData();
-      return;
-    }
-    
-    // 默认的审批通过/驳回逻辑
+  const handleStatusChange = async (id: number, status: string) => {
     await fetch(`/api/admin/users/${id}/status`, { 
       method: 'POST', 
       headers: {'Content-Type': 'application/json'}, 
@@ -107,16 +64,16 @@ export function AdminView() {
 
   // --- 物品与技能管理 ---
   const addItem = async () => {
-    if(!newItem.name) return alert("请填写物品名称");
+    if(!newItem.name || !newItem.locationTag) return alert("请填写物品名称和地点Tag");
     await fetch('/api/admin/items', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newItem) });
-    setNewItem({ name: '', description: '', locationTag: '', npcId: '', price: 0 });
+    setNewItem({ name: '', description: '', locationTag: '', price: 0 });
     fetchData();
   };
 
   const addSkill = async () => {
     if(!newSkill.name) return alert("请填写技能名称");
     await fetch('/api/admin/skills', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newSkill) });
-    setNewSkill({ name: '', faction: '物理系', description: '', npcId: '' });
+    setNewSkill({ name: '', faction: '强攻系', description: '' });
     fetchData();
   };
 
@@ -124,6 +81,7 @@ export function AdminView() {
   const groupedLogs = logs.reduce((acc: any, log: any) => {
     const loc = log.locationId || '未知位面';
     if (!acc[loc]) acc[loc] = {};
+    // 将对戏双方名字排序组合作为 Key，确保 A找B 和 B找A 归入同一组对话
     const pair = [log.senderName, log.receiverName].sort().join(' ⇌ ');
     if (!acc[loc][pair]) acc[loc][pair] = [];
     acc[loc][pair].push(log);
@@ -187,8 +145,6 @@ export function AdminView() {
                           {u.status === 'pending' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-600 border border-amber-200">待审核</span>}
                           {u.status === 'approved' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-600 border border-emerald-200">已过审</span>}
                           {u.status === 'rejected' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-600 border border-rose-200">已驳回</span>}
-                          {u.status === 'pending_death' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-600 text-white shadow-md">死亡待审</span>}
-                          {u.status === 'pending_ghost' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-violet-600 text-white shadow-md">化鬼待审</span>}
                         </td>
                         <td className="p-6">
                           <div className="flex items-center justify-end gap-3">
@@ -197,24 +153,6 @@ export function AdminView() {
                               <div className="flex gap-2 mr-4 border-r pr-4">
                                 <button onClick={() => handleStatusChange(u.id, 'approved')} title="通过" className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-500 hover:text-white transition-colors"><CheckCircle size={18}/></button>
                                 <button onClick={() => handleStatusChange(u.id, 'rejected')} title="驳回" className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-500 hover:text-white transition-colors"><XCircle size={18}/></button>
-                              </div>
-                            )}
-                            {/* 死亡/变鬼 审核操作区 */}
-                            {(u.status === 'pending_death' || u.status === 'pending_ghost') && (
-                              <div className="flex gap-2 mr-4 border-r pr-4">
-                                <button onClick={() => alert(`【玩家谢幕戏文本】\n${u.deathDescription}`)} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-xs font-black">查看谢幕戏</button>
-                                
-                                {u.status === 'pending_death' && (
-                                  <button onClick={() => handleStatusChange(u.id, 'dead')} title="准许死亡" className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-500 hover:text-white transition-colors">
-                                    <CheckCircle size={18}/>
-                                  </button>
-                                )}
-                                
-                                {u.status === 'pending_ghost' && (
-                                  <button onClick={() => handleStatusChange(u.id, 'approved', u)} title="准许化鬼" className="p-1.5 bg-violet-100 text-violet-600 rounded-lg hover:bg-violet-500 hover:text-white transition-colors">
-                                    <CheckCircle size={18}/>
-                                  </button>
-                                )}
                               </div>
                             )}
                             {/* 编辑与删除区 */}
@@ -235,23 +173,23 @@ export function AdminView() {
             </motion.div>
           )}
 
-          {/* ================= 2. 存戏区域归档 ================= */}
+          {/* ================= 2. 存戏区域归档 (双重分类) ================= */}
           {activeTab === 'logs' && (
             <motion.div key="logs" initial={{opacity:0}} animate={{opacity:1}} className="space-y-10">
               {Object.keys(groupedLogs).length === 0 && <div className="text-center py-20 text-slate-400 font-bold">目前世界非常安静，没有任何戏份存档。</div>}
               
               {Object.entries(groupedLogs).map(([loc, pairs]: [string, any]) => (
                 <div key={loc} className="bg-white rounded-[40px] border border-slate-200 p-8 shadow-sm">
+                  {/* 一级分类：地区 */}
                   <div className="flex items-center gap-3 mb-8 pb-4 border-b border-slate-100">
                     <div className="p-3 bg-sky-50 text-sky-600 rounded-2xl"><MapPin size={24}/></div>
                     <div>
-                      <h3 className="text-2xl font-black text-slate-900">
-                        {LOCATIONS.find(l => l.id === loc)?.name || loc}
-                      </h3>
+                      <h3 className="text-2xl font-black text-slate-900">{loc}</h3>
                       <p className="text-xs text-slate-400 font-bold mt-1">区域戏份收录库</p>
                     </div>
                   </div>
 
+                  {/* 二级分类：对戏人物组合 */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {Object.entries(pairs).map(([pairName, messages]: [string, any]) => (
                       <div key={pairName} className="bg-slate-50 rounded-3xl p-6 border border-slate-100 shadow-inner flex flex-col h-full">
@@ -260,8 +198,9 @@ export function AdminView() {
                           <h4 className="font-black text-indigo-900">{pairName} <span className="text-xs font-medium text-slate-400 ml-2">({messages.length} 条互动)</span></h4>
                         </div>
                         
+                        {/* 消息时间线 */}
                         <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar flex-1">
-                          {messages.map((m: any) => (
+                          {messages.map((m: any, idx: number) => (
                             <div key={m.id} className="relative pl-4 border-l-2 border-slate-200">
                               <div className="absolute w-2 h-2 bg-slate-300 rounded-full -left-[5px] top-1.5"/>
                               <div className="flex justify-between items-end mb-1">
@@ -282,34 +221,15 @@ export function AdminView() {
             </motion.div>
           )}
 
-          {/* ================= 3. 物品库管理 (精确绑定) ================= */}
+          {/* ================= 3. 物品库管理 ================= */}
           {activeTab === 'items' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-1 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm h-fit sticky top-8">
                 <h3 className="font-black text-lg mb-6 flex items-center gap-2"><Package size={20} className="text-amber-500"/> 部署新物品</h3>
                 <div className="space-y-4">
                   <Input label="物品名称" value={newItem.name} onChange={(v:any) => setNewItem({...newItem, name: v})}/>
-                  
-                  {/* 精确的下拉菜单绑定地图 */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">专属掉落地图</label>
-                    <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold text-slate-700" 
-                      value={newItem.locationTag} onChange={e => setNewItem({...newItem, locationTag: e.target.value})}>
-                      <option value="">请选择掉落地图</option>
-                      {LOCATIONS.map(loc => <option key={loc.id} value={loc.id === 'none' ? '' : loc.id}>{loc.name}</option>)}
-                    </select>
-                  </div>
-
-                  {/* 精确的下拉菜单绑定 NPC */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">专属给予 NPC (可选)</label>
-                    <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold text-slate-700" 
-                      value={newItem.npcId} onChange={e => setNewItem({...newItem, npcId: e.target.value})}>
-                      {NPCS.map(n => <option key={n.id} value={n.id === 'none' ? '' : n.id}>{n.name}</option>)}
-                    </select>
-                  </div>
-
-                  <Input label="市场价值 (Gold)" type="number" value={newItem.price.toString()} onChange={(v:any) => setNewItem({...newItem, price: parseInt(v) || 0})}/>
+                  <Input label="归属地图Tag (如 slums)" value={newItem.locationTag} onChange={(v:any) => setNewItem({...newItem, locationTag: v})}/>
+                  <Input label="市场价值 (Gold)" type="number" value={newItem.price.toString()} onChange={(v:any) => setNewItem({...newItem, price: parseInt(v)})}/>
                   <textarea placeholder="物品效果描述..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm h-24" onChange={(e) => setNewItem({...newItem, description: e.target.value})}/>
                   <button onClick={addItem} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-slate-800 transition-all shadow-lg mt-2">
                     上传至世界数据库
@@ -319,7 +239,7 @@ export function AdminView() {
               <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b text-[11px] font-bold text-slate-400 uppercase">
-                    <tr><th className="p-6">物品信息</th><th className="p-6">产出节点 / NPC</th><th className="p-6 text-right">操作</th></tr>
+                    <tr><th className="p-6">物品信息</th><th className="p-6">产出节点</th><th className="p-6 text-right">操作</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {items.map(i => (
@@ -329,51 +249,31 @@ export function AdminView() {
                           <div className="text-xs text-slate-400 mt-1 max-w-xs truncate">{i.description || '无描述'}</div>
                           <div className="text-[10px] font-mono text-amber-600 mt-1">价值: {i.price} G</div>
                         </td>
-                        <td className="p-6">
-                          <div className="flex flex-col gap-1 items-start">
-                            {i.locationTag && <span className="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-black tracking-wider">{LOCATIONS.find(l => l.id === i.locationTag)?.name || i.locationTag}</span>}
-                            {i.npcId && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-black tracking-wider">{NPCS.find(n => n.id === i.npcId)?.name || i.npcId}</span>}
-                            {!i.locationTag && !i.npcId && <span className="text-[10px] text-slate-400">全局通用</span>}
-                          </div>
-                        </td>
+                        <td className="p-6"><span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-black uppercase tracking-wider">{i.locationTag}</span></td>
                         <td className="p-6 text-right">
                           <button onClick={() => {if(confirm("确定删除该物品？")) fetch(`/api/admin/items/${i.id}`, {method:'DELETE'}).then(fetchData)}} className="text-slate-300 hover:text-rose-500 p-2"><Trash2 size={18}/></button>
                         </td>
                       </tr>
                     ))}
-                    {items.length === 0 && <tr><td colSpan={3} className="p-10 text-center text-slate-400">暂无物品数据</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          {/* ================= 4. 派系技能库 (与抽卡系统同步) ================= */}
+          {/* ================= 4. 派系技能库 ================= */}
           {activeTab === 'skills' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-1 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm h-fit sticky top-8">
                 <h3 className="font-black text-lg mb-6 flex items-center gap-2"><Zap size={20} className="text-sky-500"/> 录入派系奥义</h3>
                 <div className="space-y-4">
                   <Input label="技能名称" value={newSkill.name} onChange={(v:any) => setNewSkill({...newSkill, name: v})}/>
-                  
-                  {/* 精确同步的技能派系选项 */}
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase ml-1">专属派系限制</label>
-                    <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold text-slate-700" 
-                      value={newSkill.faction} onChange={e => setNewSkill({...newSkill, faction: e.target.value})}>
-                      {FACTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                    <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold" value={newSkill.faction} onChange={e => setNewSkill({...newSkill, faction: e.target.value})}>
+                      {factions.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
-
-                  {/* 精确的下拉菜单绑定教学 NPC */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">专属教学 NPC (可选)</label>
-                    <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold text-slate-700" 
-                      value={newSkill.npcId} onChange={e => setNewSkill({...newSkill, npcId: e.target.value})}>
-                      {NPCS.map(n => <option key={n.id} value={n.id === 'none' ? '' : n.id}>{n.name}</option>)}
-                    </select>
-                  </div>
-
                   <textarea placeholder="技能效果详细描述..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm h-32" onChange={e => setNewSkill({...newSkill, description: e.target.value})}/>
                   <button onClick={addSkill} className="w-full py-4 bg-sky-600 text-white rounded-2xl font-black hover:bg-sky-700 transition-all shadow-lg mt-2">
                     发布技能模板
@@ -384,15 +284,8 @@ export function AdminView() {
                 {skills.map(s => (
                   <div key={s.id} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm relative group hover:border-sky-300 transition-colors">
                     <button onClick={() => {if(confirm("确定删除该技能？")) fetch(`/api/admin/skills/${s.id}`, {method:'DELETE'}).then(fetchData)}} className="absolute top-6 right-6 text-slate-200 hover:text-rose-500 transition-colors"><Trash2 size={16}/></button>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="inline-block px-2.5 py-1 bg-sky-50 text-sky-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                        {s.faction}
-                      </span>
-                      {s.npcId && (
-                        <span className="inline-block px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-black uppercase tracking-widest">
-                          NPC专属
-                        </span>
-                      )}
+                    <div className="inline-block px-2.5 py-1 bg-sky-50 text-sky-600 rounded-lg text-[10px] font-black uppercase tracking-widest mb-3">
+                      {s.faction}
                     </div>
                     <div className="font-black text-lg text-slate-900 mb-2">{s.name}</div>
                     <p className="text-xs text-slate-500 leading-relaxed">{s.description || '暂无描述'}</p>
@@ -415,20 +308,12 @@ export function AdminView() {
               <p className="text-sm text-slate-500 mb-8 ml-8">正在编辑: <span className="font-bold text-slate-900">{editingUser.name}</span></p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Input label="年龄 (自动判定是否圣所未分化)" type="number" value={editingUser.age?.toString() || '0'} onChange={(v:any) => setEditingUser({...editingUser, age: parseInt(v) || 0})}/>
-                <Input label="身份 (哨兵/向导/鬼魂/普通人)" value={editingUser.role || ''} onChange={(v:any) => setEditingUser({...editingUser, role: v})}/>
-                
-                {/* 玩家编辑页面的派系下拉列表 */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase ml-1">能力偏好/派系</label>
-                  <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold text-slate-700" 
-                    value={editingUser.ability || ''} onChange={e => setEditingUser({...editingUser, ability: e.target.value})}>
-                    {FACTIONS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-
-                <Input label="精神力等级 (S/A/B等)" value={editingUser.mentalRank || ''} onChange={(v:any) => setEditingUser({...editingUser, mentalRank: v})}/>
-                <Input label="肉体强度等级" value={editingUser.physicalRank || ''} onChange={(v:any) => setEditingUser({...editingUser, physicalRank: v})}/>
+                <Input label="年龄 (自动判定是否圣所未分化)" type="number" value={editingUser.age.toString()} onChange={(v:any) => setEditingUser({...editingUser, age: parseInt(v) || 0})}/>
+                <Input label="身份 (哨兵/向导/鬼魂/普通人)" value={editingUser.role} onChange={(v:any) => setEditingUser({...editingUser, role: v})}/>
+                <Input label="所属派系 (如: 强攻系)" value={editingUser.faction || ''} onChange={(v:any) => setEditingUser({...editingUser, faction: v})}/>
+                <Input label="专属能力" value={editingUser.ability || ''} onChange={(v:any) => setEditingUser({...editingUser, ability: v})}/>
+                <Input label="精神力等级 (S/A/B等)" value={editingUser.mentalRank} onChange={(v:any) => setEditingUser({...editingUser, mentalRank: v})}/>
+                <Input label="肉体强度等级" value={editingUser.physicalRank} onChange={(v:any) => setEditingUser({...editingUser, physicalRank: v})}/>
                 <Input label="精神体名称" value={editingUser.spiritName || ''} onChange={(v:any) => setEditingUser({...editingUser, spiritName: v})}/>
                 
                 <div className="col-span-1 md:col-span-2">
