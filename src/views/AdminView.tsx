@@ -67,6 +67,26 @@ export function AdminView() {
   };
 
   // --- 玩家审核与管理 ---
+  const handleStatusChange = async (id: number, status: string, userObj?: any) => {
+    // 处理批准变成鬼魂：重置物理，修改 role 为鬼魂
+    if (status === 'approved' && userObj?.status === 'pending_ghost') {
+      await fetch(`/api/admin/users/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ...userObj, role: '鬼魂', physicalRank: '无', status: 'approved' })
+      });
+      fetchData();
+      return;
+    }
+    
+    // 默认的审批通过/驳回逻辑
+    await fetch(`/api/admin/users/${id}/status`, { 
+      method: 'POST', 
+      headers: {'Content-Type': 'application/json'}, 
+      body: JSON.stringify({ status }) 
+    });
+    fetchData();
+  };
   const handleStatusChange = async (id: number, status: string) => {
     await fetch(`/api/admin/users/${id}/status`, { 
       method: 'POST', 
@@ -152,6 +172,7 @@ export function AdminView() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
                     {users.map(u => (
+                      
                       <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-6">
                           <div className="font-black text-slate-900 text-base mb-1">{u.name}</div>
@@ -185,6 +206,24 @@ export function AdminView() {
                                 <button onClick={() => handleStatusChange(u.id, 'rejected')} title="驳回" className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-500 hover:text-white transition-colors"><XCircle size={18}/></button>
                               </div>
                             )}
+                            {/* 死亡/变鬼 审核操作区 */}
+{(u.status === 'pending_death' || u.status === 'pending_ghost') && (
+  <div className="flex gap-2 mr-4 border-r pr-4">
+    <button onClick={() => alert(`【玩家谢幕戏文本】\n${u.deathDescription}`)} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-xs font-black">查看谢幕戏</button>
+    
+    {u.status === 'pending_death' && (
+      <button onClick={() => handleStatusChange(u.id, 'dead')} title="准许死亡" className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-500 hover:text-white transition-colors">
+        <CheckCircle size={18}/>
+      </button>
+    )}
+    
+    {u.status === 'pending_ghost' && (
+      <button onClick={() => handleStatusChange(u.id, 'approved', u)} title="准许化鬼" className="p-1.5 bg-violet-100 text-violet-600 rounded-lg hover:bg-violet-500 hover:text-white transition-colors">
+        <CheckCircle size={18}/>
+      </button>
+    )}
+  </div>
+)}
                             {/* 编辑与删除区 */}
                             <button onClick={() => setEditingUser(u)} className="flex items-center gap-1 text-sky-600 text-xs font-bold hover:bg-sky-50 px-3 py-1.5 rounded-lg transition-colors">
                               <Edit3 size={14}/> 编辑
@@ -307,6 +346,12 @@ export function AdminView() {
                         <td className="p-6 text-right">
                           <button onClick={() => {if(confirm("确定删除该物品？")) fetch(`/api/admin/items/${i.id}`, {method:'DELETE'}).then(fetchData)}} className="text-slate-300 hover:text-rose-500 p-2"><Trash2 size={18}/></button>
                         </td>
+                        <td className="p-6">
+  {u.status === 'pending' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-600 border border-amber-200">新号待审</span>}
+  {u.status === 'approved' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-600 border border-emerald-200">存活游玩中</span>}
+  {u.status === 'pending_death' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-600 text-white shadow-md">死亡待审核</span>}
+  {u.status === 'pending_ghost' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-violet-600 text-white shadow-md">化鬼待审核</span>}
+</td>
                       </tr>
                     ))}
                   </tbody>
