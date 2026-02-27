@@ -44,6 +44,7 @@ db.exec(`
     lastResetDate TEXT,
     lastCheckInDate TEXT
   );
+
   -- 急救请求表 (用于濒死双重判定)
   CREATE TABLE IF NOT EXISTS rescue_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,6 +53,7 @@ db.exec(`
     status TEXT DEFAULT 'pending', -- pending, accepted
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
   -- 全局物品库 (增加 npcId 以支持 NPC 专属给予)
   CREATE TABLE IF NOT EXISTS global_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,23 +96,6 @@ db.exec(`
     hp INTEGER DEFAULT 100,
     status TEXT DEFAULT '良好',
     FOREIGN KEY(userId) REFERENCES users(id)
-  );
-
-  -- 全局物品库 (管理员维护)
-  CREATE TABLE IF NOT EXISTS global_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    locationTag TEXT, 
-    price INTEGER DEFAULT 0
-  );
-
-  -- 全局技能库 (管理员维护，区分派系)
-  CREATE TABLE IF NOT EXISTS global_skills (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    faction TEXT, 
-    description TEXT
   );
 
   -- 玩家背包
@@ -159,6 +144,19 @@ db.exec(`
     acceptedByName TEXT DEFAULT NULL,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- 拍卖行表 (新补充：支持玩家委托拍卖)
+  CREATE TABLE IF NOT EXISTS auction_items (
+    id TEXT PRIMARY KEY,
+    itemId INTEGER,
+    name TEXT,
+    sellerId INTEGER,
+    currentPrice INTEGER,
+    minPrice INTEGER,
+    highestBidderId INTEGER,
+    status TEXT DEFAULT 'active',
+    endsAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // 动态补全可能缺失的字段（向下兼容，防止旧库报错）
@@ -169,9 +167,9 @@ const addColumn = (table: string, col: string, type: string) => {
 ['mentalRank', 'physicalRank', 'ability', 'spiritName', 'isHidden', 'lastResetDate', 'lastCheckInDate'].forEach(c => addColumn('users', c, 'TEXT'));
 addColumn('users', 'mentalProgress', 'REAL DEFAULT 0');
 addColumn('roleplay_messages', 'locationId', 'TEXT');
-// 动态补全字段（确保你的旧数据库不会报错）
 addColumn('global_items', 'npcId', 'TEXT');
 addColumn('global_skills', 'npcId', 'TEXT');
+
 // ================= 2. 初始数据种子 (确保后台不为空) =================
 const seedData = () => {
   const initialSkills = [
@@ -209,51 +207,49 @@ async function startServer() {
 
   // ================= 4. 管理员专属 API =================
   app.post('/api/admin/items', (req, res) => {
-  const { name, description, locationTag, npcId, price } = req.body;
-  db.prepare('INSERT INTO global_items (name, description, locationTag, npcId, price) VALUES (?, ?, ?, ?, ?)').run(name, description, locationTag, npcId || null, price);
-  res.json({ success: true });
-});
+    const { name, description, locationTag, npcId, price } = req.body;
+    db.prepare('INSERT INTO global_items (name, description, locationTag, npcId, price) VALUES (?, ?, ?, ?, ?)').run(name, description, locationTag, npcId || null, price);
+    res.json({ success: true });
+  });
 
-app.post('/api/admin/skills', (req, res) => {
-  const { name, faction, description, npcId } = req.body;
-  db.prepare('INSERT INTO global_skills (name, faction, description, npcId) VALUES (?, ?, ?, ?)').run(name, faction, description, npcId || null);
-  res.json({ success: true });
-});
-// --- 濒死与急救系统 API ---
+  app.post('/api/admin/skills', (req, res) => {
+    const { name, faction, description, npcId } = req.body;
+    db.prepare('INSERT INTO global_skills (name, faction, description, npcId) VALUES (?, ?, ?, ?)').run(name, faction, description, npcId || null);
+    res.json({ success: true });
+  });
+
+  // ================= 5. 游戏前端核心 API =================
+  
+  // --- 濒死与急救系统 API ---
   app.post('/api/rescue/request', (req, res) => {
     const { patientId, healerId } = req.body;
     db.prepare('INSERT INTO rescue_requests (patientId, healerId) VALUES (?, ?)').run(patientId, healerId);
     res.json({ success: true });
   });
 
-  // 轮询查询急救状态 (向导查是否有人求救，濒死者查是否被接受)
   app.get('/api/rescue/check/:userId', (req, res) => {
     const { userId } = req.params;
-    // 作为向导，查询是否有 pending 的求救
     const incoming = db.prepare('SELECT r.*, u.name as patientName FROM rescue_requests r JOIN users u ON r.patientId = u.id WHERE r.healerId = ? AND r.status = "pending"').get(userId);
-    // 作为濒死者，查询自己发出的请求是否被 accepted
     const outgoing = db.prepare('SELECT * FROM rescue_requests WHERE patientId = ? ORDER BY id DESC LIMIT 1').get(userId);
     res.json({ success: true, incoming, outgoing });
   });
 
-  // 向导确认救助
   app.post('/api/rescue/accept', (req, res) => {
     const { requestId } = req.body;
     db.prepare('UPDATE rescue_requests SET status = "accepted" WHERE id = ?').run(requestId);
     res.json({ success: true });
   });
 
-  // 濒死者点击“我得救了”双重确认
   app.post('/api/rescue/confirm', (req, res) => {
     const { patientId } = req.body;
-    db.prepare('UPDATE users SET hp = 20 WHERE id = ?').run(patientId); // 恢复20%生命
-    db.prepare('DELETE FROM rescue_requests WHERE patientId = ?').run(patientId); // 清理记录
+    db.prepare('UPDATE users SET hp = 20 WHERE id = ?').run(patientId);
+    db.prepare('DELETE FROM rescue_requests WHERE patientId = ?').run(patientId);
     res.json({ success: true });
   });
 
   // --- 死亡/变鬼 提交审核 API ---
   app.post('/api/users/:id/submit-death', (req, res) => {
-    const { type, text } = req.body; // type: 'pending_death' | 'pending_ghost'
+    const { type, text } = req.body;
     db.prepare('UPDATE users SET status = ?, deathDescription = ? WHERE id = ?').run(type, text, req.params.id);
     res.json({ success: true });
   });
@@ -282,9 +278,10 @@ app.post('/api/admin/skills', (req, res) => {
   });
 
   app.put('/api/admin/users/:id', (req, res) => {
-    const { role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText } = req.body;
-    db.prepare(`UPDATE users SET role=?, age=?, faction=?, mentalRank=?, physicalRank=?, ability=?, spiritName=?, profileText=? WHERE id=?`)
-      .run(role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText, req.params.id);
+    const { role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText, status } = req.body;
+    // status 参数是为了化鬼审批而保留的
+    db.prepare(`UPDATE users SET role=?, age=?, faction=?, mentalRank=?, physicalRank=?, ability=?, spiritName=?, profileText=?, status=? WHERE id=?`)
+      .run(role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText, status || 'approved', req.params.id);
     res.json({ success: true });
   });
 
@@ -295,11 +292,6 @@ app.post('/api/admin/skills', (req, res) => {
 
   // 全局物品管理
   app.get('/api/items', (req, res) => res.json({ success: true, items: db.prepare('SELECT * FROM global_items').all() }));
-  app.post('/api/admin/items', (req, res) => {
-    const { name, description, locationTag, price } = req.body;
-    db.prepare('INSERT INTO global_items (name, description, locationTag, price) VALUES (?, ?, ?, ?)').run(name, description, locationTag, price);
-    res.json({ success: true });
-  });
   app.delete('/api/admin/items/:id', (req, res) => {
     db.prepare('DELETE FROM global_items WHERE id = ?').run(req.params.id);
     res.json({ success: true });
@@ -307,29 +299,20 @@ app.post('/api/admin/skills', (req, res) => {
 
   // 全局技能管理
   app.get('/api/skills', (req, res) => res.json({ success: true, skills: db.prepare('SELECT * FROM global_skills').all() }));
-  app.post('/api/admin/skills', (req, res) => {
-    const { name, faction, description } = req.body;
-    db.prepare('INSERT INTO global_skills (name, faction, description) VALUES (?, ?, ?)').run(name, faction, description);
-    res.json({ success: true });
-  });
   app.delete('/api/admin/skills/:id', (req, res) => {
     db.prepare('DELETE FROM global_skills WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   });
 
-  // ================= 5. 游戏前端核心 API (完整保留) =================
-
-  // 玩家登录/信息获取
+  // --- 玩家基础信息 ---
   app.get('/api/users/:name', (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE name = ?').get(req.params.name) as any;
     if (user) {
-      // 日常重置判定
       const today = getLocalToday();
       if (user.lastResetDate !== today) {
         db.prepare('UPDATE users SET workCount = 0, trainCount = 0, lastResetDate = ? WHERE id = ?').run(today, user.id);
         user.workCount = 0; user.trainCount = 0;
       }
-      // 年龄派系强制干预
       if (user.age < 16) { user.faction = '圣所'; user.role = '未分化'; }
       res.json({ success: true, user });
     } else {
@@ -354,7 +337,107 @@ app.post('/api/admin/skills', (req, res) => {
     res.json({ success: true });
   });
 
-  // 获取特定玩家可用技能 (基于派系)
+  // --- 背包系统 (新补充) ---
+  app.get('/api/users/:id/inventory', (req, res) => {
+    const items = db.prepare('SELECT * FROM user_inventory WHERE userId = ?').all(req.params.id);
+    res.json({ success: true, items });
+  });
+
+  app.post('/api/users/:id/inventory/add', (req, res) => {
+    const { name, qty } = req.body;
+    const userId = req.params.id;
+    const existing = db.prepare('SELECT * FROM user_inventory WHERE userId = ? AND name = ?').get(userId, name) as any;
+    if (existing) {
+      db.prepare('UPDATE user_inventory SET qty = qty + ? WHERE id = ?').run(qty || 1, existing.id);
+    } else {
+      db.prepare('INSERT INTO user_inventory (userId, name, qty) VALUES (?, ?, ?)').run(userId, name, qty || 1);
+    }
+    res.json({ success: true });
+  });
+
+  // --- 商店系统 (新补充) ---
+  app.get('/api/market/goods', (req, res) => {
+    // 拉取所有配置了价格的物品作为商店货物
+    const goods = db.prepare('SELECT * FROM global_items WHERE price > 0').all();
+    res.json({ success: true, goods });
+  });
+
+  app.post('/api/market/buy', (req, res) => {
+    const { userId, itemId } = req.body;
+    try {
+      const item = db.prepare('SELECT * FROM global_items WHERE id = ?').get(itemId) as any;
+      const user = db.prepare('SELECT gold FROM users WHERE id = ?').get(userId) as any;
+
+      if (!item || !user) return res.json({ success: false, message: '数据异常' });
+      if (user.gold < item.price) return res.json({ success: false, message: '金币不足' });
+
+      // 扣除金币
+      db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(item.price, userId);
+      
+      // 添加到背包
+      const existing = db.prepare('SELECT * FROM user_inventory WHERE userId = ? AND name = ?').get(userId, item.name) as any;
+      if (existing) {
+        db.prepare('UPDATE user_inventory SET qty = qty + 1 WHERE id = ?').run(existing.id);
+      } else {
+        db.prepare('INSERT INTO user_inventory (userId, name, qty) VALUES (?, ?, 1)').run(userId, item.name);
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+  // --- 拍卖行系统 (新补充) ---
+  app.get('/api/auction/items', (req, res) => {
+    const items = db.prepare("SELECT * FROM auction_items WHERE status = 'active'").all();
+    res.json({ success: true, items });
+  });
+
+  app.post('/api/auction/consign', (req, res) => {
+    const { userId, itemId, minPrice } = req.body;
+    try {
+      const invItem = db.prepare('SELECT * FROM user_inventory WHERE id = ? AND userId = ?').get(itemId, userId) as any;
+      if (!invItem || invItem.qty < 1) return res.json({ success: false, message: '背包中没有该物品' });
+
+      // 扣除物品
+      if (invItem.qty === 1) {
+        db.prepare('DELETE FROM user_inventory WHERE id = ?').run(itemId);
+      } else {
+        db.prepare('UPDATE user_inventory SET qty = qty - 1 WHERE id = ?').run(itemId);
+      }
+
+      // 上架拍卖行
+      const auctionId = `AUC-${Date.now()}`;
+      db.prepare('INSERT INTO auction_items (id, itemId, name, sellerId, currentPrice, minPrice) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(auctionId, itemId, invItem.name, userId, minPrice, minPrice);
+
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+  app.post('/api/auction/bid', (req, res) => {
+    const { userId, itemId, price } = req.body;
+    try {
+      const auction = db.prepare("SELECT * FROM auction_items WHERE id = ? AND status = 'active'").get(itemId) as any;
+      if (!auction) return res.json({ success: false, message: '拍卖已结束或不存在' });
+      if (price <= auction.currentPrice) return res.json({ success: false, message: '出价必须高于当前价格' });
+
+      const user = db.prepare('SELECT gold FROM users WHERE id = ?').get(userId) as any;
+      if (user.gold < price) return res.json({ success: false, message: '金币不足' });
+
+      // 如果有上一个竞拍者，退还金币
+      if (auction.highestBidderId) {
+        db.prepare('UPDATE users SET gold = gold + ? WHERE id = ?').run(auction.currentPrice, auction.highestBidderId);
+      }
+
+      // 扣除当前竞拍者金币并更新拍卖信息
+      db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(price, userId);
+      db.prepare('UPDATE auction_items SET currentPrice = ?, highestBidderId = ? WHERE id = ?').run(price, userId, itemId);
+
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+
+  // --- 技能与精神体 ---
   app.get('/api/skills/available/:userId', (req, res) => {
     const user = db.prepare('SELECT faction, age FROM users WHERE id = ?').get(req.params.userId) as any;
     if (!user) return res.status(404).json({ success: false });
@@ -363,35 +446,15 @@ app.post('/api/admin/skills', (req, res) => {
     res.json({ success: true, skills });
   });
 
-  // 命之塔系统
-  app.post('/api/tower/join', (req, res) => {
-    const { userId, jobName } = req.body;
-    try {
-      const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
-      if (!user) return res.json({ success: false, message: '用户不存在' });
-      if (user.job && user.job !== '无') return res.json({ success: false, message: '已有职位' });
-
-      const currentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE job = ?').get(jobName) as any;
-      if (currentCount.count >= (JOB_LIMITS[jobName] || 0)) return res.json({ success: false, message: '该职位名额已满。' });
-
-      db.prepare('UPDATE users SET job = ? WHERE id = ?').run(jobName, userId);
-      res.json({ success: true });
-    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+  app.get('/api/users/:id/skills', (req, res) => {
+    res.json({ success: true, skills: db.prepare('SELECT * FROM user_skills WHERE userId = ?').all(req.params.id) });
   });
 
-  app.post('/api/tower/checkin', (req, res) => {
-    const { userId } = req.body;
-    const today = getLocalToday();
-    const user = db.prepare('SELECT job, lastCheckInDate FROM users WHERE id = ?').get(userId) as any;
-    if (!user || !user.job || user.job === '无') return res.json({ success: false, message: '无法签到' });
-    if (user.lastCheckInDate === today) return res.json({ success: false, message: '今日已领取过工资' });
-
-    const salary = JOB_SALARIES[user.job] || 0;
-    db.prepare('UPDATE users SET gold = gold + ?, lastCheckInDate = ? WHERE id = ?').run(salary, today, userId);
-    res.json({ success: true, reward: salary });
+  app.post('/api/users/:id/skills', (req, res) => {
+    db.prepare('INSERT INTO user_skills (userId, name, level) VALUES (?, ?, 1)').run(req.params.id, req.body.name);
+    res.json({ success: true });
   });
 
-  // 精神体系统
   app.get('/api/users/:id/spirit-status', (req, res) => {
     let status = db.prepare('SELECT * FROM spirit_status WHERE userId = ?').get(req.params.id);
     if (!status) {
@@ -419,7 +482,35 @@ app.post('/api/admin/skills', (req, res) => {
     res.json({ success: true, levelUp: levelGain > 0 });
   });
 
-  // 对戏系统
+  // --- 命之塔职场 ---
+  app.post('/api/tower/join', (req, res) => {
+    const { userId, jobName } = req.body;
+    try {
+      const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId) as any;
+      if (!user) return res.json({ success: false, message: '用户不存在' });
+      if (user.job && user.job !== '无') return res.json({ success: false, message: '已有职位' });
+
+      const currentCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE job = ?').get(jobName) as any;
+      if (currentCount.count >= (JOB_LIMITS[jobName] || 0)) return res.json({ success: false, message: '该职位名额已满。' });
+
+      db.prepare('UPDATE users SET job = ? WHERE id = ?').run(jobName, userId);
+      res.json({ success: true });
+    } catch (error: any) { res.status(500).json({ success: false, message: error.message }); }
+  });
+
+  app.post('/api/tower/checkin', (req, res) => {
+    const { userId } = req.body;
+    const today = getLocalToday();
+    const user = db.prepare('SELECT job, lastCheckInDate FROM users WHERE id = ?').get(userId) as any;
+    if (!user || !user.job || user.job === '无') return res.json({ success: false, message: '无法签到' });
+    if (user.lastCheckInDate === today) return res.json({ success: false, message: '今日已领取过工资' });
+
+    const salary = JOB_SALARIES[user.job] || 0;
+    db.prepare('UPDATE users SET gold = gold + ?, lastCheckInDate = ? WHERE id = ?').run(salary, today, userId);
+    res.json({ success: true, reward: salary });
+  });
+
+  // --- 对戏与委托 ---
   app.post('/api/roleplay', (req, res) => {
     const { senderId, senderName, receiverId, receiverName, content, locationId } = req.body;
     db.prepare('INSERT INTO roleplay_messages (senderId, senderName, receiverId, receiverName, content, locationId) VALUES (?, ?, ?, ?, ?, ?)').run(senderId, senderName, receiverId, receiverName, content, locationId);
@@ -438,7 +529,6 @@ app.post('/api/admin/skills', (req, res) => {
     res.json({ success: true, count: result.count || 0 });
   });
 
-  // 委托系统
   app.get('/api/commissions', (req, res) => res.json({ success: true, commissions: db.prepare('SELECT * FROM commissions ORDER BY createdAt DESC').all() }));
   
   app.post('/api/commissions', (req, res) => {
@@ -453,15 +543,8 @@ app.post('/api/admin/skills', (req, res) => {
     res.json({ success: true });
   });
 
-  // 获取已学技能
-  app.get('/api/users/:id/skills', (req, res) => {
-    res.json({ success: true, skills: db.prepare('SELECT * FROM user_skills WHERE userId = ?').all(req.params.id) });
-  });
-
-
-  // ================= 6. 核心前端页面路由转发 (修复 Cannot GET 报错) =================
+  // ================= 6. 核心前端页面路由转发 =================
   if (process.env.NODE_ENV !== 'production') {
-    // 开发环境：Vite 动态处理
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
@@ -478,7 +561,6 @@ app.post('/api/admin/skills', (req, res) => {
       }
     });
   } else {
-    // 生产环境：静态服务
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
