@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const dbPath = process.env.DB_PATH || 'game.db';
 const db = new Database(dbPath);
 
-// ================= 1. 数据库初始化 (合并了所有新旧表，确保数据不丢) =================
+// ================= 1. 数据库初始化 =================
 db.exec(`
   -- 用户主表
   CREATE TABLE IF NOT EXISTS users (
@@ -45,35 +45,35 @@ db.exec(`
     lastCheckInDate TEXT
   );
 
-  -- 急救请求表 (用于濒死双重判定)
+  -- 急救请求表
   CREATE TABLE IF NOT EXISTS rescue_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patientId INTEGER,
     healerId INTEGER,
-    status TEXT DEFAULT 'pending', -- pending, accepted
+    status TEXT DEFAULT 'pending',
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  -- 全局物品库 (增加 npcId 以支持 NPC 专属给予)
+  -- 全局物品库
   CREATE TABLE IF NOT EXISTS global_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
-    locationTag TEXT,  -- 这里将严格对应前端的 mapLocation.id
-    npcId TEXT,        -- 对应给物品的 NPC id (如 npc_merchant)
+    locationTag TEXT,
+    npcId TEXT,
     price INTEGER DEFAULT 0
   );
 
-  -- 全局技能库 (增加 npcId 以支持 NPC 专属教学)
+  -- 全局技能库
   CREATE TABLE IF NOT EXISTS global_skills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     faction TEXT, 
     description TEXT,
-    npcId TEXT         -- 对应教技能的 NPC id (如 npc_craftsman)
+    npcId TEXT
   );
 
-  -- 墓碑表 (保留原有逻辑)
+  -- 墓碑表
   CREATE TABLE IF NOT EXISTS tombstones (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
@@ -116,7 +116,7 @@ db.exec(`
     FOREIGN KEY(userId) REFERENCES users(id)
   );
 
-  -- 对戏记录 (增加 locationId 以支持地区分类)
+  -- 对戏记录
   CREATE TABLE IF NOT EXISTS roleplay_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     senderId INTEGER,
@@ -145,7 +145,7 @@ db.exec(`
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  -- 拍卖行表 (新补充：支持玩家委托拍卖)
+  -- 拍卖行表
   CREATE TABLE IF NOT EXISTS auction_items (
     id TEXT PRIMARY KEY,
     itemId INTEGER,
@@ -159,7 +159,7 @@ db.exec(`
   );
 `);
 
-// 动态补全可能缺失的字段（向下兼容，防止旧库报错）
+// 动态补全可能缺失的字段
 const addColumn = (table: string, col: string, type: string) => {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`); } catch (e) {}
 };
@@ -170,7 +170,7 @@ addColumn('roleplay_messages', 'locationId', 'TEXT');
 addColumn('global_items', 'npcId', 'TEXT');
 addColumn('global_skills', 'npcId', 'TEXT');
 
-// ================= 2. 初始数据种子 (确保后台不为空) =================
+// ================= 2. 初始数据种子 =================
 const seedData = () => {
   const initialSkills = [
     { name: '精神梳理', faction: '向导', description: '安抚哨兵狂躁的精神图景。' },
@@ -279,7 +279,6 @@ async function startServer() {
 
   app.put('/api/admin/users/:id', (req, res) => {
     const { role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText, status } = req.body;
-    // status 参数是为了化鬼审批而保留的
     db.prepare(`UPDATE users SET role=?, age=?, faction=?, mentalRank=?, physicalRank=?, ability=?, spiritName=?, profileText=?, status=? WHERE id=?`)
       .run(role, age, faction, mentalRank, physicalRank, ability, spiritName, profileText, status || 'approved', req.params.id);
     res.json({ success: true });
@@ -327,6 +326,21 @@ async function startServer() {
     } catch (e: any) { res.json({ success: false, message: '初始化失败' }); }
   });
 
+  // 🔴 修复 1：提供前端 ExtractorView 调用的抽卡保存接口 
+  app.post('/api/users', (req, res) => {
+    const { name, role, mentalRank, physicalRank, gold, ability, spiritName, spiritType } = req.body;
+    try {
+      db.prepare(`
+        UPDATE users 
+        SET role=?, mentalRank=?, physicalRank=?, gold=?, ability=?, spiritName=?, spiritType=?, status='pending' 
+        WHERE name=?
+      `).run(role, mentalRank, physicalRank, gold, ability, spiritName, spiritType, name);
+      res.json({ success: true });
+    } catch (e: any) { 
+      res.status(500).json({ success: false, message: e.message }); 
+    }
+  });
+
   app.post('/api/users/:id/location', (req, res) => {
     db.prepare('UPDATE users SET currentLocation = ? WHERE id = ?').run(req.body.locationId, req.params.id);
     res.json({ success: true });
@@ -337,7 +351,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // --- 背包系统 (新补充) ---
+  // --- 背包系统 ---
   app.get('/api/users/:id/inventory', (req, res) => {
     const items = db.prepare('SELECT * FROM user_inventory WHERE userId = ?').all(req.params.id);
     res.json({ success: true, items });
@@ -355,9 +369,8 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // --- 商店系统 (新补充) ---
+  // --- 商店系统 ---
   app.get('/api/market/goods', (req, res) => {
-    // 拉取所有配置了价格的物品作为商店货物
     const goods = db.prepare('SELECT * FROM global_items WHERE price > 0').all();
     res.json({ success: true, goods });
   });
@@ -371,10 +384,8 @@ async function startServer() {
       if (!item || !user) return res.json({ success: false, message: '数据异常' });
       if (user.gold < item.price) return res.json({ success: false, message: '金币不足' });
 
-      // 扣除金币
       db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(item.price, userId);
       
-      // 添加到背包
       const existing = db.prepare('SELECT * FROM user_inventory WHERE userId = ? AND name = ?').get(userId, item.name) as any;
       if (existing) {
         db.prepare('UPDATE user_inventory SET qty = qty + 1 WHERE id = ?').run(existing.id);
@@ -385,7 +396,7 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
   });
 
-  // --- 拍卖行系统 (新补充) ---
+  // --- 拍卖行系统 ---
   app.get('/api/auction/items', (req, res) => {
     const items = db.prepare("SELECT * FROM auction_items WHERE status = 'active'").all();
     res.json({ success: true, items });
@@ -397,14 +408,12 @@ async function startServer() {
       const invItem = db.prepare('SELECT * FROM user_inventory WHERE id = ? AND userId = ?').get(itemId, userId) as any;
       if (!invItem || invItem.qty < 1) return res.json({ success: false, message: '背包中没有该物品' });
 
-      // 扣除物品
       if (invItem.qty === 1) {
         db.prepare('DELETE FROM user_inventory WHERE id = ?').run(itemId);
       } else {
         db.prepare('UPDATE user_inventory SET qty = qty - 1 WHERE id = ?').run(itemId);
       }
 
-      // 上架拍卖行
       const auctionId = `AUC-${Date.now()}`;
       db.prepare('INSERT INTO auction_items (id, itemId, name, sellerId, currentPrice, minPrice) VALUES (?, ?, ?, ?, ?, ?)')
         .run(auctionId, itemId, invItem.name, userId, minPrice, minPrice);
@@ -423,19 +432,16 @@ async function startServer() {
       const user = db.prepare('SELECT gold FROM users WHERE id = ?').get(userId) as any;
       if (user.gold < price) return res.json({ success: false, message: '金币不足' });
 
-      // 如果有上一个竞拍者，退还金币
       if (auction.highestBidderId) {
         db.prepare('UPDATE users SET gold = gold + ? WHERE id = ?').run(auction.currentPrice, auction.highestBidderId);
       }
 
-      // 扣除当前竞拍者金币并更新拍卖信息
       db.prepare('UPDATE users SET gold = gold - ? WHERE id = ?').run(price, userId);
       db.prepare('UPDATE auction_items SET currentPrice = ?, highestBidderId = ? WHERE id = ?').run(price, userId, itemId);
 
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
   });
-
 
   // --- 技能与精神体 ---
   app.get('/api/skills/available/:userId', (req, res) => {
@@ -508,6 +514,46 @@ async function startServer() {
     const salary = JOB_SALARIES[user.job] || 0;
     db.prepare('UPDATE users SET gold = gold + ?, lastCheckInDate = ? WHERE id = ?').run(salary, today, userId);
     res.json({ success: true, reward: salary });
+  });
+
+  // 🔴 修复 2：补充 TowerRoomView 缺失的 "打工" 接口
+  app.post('/api/tower/work', (req, res) => {
+    const { userId } = req.body;
+    try {
+      const user = db.prepare('SELECT job, workCount FROM users WHERE id = ?').get(userId) as any;
+      if (!user || !user.job || user.job === '无') return res.json({ success: false, message: '你目前没有职位，无法打工' });
+      if (user.workCount >= 3) return res.json({ success: false, message: '今日打工次数已达上限' });
+
+      const baseSalary = JOB_SALARIES[user.job] || 500;
+      const reward = Math.floor(baseSalary * 0.1); // 每次打工获取 10% 薪水的外快
+      
+      db.prepare('UPDATE users SET gold = gold + ?, workCount = workCount + 1 WHERE id = ?').run(reward, userId);
+      res.json({ success: true, reward });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+  // 🔴 修复 3：补充 TowerRoomView 缺失的 "离职" 接口
+  app.post('/api/tower/quit', (req, res) => {
+    const { userId } = req.body;
+    try {
+      const user = db.prepare('SELECT job, gold FROM users WHERE id = ?').get(userId) as any;
+      if (!user || !user.job || user.job === '无') return res.json({ success: false, message: '你没有入职，无法离职' });
+      
+      const penalty = Math.floor((JOB_SALARIES[user.job] || 0) * 0.3);
+      if (user.gold < penalty) return res.json({ success: false, message: `金币不足以支付违约金 (${penalty}G)` });
+
+      db.prepare('UPDATE users SET job = "无", gold = gold - ? WHERE id = ?').run(penalty, userId);
+      res.json({ success: true, penalty });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+  });
+
+  // 🔴 修复 4：补充 TowerRoomView 缺失的 "深度休息" 接口
+  app.post('/api/tower/rest', (req, res) => {
+    const { userId } = req.body;
+    try {
+      db.prepare('UPDATE users SET hp = maxHp, mp = maxMp WHERE id = ?').run(userId);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
   });
 
   // --- 对戏与委托 ---
