@@ -7,8 +7,8 @@ import {
 
 // ================= 全局配置字典 (与前端地图、NPC、抽卡系统严格对齐) =================
 const FACTIONS = [
-  '物理系', '元素系', '精神系', '感知系', '信息系', '治疗系', '强化系', '炼金系', // 对应 ExtractorView 抽卡库
-  '圣所', '普通人' // 补充特殊身份
+  '物理系', '元素系', '精神系', '感知系', '信息系', '治疗系', '强化系', '炼金系', 
+  '圣所', '普通人' 
 ];
 
 const LOCATIONS = [
@@ -46,7 +46,7 @@ export function AdminView() {
   const [loading, setLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
 
-  // 表单状态 (加入了 npcId 字段)
+  // 表单状态
   const [newItem, setNewItem] = useState({ name: '', description: '', locationTag: '', npcId: '', price: 0 });
   const [newSkill, setNewSkill] = useState({ name: '', faction: '物理系', description: '', npcId: '' });
 
@@ -58,10 +58,10 @@ export function AdminView() {
     try {
       const res = await fetch(endpoints[activeTab]);
       const data = await res.json();
-      if (activeTab === 'users') setUsers(data.users);
-      if (activeTab === 'logs') setLogs(data.logs);
-      if (activeTab === 'items') setItems(data.items);
-      if (activeTab === 'skills') setSkills(data.skills);
+      if (activeTab === 'users') setUsers(data.users || []);
+      if (activeTab === 'logs') setLogs(data.logs || []);
+      if (activeTab === 'items') setItems(data.items || []);
+      if (activeTab === 'skills') setSkills(data.skills || []);
     } catch (e) { console.error("Fetch Error:", e); }
     setLoading(false);
   };
@@ -80,14 +80,6 @@ export function AdminView() {
     }
     
     // 默认的审批通过/驳回逻辑
-    await fetch(`/api/admin/users/${id}/status`, { 
-      method: 'POST', 
-      headers: {'Content-Type': 'application/json'}, 
-      body: JSON.stringify({ status }) 
-    });
-    fetchData();
-  };
-  const handleStatusChange = async (id: number, status: string) => {
     await fetch(`/api/admin/users/${id}/status`, { 
       method: 'POST', 
       headers: {'Content-Type': 'application/json'}, 
@@ -172,7 +164,6 @@ export function AdminView() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
                     {users.map(u => (
-                      
                       <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-6">
                           <div className="font-black text-slate-900 text-base mb-1">{u.name}</div>
@@ -196,6 +187,8 @@ export function AdminView() {
                           {u.status === 'pending' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-600 border border-amber-200">待审核</span>}
                           {u.status === 'approved' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-600 border border-emerald-200">已过审</span>}
                           {u.status === 'rejected' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-600 border border-rose-200">已驳回</span>}
+                          {u.status === 'pending_death' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-600 text-white shadow-md">死亡待审</span>}
+                          {u.status === 'pending_ghost' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-violet-600 text-white shadow-md">化鬼待审</span>}
                         </td>
                         <td className="p-6">
                           <div className="flex items-center justify-end gap-3">
@@ -207,23 +200,23 @@ export function AdminView() {
                               </div>
                             )}
                             {/* 死亡/变鬼 审核操作区 */}
-{(u.status === 'pending_death' || u.status === 'pending_ghost') && (
-  <div className="flex gap-2 mr-4 border-r pr-4">
-    <button onClick={() => alert(`【玩家谢幕戏文本】\n${u.deathDescription}`)} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-xs font-black">查看谢幕戏</button>
-    
-    {u.status === 'pending_death' && (
-      <button onClick={() => handleStatusChange(u.id, 'dead')} title="准许死亡" className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-500 hover:text-white transition-colors">
-        <CheckCircle size={18}/>
-      </button>
-    )}
-    
-    {u.status === 'pending_ghost' && (
-      <button onClick={() => handleStatusChange(u.id, 'approved', u)} title="准许化鬼" className="p-1.5 bg-violet-100 text-violet-600 rounded-lg hover:bg-violet-500 hover:text-white transition-colors">
-        <CheckCircle size={18}/>
-      </button>
-    )}
-  </div>
-)}
+                            {(u.status === 'pending_death' || u.status === 'pending_ghost') && (
+                              <div className="flex gap-2 mr-4 border-r pr-4">
+                                <button onClick={() => alert(`【玩家谢幕戏文本】\n${u.deathDescription}`)} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-xs font-black">查看谢幕戏</button>
+                                
+                                {u.status === 'pending_death' && (
+                                  <button onClick={() => handleStatusChange(u.id, 'dead')} title="准许死亡" className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-500 hover:text-white transition-colors">
+                                    <CheckCircle size={18}/>
+                                  </button>
+                                )}
+                                
+                                {u.status === 'pending_ghost' && (
+                                  <button onClick={() => handleStatusChange(u.id, 'approved', u)} title="准许化鬼" className="p-1.5 bg-violet-100 text-violet-600 rounded-lg hover:bg-violet-500 hover:text-white transition-colors">
+                                    <CheckCircle size={18}/>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                             {/* 编辑与删除区 */}
                             <button onClick={() => setEditingUser(u)} className="flex items-center gap-1 text-sky-600 text-xs font-bold hover:bg-sky-50 px-3 py-1.5 rounded-lg transition-colors">
                               <Edit3 size={14}/> 编辑
@@ -346,14 +339,9 @@ export function AdminView() {
                         <td className="p-6 text-right">
                           <button onClick={() => {if(confirm("确定删除该物品？")) fetch(`/api/admin/items/${i.id}`, {method:'DELETE'}).then(fetchData)}} className="text-slate-300 hover:text-rose-500 p-2"><Trash2 size={18}/></button>
                         </td>
-                        <td className="p-6">
-  {u.status === 'pending' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-600 border border-amber-200">新号待审</span>}
-  {u.status === 'approved' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-600 border border-emerald-200">存活游玩中</span>}
-  {u.status === 'pending_death' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-rose-600 text-white shadow-md">死亡待审核</span>}
-  {u.status === 'pending_ghost' && <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-violet-600 text-white shadow-md">化鬼待审核</span>}
-</td>
                       </tr>
                     ))}
+                    {items.length === 0 && <tr><td colSpan={3} className="p-10 text-center text-slate-400">暂无物品数据</td></tr>}
                   </tbody>
                 </table>
               </div>
