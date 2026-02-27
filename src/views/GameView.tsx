@@ -47,6 +47,10 @@ interface AuctionItem { id: string; name: string; sellerId: number; currentPrice
 interface InventoryItem { id: string; name: string; qty: number; }
 
 export function GameView({ user, setUser, onNavigate }: Props) {
+  // 技能物品全局变量
+  const [globalItems, setGlobalItems] = useState<any[]>([]);
+  const [globalSkills, setGlobalSkills] = useState<any[]>([]);
+  
   const [inTower, setInTower] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
@@ -124,6 +128,13 @@ export function GameView({ user, setUser, onNavigate }: Props) {
       const commData = await commRes.json();
       if (commData.success) setCommissions(commData.commissions);
 
+      // 拉取全局物品和技能，作为本地判定的字典
+    const itemsRes = await fetch('/api/items');
+    if (itemsRes.ok) setGlobalItems((await itemsRes.json()).items || []);
+    
+    const skillsRes = await fetch('/api/skills');
+    if (skillsRes.ok) setGlobalSkills((await skillsRes.json()).skills || []);
+  } catch (e) { console.error(e);
       // 新增：背包/商店/拍卖
       const invRes = await fetch(`/api/users/${user.id}/inventory`);
       const invData = await invRes.json();
@@ -158,21 +169,28 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   };
 
   // 老乔学习技能
-  const handleTalkToJoe = () => {
-    const today = new Date().toISOString().slice(0,10);
-    if (lastJoeTeachDate === today) {
-      showToast("老乔：今天我已经指点过你了，明天再来。");
-      return;
-    }
-    if (joesPatience < 2) {
-      setJoesPatience(prev => prev + 1);
-      showToast(`老乔：忙着呢！别烦我！(${joesPatience + 1}/3)`);
+const handleTalkToJoe = () => {
+  const today = new Date().toISOString().slice(0,10);
+  if (lastJoeTeachDate === today) {
+    showToast("老乔：今天我已经指点过你了，明天再来。");
+    return;
+  }
+  if (joesPatience < 2) {
+    setJoesPatience(prev => prev + 1);
+    showToast(`老乔：忙着呢！别烦我！(${joesPatience + 1}/3)`);
+  } else {
+    // 核心逻辑：获取管理员配置的专门属于老乔的技能
+    const joeSkills = globalSkills.filter(s => s.npcId === 'npc_craftsman');
+    
+    if (joeSkills.length > 0) {
+      const randomSkill = joeSkills[Math.floor(Math.random() * joeSkills.length)];
+      learnSkill(randomSkill.name);
     } else {
-      const skillNames = ["机械维修", "零件打磨", "重载组装", "引擎调试"];
-      const randomSkill = skillNames[Math.floor(Math.random() * skillNames.length)];
-      learnSkill(randomSkill);
+      showToast("老乔：我现在没什么好教你的了！(管理员暂未配置技能)");
+      setJoesPatience(0); // 重置耐心
     }
-  };
+  }
+};
 
   const learnSkill = async (name: string) => {
     await fetch(`/api/users/${user.id}/skills`, {
@@ -478,17 +496,22 @@ export function GameView({ user, setUser, onNavigate }: Props) {
                 <button onClick={() => handleLocationAction('enter')} className="py-3 bg-indigo-600 text-white font-black rounded-2xl">进入</button>
               )}
               <button onClick={async () => {
-                // 50% 掉落
-                const drop = Math.random() < 0.5;
-                if (drop && selectedLocation.lootTable.length > 0) {
-                  const item = selectedLocation.lootTable[Math.floor(Math.random() * selectedLocation.lootTable.length)];
-                  await addItemToInventory(item, 1);
-                  showToast(`在【${selectedLocation.name}】探索时获得：${item}`);
-                } else {
-                  showToast(`在【${selectedLocation.name}】探索无收获`);
-                }
-                setSelectedLocation(null);
-              }} className="py-3 bg-emerald-600 text-white font-black rounded-2xl">探索（50% 掉落）</button>
+  // 核心逻辑：从后台配置的物品池中，过滤出属于当前所在地的物品
+  const locationDropPool = globalItems.filter(item => item.locationTag === selectedLocation.id);
+  
+  const drop = Math.random() < 0.5; // 50% 概率判定
+  
+  if (drop && locationDropPool.length > 0) {
+    // 如果后台在这个地点配了物品，随机抽一个
+    const luckyItem = locationDropPool[Math.floor(Math.random() * locationDropPool.length)];
+    await addItemToInventory(luckyItem.name, 1);
+    showToast(`在【${selectedLocation.name}】探索时获得：${luckyItem.name}`);
+  } else {
+    // 概率没中，或者管理员没在这个地方配物品
+    showToast(`在【${selectedLocation.name}】探索无收获`);
+  }
+  setSelectedLocation(null);
+}} className="py-3 bg-emerald-600 text-white font-black rounded-2xl">探索（50% 掉落）</button>
               <button onClick={() => handleLocationAction('stay')} className="py-3 bg-amber-600 text-white font-black rounded-2xl">驻扎</button>
               <button onClick={() => setSelectedLocation(null)} className="py-3 bg-slate-100 text-slate-600 font-black rounded-2xl">取消</button>
             </div>

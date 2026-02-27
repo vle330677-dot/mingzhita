@@ -44,6 +44,24 @@ db.exec(`
     lastResetDate TEXT,
     lastCheckInDate TEXT
   );
+  -- 全局物品库 (增加 npcId 以支持 NPC 专属给予)
+  CREATE TABLE IF NOT EXISTS global_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    locationTag TEXT,  -- 这里将严格对应前端的 mapLocation.id
+    npcId TEXT,        -- 对应给物品的 NPC id (如 npc_merchant)
+    price INTEGER DEFAULT 0
+  );
+
+  -- 全局技能库 (增加 npcId 以支持 NPC 专属教学)
+  CREATE TABLE IF NOT EXISTS global_skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    faction TEXT, 
+    description TEXT,
+    npcId TEXT         -- 对应教技能的 NPC id (如 npc_craftsman)
+  );
 
   -- 墓碑表 (保留原有逻辑)
   CREATE TABLE IF NOT EXISTS tombstones (
@@ -143,7 +161,9 @@ const addColumn = (table: string, col: string, type: string) => {
 ['mentalRank', 'physicalRank', 'ability', 'spiritName', 'isHidden', 'lastResetDate', 'lastCheckInDate'].forEach(c => addColumn('users', c, 'TEXT'));
 addColumn('users', 'mentalProgress', 'REAL DEFAULT 0');
 addColumn('roleplay_messages', 'locationId', 'TEXT');
-
+// 动态补全字段（确保你的旧数据库不会报错）
+addColumn('global_items', 'npcId', 'TEXT');
+addColumn('global_skills', 'npcId', 'TEXT');
 // ================= 2. 初始数据种子 (确保后台不为空) =================
 const seedData = () => {
   const initialSkills = [
@@ -180,7 +200,18 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
 
   // ================= 4. 管理员专属 API =================
-  
+  app.post('/api/admin/items', (req, res) => {
+  const { name, description, locationTag, npcId, price } = req.body;
+  db.prepare('INSERT INTO global_items (name, description, locationTag, npcId, price) VALUES (?, ?, ?, ?, ?)').run(name, description, locationTag, npcId || null, price);
+  res.json({ success: true });
+});
+
+app.post('/api/admin/skills', (req, res) => {
+  const { name, faction, description, npcId } = req.body;
+  db.prepare('INSERT INTO global_skills (name, faction, description, npcId) VALUES (?, ?, ?, ?)').run(name, faction, description, npcId || null);
+  res.json({ success: true });
+});
+
   // 获取全服玩家数据 (包含年龄和派系预处理)
   app.get('/api/admin/users', (req, res) => {
     try {
