@@ -1,11 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import {
-  Settings, Backpack, X, MapPin, Bell, User as UserIcon, ScrollText, Hammer, HandCoins, MessageSquareText,
-  ArrowLeft, ClipboardList, ShoppingCart, Gavel
+  Settings, Backpack, X, MapPin, Bell, User as UserIcon, ScrollText, Hammer, 
+  HandCoins, MessageSquareText, ArrowLeft, ClipboardList, ShoppingCart, Gavel, Heart
 } from 'lucide-react';
 import { ViewState } from '../App';
-import { User, Item } from '../types';
+import { User } from '../types';
+
+// 扩展 User 接口以适配本地的大量属性
+interface ExtendedUser extends User {
+  id: number;
+  name: string;
+  role: string;
+  job?: string;
+  status: string;
+  currentLocation?: string;
+  hp: number;
+  mentalProgress: number;
+  gold: number;
+  avatarUrl?: string;
+  ability?: string;
+  workCount?: number;
+}
 
 interface Skill { id: number; userId: number; name: string; level: number; }
 interface Props { user: User; setUser: (user: User | null) => void; onNavigate: (view: ViewState) => void; }
@@ -41,12 +57,13 @@ const fixedNPCs = [
   { id: 'npc_guild_staff', name: '玛丽', role: '公会接待员', locationId: 'guild', desc: '今天也有新的委托呢。', icon: <ScrollText size={14} /> }
 ];
 
-// 新增类型
 interface MarketItem { id: string; name: string; price: number; rarity?: string; }
 interface AuctionItem { id: string; name: string; sellerId: number; currentPrice: number; minPrice: number; highestBidderId?: number; endsAt: string; }
 interface InventoryItem { id: string; name: string; qty: number; }
 
 export function GameView({ user, setUser, onNavigate }: Props) {
+  const u = user as ExtendedUser;
+
   // 技能物品全局变量
   const [globalItems, setGlobalItems] = useState<any[]>([]);
   const [globalSkills, setGlobalSkills] = useState<any[]>([]);
@@ -71,13 +88,14 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   const [showMessageContacts, setShowMessageContacts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAwakening, setShowAwakening] = useState(false);
+  const [incomingRescue, setIncomingRescue] = useState<any>(null);
 
   // 委托与NPC交互状态
-  const [joesPatience, setJoesPatience] = useState(0); // 老乔对话计数
-  const [lastJoeTeachDate, setLastJoeTeachDate] = useState<string>(() => localStorage.getItem(`lastJoeTeachDate_${user.id}`) || '');
+  const [joesPatience, setJoesPatience] = useState(0); 
+  const [lastJoeTeachDate, setLastJoeTeachDate] = useState<string>(() => localStorage.getItem(`lastJoeTeachDate_${u.id}`) || '');
   const [skills, setSkills] = useState<Skill[]>([]);
   const [commissions, setCommissions] = useState<any[]>([]);
-  const [showCommissionBoard, setShowCommissionBoard] = useState(false); // 任务面板
+  const [showCommissionBoard, setShowCommissionBoard] = useState(false);
   const [guildView, setGuildView] = useState<'menu' | 'board' | 'publish'>('menu');
   const [newCommission, setNewCommission] = useState({ title: '', content: '', difficulty: 'C', reward: 100, isAnonymous: false });
 
@@ -87,6 +105,7 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   const [auctionItems, setAuctionItems] = useState<AuctionItem[]>([]);
   const [merchantView, setMerchantView] = useState<'menu'|'shop'|'auction'|'consign'>('menu');
   const [consignForm, setConsignForm] = useState<{ itemId: string; minPrice: number }>({ itemId: '', minPrice: 100 });
+  const [auctionBids, setAuctionBids] = useState<Record<string, number>>({});
 
   // 面板拖拽位置
   const [panelPos, setPanelPos] = useState<{x:number;y:number}>(() => {
@@ -95,165 +114,183 @@ export function GameView({ user, setUser, onNavigate }: Props) {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const spiritImgInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
   useEffect(() => { localStorage.setItem('panelPos', JSON.stringify(panelPos)); }, [panelPos]);
-// 在 GameView 顶部补充 state
-  const [incomingRescue, setIncomingRescue] = useState<any>(null);
-  // 数据同步
+
+  // 修复后的数据同步逻辑，收口到一个完整的 try-catch 中
   const syncAllData = async () => {
     try {
-      // 轮询急救状态
-      const rescueRes = await fetch(`/api/rescue/check/${user.id}`);
+      // 1. 轮询急救状态
+      const rescueRes = await fetch(`/api/rescue/check/${u.id}`);
       const rData = await rescueRes.json();
       if (rData.success && rData.incoming) {
         setIncomingRescue(rData.incoming);
       } else {
         setIncomingRescue(null);
       }
-    } catch (e) {}
-  };
-    try {
+
+      // 2. 拉取全服玩家
       const res = await fetch('/api/admin/users');
       const data = await res.json();
       if (data.success) {
         setAllPlayers(data.users.filter((p: any) => p.currentLocation));
-        const me = data.users.find((p: any) => p.id === user.id);
+        const me = data.users.find((p: any) => p.id === u.id);
         if (me) setUser({ ...user, ...me });
       }
-      const spiritRes = await fetch(`/api/users/${user.id}/spirit-status`);
+
+      // 3. 拉取精神体状态
+      const spiritRes = await fetch(`/api/users/${u.id}/spirit-status`);
       const sData = await spiritRes.json();
       if (sData.success) setSpiritStatus(sData.spiritStatus);
 
-      const unreadRes = await fetch(`/api/roleplay/unread/${user.id}`);
+      // 4. 拉取对戏未读
+      const unreadRes = await fetch(`/api/roleplay/unread/${u.id}`);
       const uData = await unreadRes.json();
       if (uData.success) setUnreadCount(uData.count);
 
-      const skillRes = await fetch(`/api/users/${user.id}/skills`);
+      // 5. 拉取个人技能
+      const skillRes = await fetch(`/api/users/${u.id}/skills`);
       const skillData = await skillRes.json();
       if (skillData.success) setSkills(skillData.skills);
 
+      // 6. 拉取委托面板
       const commRes = await fetch('/api/commissions');
       const commData = await commRes.json();
       if (commData.success) setCommissions(commData.commissions);
 
-      // 拉取全局物品和技能，作为本地判定的字典
-    const itemsRes = await fetch('/api/items');
-    if (itemsRes.ok) setGlobalItems((await itemsRes.json()).items || []);
-    
-    const skillsRes = await fetch('/api/skills');
-    if (skillsRes.ok) setGlobalSkills((await skillsRes.json()).skills || []);
-  } catch (e) { console.error(e);
-      // 新增：背包/商店/拍卖
-      const invRes = await fetch(`/api/users/${user.id}/inventory`);
-      const invData = await invRes.json();
-      if (invData.success) setInventory(invData.items || []);
+      // 7. 拉取全局物品和技能池
+      const itemsRes = await fetch('/api/items');
+      if (itemsRes.ok) setGlobalItems((await itemsRes.json()).items || []);
+      
+      const skillsRes = await fetch('/api/skills');
+      if (skillsRes.ok) setGlobalSkills((await skillsRes.json()).skills || []);
+
+      // 8. 个人背包、商店、拍卖
+      const invRes = await fetch(`/api/users/${u.id}/inventory`);
+      if (invRes.ok) setInventory((await invRes.json()).items || []);
 
       const marketRes = await fetch('/api/market/goods');
-      const marketData = await marketRes.json();
-      if (marketData.success) setMarketGoods(marketData.goods || []);
+      if (marketRes.ok) setMarketGoods((await marketRes.json()).goods || []);
 
       const auctionRes = await fetch('/api/auction/items');
-      const auctionData = await auctionRes.json();
-      if (auctionData.success) setAuctionItems(auctionData.items || []);
-    } catch (e) { console.error(e); }
+      if (auctionRes.ok) setAuctionItems((await auctionRes.json()).items || []);
+
+    } catch (e) {
+      console.error("数据同步失败:", e);
+    }
   };
 
-  useEffect(() => { syncAllData(); const i = setInterval(syncAllData, 5000); return () => clearInterval(i); }, [user.id]);
+  useEffect(() => { 
+    syncAllData(); 
+    const i = setInterval(syncAllData, 5000); 
+    return () => clearInterval(i); 
+  }, [u.id]);
+  
   useEffect(() => { if (chatTarget) fetchChatMessages(); }, [chatTarget]);
 
   const fetchChatMessages = async () => {
     if(!chatTarget) return;
-    const res = await fetch(`/api/roleplay/conversation/${user.id}/${chatTarget.id}`);
-    const data = await res.json();
-    if (data.success) setChatMessages(data.messages);
+    try {
+      const res = await fetch(`/api/roleplay/conversation/${u.id}/${chatTarget.id}`);
+      const data = await res.json();
+      if (data.success) setChatMessages(data.messages);
+    } catch (e) {}
   };
 
   const addItemToInventory = async (name: string, qty = 1) => {
-    await fetch(`/api/users/${user.id}/inventory/add`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, qty, source: selectedLocation?.id })
-    });
-    await syncAllData();
+    try {
+      await fetch(`/api/users/${u.id}/inventory/add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, qty, source: selectedLocation?.id })
+      });
+      await syncAllData();
+    } catch (e) {}
   };
 
-  // 老乔学习技能
-const handleTalkToJoe = () => {
-  const today = new Date().toISOString().slice(0,10);
-  if (lastJoeTeachDate === today) {
-    showToast("老乔：今天我已经指点过你了，明天再来。");
-    return;
-  }
-  if (joesPatience < 2) {
-    setJoesPatience(prev => prev + 1);
-    showToast(`老乔：忙着呢！别烦我！(${joesPatience + 1}/3)`);
-  } else {
-    // 核心逻辑：获取管理员配置的专门属于老乔的技能
-    const joeSkills = globalSkills.filter(s => s.npcId === 'npc_craftsman');
-    
-    if (joeSkills.length > 0) {
-      const randomSkill = joeSkills[Math.floor(Math.random() * joeSkills.length)];
-      learnSkill(randomSkill.name);
-    } else {
-      showToast("老乔：我现在没什么好教你的了！(管理员暂未配置技能)");
-      setJoesPatience(0); // 重置耐心
+  const handleTalkToJoe = () => {
+    const today = new Date().toISOString().slice(0,10);
+    if (lastJoeTeachDate === today) {
+      showToast("老乔：今天我已经指点过你了，明天再来。");
+      return;
     }
-  }
-};
+    if (joesPatience < 2) {
+      setJoesPatience(prev => prev + 1);
+      showToast(`老乔：忙着呢！别烦我！(${joesPatience + 1}/3)`);
+    } else {
+      const joeSkills = globalSkills.filter(s => s.npcId === 'npc_craftsman');
+      if (joeSkills.length > 0) {
+        const randomSkill = joeSkills[Math.floor(Math.random() * joeSkills.length)];
+        learnSkill(randomSkill.name);
+      } else {
+        showToast("老乔：我现在没什么好教你的了！(管理员暂未配置技能)");
+        setJoesPatience(0); 
+      }
+    }
+  };
 
   const learnSkill = async (name: string) => {
-    await fetch(`/api/users/${user.id}/skills`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
-    });
-    showToast(`老乔骂骂咧咧地教了你一招：${name}`);
-    const today = new Date().toISOString().slice(0,10);
-    setLastJoeTeachDate(today);
-    localStorage.setItem(`lastJoeTeachDate_${user.id}`, today);
-    setJoesPatience(0);
-    syncAllData();
+    try {
+      await fetch(`/api/users/${u.id}/skills`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+      });
+      showToast(`老乔骂骂咧咧地教了你一招：${name}`);
+      const today = new Date().toISOString().slice(0,10);
+      setLastJoeTeachDate(today);
+      localStorage.setItem(`lastJoeTeachDate_${u.id}`, today);
+      setJoesPatience(0);
+      syncAllData();
+    } catch (e) {}
   };
 
-  // 公会委托
   const publishCommission = async () => {
     if (!newCommission.title || !newCommission.reward) return showToast("请填写标题和奖励");
-    const res = await fetch('/api/commissions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: `COMM-${Date.now()}`,
-        publisherId: user.id,
-        publisherName: newCommission.isAnonymous ? "匿名发布者" : (user as any).name,
-        ...newCommission
-      })
-    });
-    if (res.ok) { showToast("委托已在公会公示"); setGuildView('menu'); syncAllData(); }
+    try {
+      const res = await fetch('/api/commissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: `COMM-${Date.now()}`,
+          publisherId: u.id,
+          publisherName: newCommission.isAnonymous ? "匿名发布者" : u.name,
+          ...newCommission
+        })
+      });
+      if (res.ok) { showToast("委托已在公会公示"); setGuildView('menu'); syncAllData(); }
+    } catch(e) {}
   };
 
   const acceptCommission = async (comm: any) => {
-    const res = await fetch(`/api/commissions/${comm.id}/accept`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, userName: (user as any).name }) });
-    const data = await res.json();
-    if (data.success) { showToast("委托已接取，请尽快完成"); syncAllData(); } else showToast(data.message);
+    try {
+      const res = await fetch(`/api/commissions/${comm.id}/accept`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ userId: u.id, userName: u.name }) 
+      });
+      const data = await res.json();
+      if (data.success) { showToast("委托已接取，请尽快完成"); syncAllData(); } else showToast(data.message);
+    } catch (e) {}
   };
 
-  // 核心地图动作逻辑
   const handleLocationAction = async (action: 'enter' | 'explore' | 'stay') => {
     if (!selectedLocation) return;
     if (action === 'enter' && selectedLocation.id === 'tower_of_life') { setInTower(true); setSelectedLocation(null); return; }
 
     if (inTower && action === 'enter') {
       const jobRooms: Record<string, string> = { '神使': 'tower_top', '侍奉者': 'tower_attendant', '神使后裔': 'tower_descendant' };
-      if (selectedLocation.id === 'tower_evaluation' && (user as any).role === '未分化') setShowAwakening(true);
-      else if (jobRooms[(user as any).job || ''] === selectedLocation.id) setShowTowerActionPanel(true);
+      if (selectedLocation.id === 'tower_evaluation' && u.role === '未分化') setShowAwakening(true);
+      else if (jobRooms[u.job || ''] === selectedLocation.id) setShowTowerActionPanel(true);
       else showToast("权限不足。");
       setSelectedLocation(null); return;
     }
 
     if (action === 'stay') {
-      await fetch(`/api/users/${user.id}/location`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationId: selectedLocation.id }) });
-      showToast(`已在此驻扎`); syncAllData();
+      try {
+        await fetch(`/api/users/${u.id}/location`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locationId: selectedLocation.id }) });
+        showToast(`已在此驻扎`); syncAllData();
+      } catch(e) {}
     }
     setSelectedLocation(null);
   };
@@ -280,9 +317,9 @@ const handleTalkToJoe = () => {
                 {playersHere.map(p => (
                   <div
                     key={p.id}
-                    onClick={() => p.id !== (user as any).id && setChatTarget(p)}
+                    onClick={() => p.id !== u.id && setChatTarget(p)}
                     className={`w-8 h-8 rounded-full border-2 shadow-xl cursor-pointer overflow-hidden transition-all
-                      ${p.id === (user as any).id ? 'border-amber-400 z-30 scale-125' : 'border-white bg-slate-200 hover:scale-110 z-10'}
+                      ${p.id === u.id ? 'border-amber-400 z-30 scale-125' : 'border-white bg-slate-200 hover:scale-110 z-10'}
                       ${p.state === 'ghost' ? 'opacity-60 ring-2 ring-violet-400' : ''}`}
                   >
                     {p.avatarUrl ? <img src={p.avatarUrl} className="w-full h-full object-cover" alt="avatar"/> : <span className="text-[10px] m-auto font-black">{p.name?.[0] || '?'}</span>}
@@ -297,15 +334,15 @@ const handleTalkToJoe = () => {
           );
         })}
       </div>
+
       {/* ================= 1. 对戏聊天窗口 ================= */}
-      
       <AnimatePresence>
         {chatTarget && (
           <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} 
             className="fixed bottom-24 left-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-4 z-[80] flex flex-col h-96">
             <div className="flex justify-between items-center mb-4 border-b pb-2">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden"><img src={chatTarget.avatarUrl} className="w-full h-full object-cover"/></div>
+                <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden"><img src={chatTarget.avatarUrl} className="w-full h-full object-cover" alt="target"/></div>
                 <div><h3 className="font-black text-sm text-slate-900">{chatTarget.name}</h3><p className="text-[9px] text-sky-600 font-bold">{chatTarget.role}</p></div>
               </div>
               <X size={18} onClick={() => setChatTarget(null)} className="cursor-pointer text-slate-400 hover:text-slate-900"/>
@@ -313,9 +350,9 @@ const handleTalkToJoe = () => {
             
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-3">
               {chatMessages.map(m => (
-                <div key={m.id} className={`flex flex-col ${m.senderId === (user as any).id ? 'items-end' : 'items-start'}`}>
+                <div key={m.id} className={`flex flex-col ${m.senderId === u.id ? 'items-end' : 'items-start'}`}>
                   <span className="text-[9px] text-slate-400 mb-0.5">{m.senderName}</span>
-                  <div className={`px-3 py-2 rounded-2xl text-xs max-w-[85%] ${m.senderId === (user as any).id ? 'bg-sky-600 text-white rounded-br-sm' : 'bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
+                  <div className={`px-3 py-2 rounded-2xl text-xs max-w-[85%] ${m.senderId === u.id ? 'bg-sky-600 text-white rounded-br-sm' : 'bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
                     {m.content}
                   </div>
                 </div>
@@ -326,18 +363,18 @@ const handleTalkToJoe = () => {
             <div className="flex gap-2">
               <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => {
                 if(e.key === 'Enter') {
-                  fetch('/api/roleplay', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ senderId: (user as any).id, senderName: (user as any).name, receiverId: chatTarget.id, receiverName: chatTarget.name, content: chatInput, locationId: (user as any).currentLocation }) }).then(() => { setChatInput(''); fetchChatMessages(); });
+                  fetch('/api/roleplay', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ senderId: u.id, senderName: u.name, receiverId: chatTarget.id, receiverName: chatTarget.name, content: chatInput, locationId: u.currentLocation }) }).then(() => { setChatInput(''); fetchChatMessages(); });
                 }
               }} placeholder="输入对戏内容..." className="flex-1 p-3 bg-slate-50 border rounded-xl outline-none text-xs"/>
               <button onClick={() => {
-                  fetch('/api/roleplay', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ senderId: (user as any).id, senderName: (user as any).name, receiverId: chatTarget.id, receiverName: chatTarget.name, content: chatInput, locationId: (user as any).currentLocation }) }).then(() => { setChatInput(''); fetchChatMessages(); });
+                  fetch('/api/roleplay', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ senderId: u.id, senderName: u.name, receiverId: chatTarget.id, receiverName: chatTarget.name, content: chatInput, locationId: u.currentLocation }) }).then(() => { setChatInput(''); fetchChatMessages(); });
               }} className="px-4 bg-slate-900 text-white rounded-xl font-black text-xs">发送</button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ================= 2. 设置/命运菜单 (死亡 / 变鬼) ================= */}
+      {/* ================= 2. 设置/命运菜单 ================= */}
       <AnimatePresence>
         {showSettings && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-4">
@@ -347,12 +384,12 @@ const handleTalkToJoe = () => {
               <div className="space-y-3">
                 <button onClick={() => {
                   const text = prompt("请输入你的死亡谢幕戏 (将提交管理员审核):");
-                  if (text) fetch(`/api/users/${(user as any).id}/submit-death`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: 'pending_death', text }) }).then(() => { showToast("已提交死亡申请，请等待审核"); syncAllData(); setShowSettings(false); });
+                  if (text) fetch(`/api/users/${u.id}/submit-death`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: 'pending_death', text }) }).then(() => { showToast("已提交死亡申请，请等待审核"); syncAllData(); setShowSettings(false); });
                 }} className="w-full py-4 bg-rose-50 text-rose-600 font-black rounded-2xl border border-rose-100">接受死亡</button>
                 
                 <button onClick={() => {
                   const text = prompt("请输入你化作鬼魂的执念文本 (将提交管理员审核):");
-                  if (text) fetch(`/api/users/${(user as any).id}/submit-death`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: 'pending_ghost', text }) }).then(() => { showToast("已提交化鬼申请，请等待审核"); syncAllData(); setShowSettings(false); });
+                  if (text) fetch(`/api/users/${u.id}/submit-death`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: 'pending_ghost', text }) }).then(() => { showToast("已提交化鬼申请，请等待审核"); syncAllData(); setShowSettings(false); });
                 }} className="w-full py-4 bg-violet-50 text-violet-600 font-black rounded-2xl border border-violet-100">化作鬼魂</button>
                 
                 <button onClick={() => setShowSettings(false)} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl">什么都没有发生</button>
@@ -362,9 +399,9 @@ const handleTalkToJoe = () => {
         )}
       </AnimatePresence>
 
-      {/* ================= 3. 濒死急救系统 (核心双重判定) ================= */}
+      {/* ================= 3. 濒死急救系统 ================= */}
       {/* 3.1 濒死者视角强制锁屏 */}
-      {((user as any).hp <= 0 && (user as any).status === 'approved') && (
+      {(u.hp <= 0 && u.status === 'approved') && (
         <div className="fixed inset-0 bg-rose-950/95 z-[999] flex flex-col items-center justify-center p-6 text-center backdrop-blur-md">
           <div className="w-24 h-24 bg-rose-600/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
             <Heart size={48} className="text-rose-500"/>
@@ -373,22 +410,20 @@ const handleTalkToJoe = () => {
           <p className="text-rose-300 text-sm mb-12 max-w-xs leading-relaxed">你的生命值已归零。请立刻寻找同区域的治愈系向导对戏求救，或者接受命运的终结。</p>
           
           <div className="w-full max-w-xs space-y-4">
-            {/* 查找同区域治愈系向导 */}
             <button onClick={() => {
-              const healers = allPlayers.filter(p => p.currentLocation === (user as any).currentLocation && p.role === '向导' && p.ability === '治疗系');
+              const healers = allPlayers.filter(p => p.currentLocation === u.currentLocation && p.role === '向导' && p.ability === '治疗系');
               if (healers.length === 0) return showToast("当前区域没有治愈系向导！");
               
-              // 简化的点对点求救：向区域内第一个向导发请求
               const targetHealer = healers[0];
-              fetch('/api/rescue/request', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ patientId: (user as any).id, healerId: targetHealer.id }) })
+              fetch('/api/rescue/request', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ patientId: u.id, healerId: targetHealer.id }) })
                 .then(() => showToast(`已向 ${targetHealer.name} 发出绝望的呼救！请通过其他方式通知TA。`));
             }} className="w-full py-4 bg-rose-600 text-white font-black rounded-2xl shadow-[0_0_40px_rgba(225,29,72,0.4)]">向附近的向导求救</button>
             
             <button onClick={async () => {
-              const res = await fetch(`/api/rescue/check/${(user as any).id}`);
+              const res = await fetch(`/api/rescue/check/${u.id}`);
               const data = await res.json();
               if (data.outgoing?.status === 'accepted') {
-                await fetch('/api/rescue/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ patientId: (user as any).id }) });
+                await fetch('/api/rescue/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ patientId: u.id }) });
                 showToast("双重判定成功：你得救了！");
                 syncAllData();
               } else {
@@ -402,7 +437,7 @@ const handleTalkToJoe = () => {
       )}
 
       {/* 3.2 审核等待锁屏 */}
-      {((user as any).status === 'pending_death' || (user as any).status === 'pending_ghost') && (
+      {(u.status === 'pending_death' || u.status === 'pending_ghost') && (
         <div className="fixed inset-0 bg-slate-950/95 z-[1000] flex flex-col items-center justify-center p-6 text-center">
           <div className="w-16 h-16 border-4 border-slate-600 border-t-white rounded-full animate-spin mb-8"/>
           <h1 className="text-2xl font-black text-white mb-2">命运结算中...</h1>
@@ -410,23 +445,23 @@ const handleTalkToJoe = () => {
         </div>
       )}
 
-     {/* 3.3 治愈系向导视角的救助提示框 */}
-  <AnimatePresence>
-    {incomingRescue && (
-      <motion.div initial={{ x: 100 }} animate={{ x: 0 }} className="fixed top-24 right-8 bg-white p-6 rounded-[32px] shadow-2xl border-4 border-rose-500 z-[90]">
-        <h3 className="font-black text-rose-600 mb-2 flex items-center gap-2"><Heart className="animate-pulse"/> 紧急救援请求！</h3>
-        <p className="text-xs font-bold text-slate-600 mb-4">【{incomingRescue.patientName}】正在死去，是否施展治愈系能力进行抢救？</p>
-        <div className="flex gap-2">
-          <button onClick={() => {
-            fetch('/api/rescue/accept', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ requestId: incomingRescue.id }) }).then(() => { showToast("已确认施救，等待对方确认得救！"); syncAllData(); });
-          }} className="flex-1 py-2 bg-rose-500 text-white font-black rounded-xl text-xs">确认救助</button>
-          <button onClick={() => setIncomingRescue(null)} className="flex-1 py-2 bg-slate-100 text-slate-500 font-black rounded-xl text-xs">无视</button>
-        </div>
-      </motion.div>
-    )}
-  </AnimatePresence>
+      {/* 3.3 治愈系向导视角的救助提示框 */}
+      <AnimatePresence>
+        {incomingRescue && (
+          <motion.div initial={{ x: 100 }} animate={{ x: 0 }} className="fixed top-24 right-8 bg-white p-6 rounded-[32px] shadow-2xl border-4 border-rose-500 z-[90]">
+            <h3 className="font-black text-rose-600 mb-2 flex items-center gap-2"><Heart className="animate-pulse"/> 紧急救援请求！</h3>
+            <p className="text-xs font-bold text-slate-600 mb-4">【{incomingRescue.patientName}】正在死去，是否施展治愈系能力进行抢救？</p>
+            <div className="flex gap-2">
+              <button onClick={() => {
+                fetch('/api/rescue/accept', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ requestId: incomingRescue.id }) }).then(() => { showToast("已确认施救，等待对方确认得救！"); syncAllData(); });
+              }} className="flex-1 py-2 bg-rose-500 text-white font-black rounded-xl text-xs">确认救助</button>
+              <button onClick={() => setIncomingRescue(null)} className="flex-1 py-2 bg-slate-100 text-slate-500 font-black rounded-xl text-xs">无视</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 可拖拽角色面板（中文 + 持久位置） */}
+      {/* 可拖拽角色面板 */}
       <AnimatePresence>
         {showLeftPanel ? (
           <motion.div
@@ -442,11 +477,11 @@ const handleTalkToJoe = () => {
           >
             <div className="flex justify-between items-start mb-4">
               <div className="w-14 h-14 rounded-2xl border-2 border-sky-500 overflow-hidden bg-slate-100 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                {(user as any).avatarUrl ? <img src={(user as any).avatarUrl} className="w-full h-full object-cover" alt="avatar"/> : <UserIcon className="m-auto text-gray-300" size={24}/>}
+                {u.avatarUrl ? <img src={u.avatarUrl} className="w-full h-full object-cover" alt="avatar"/> : <UserIcon className="m-auto text-gray-300" size={24}/>}
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={async (e) => {
                   const r = new FileReader();
                   r.onload = async (ev) => {
-                    await fetch(`/api/users/${(user as any).id}/avatar`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarUrl: ev.target?.result }) });
+                    await fetch(`/api/users/${u.id}/avatar`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarUrl: ev.target?.result }) });
                     syncAllData();
                   };
                   if(e.target.files?.[0]) r.readAsDataURL(e.target.files[0]);
@@ -455,12 +490,12 @@ const handleTalkToJoe = () => {
               <button onClick={() => setShowLeftPanel(false)} className="text-[10px] font-black text-slate-400 hover:text-slate-900">隐藏</button>
             </div>
 
-            <h2 className="font-black text-xl text-slate-900 mb-1 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => setShowProfileModal(true)}>{(user as any).name}</h2>
-            <p className="text-[10px] font-black text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded-full mb-6">{(user as any).job || (user as any).role}</p>
+            <h2 className="font-black text-xl text-slate-900 mb-1 cursor-pointer hover:text-sky-600 transition-colors" onClick={() => setShowProfileModal(true)}>{u.name}</h2>
+            <p className="text-[10px] font-black text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded-full mb-6">{u.job || u.role}</p>
 
             <div className="space-y-3 mb-6">
-              <StatusRow label="生命值" cur={(user as any).hp || 100} color="bg-rose-500" />
-              <StatusRow label="精神力" cur={(user as any).mentalProgress || 0} color="bg-indigo-600" />
+              <StatusRow label="生命值" cur={u.hp || 100} color="bg-rose-500" />
+              <StatusRow label="精神力" cur={u.mentalProgress || 0} color="bg-indigo-600" />
               <StatusRow label="灵契" cur={spiritStatus.intimacy || 0} color="bg-pink-500" />
             </div>
 
@@ -473,7 +508,7 @@ const handleTalkToJoe = () => {
             </div>
 
             <div className="bg-slate-900 text-white p-3 rounded-2xl flex justify-between items-center">
-              <HandCoins size={16} className="text-amber-400"/><span className="font-black text-sm">{(user as any).gold} G</span>
+              <HandCoins size={16} className="text-amber-400"/><span className="font-black text-sm">{u.gold} G</span>
             </div>
           </motion.div>
         ) : (
@@ -490,7 +525,6 @@ const handleTalkToJoe = () => {
 
       {/* NPC交互与委托弹窗 */}
       <AnimatePresence>
-        {/* 老乔交互：搭话 + 离开 + 每日一次 */}
         {activeNPC?.id === 'npc_craftsman' && (
           <NPCModal npc={activeNPC} onClose={() => setActiveNPC(null)}>
             <div className="grid grid-cols-1 gap-3">
@@ -500,7 +534,6 @@ const handleTalkToJoe = () => {
           </NPCModal>
         )}
 
-        {/* 公会交互 */}
         {activeNPC?.id === 'npc_guild_staff' && (
           <NPCModal npc={activeNPC} onClose={() => { setActiveNPC(null); setGuildView('menu'); }}>
             {guildView === 'menu' && (
@@ -542,7 +575,7 @@ const handleTalkToJoe = () => {
           </NPCModal>
         )}
 
-        {/* 富人区商人：购买 / 拍卖 / 委托拍卖 */}
+        {/* 拍卖商人交互 */}
         {activeNPC?.id === 'npc_merchant' && (
           <NPCModal npc={activeNPC} onClose={() => { setActiveNPC(null); setMerchantView('menu'); }}>
             {merchantView === 'menu' && (
@@ -564,9 +597,11 @@ const handleTalkToJoe = () => {
                       <div className="text-amber-600 font-bold">{g.price} G</div>
                     </div>
                     <button onClick={async () => {
-                      const res = await fetch('/api/market/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: (user as any).id, itemId: g.id }) });
-                      const d = await res.json(); d.success ? showToast("购买成功，已放入背包") : showToast(d.message || "购买失败");
-                      syncAllData();
+                      try {
+                        const res = await fetch('/api/market/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: u.id, itemId: g.id }) });
+                        const d = await res.json(); d.success ? showToast("购买成功，已放入背包") : showToast(d.message || "购买失败");
+                        syncAllData();
+                      } catch(e) {}
                     }} className="w-full mt-2 py-2 bg-emerald-600 text-white text-[12px] font-black rounded-xl">购买</button>
                   </div>
                 ))}
@@ -585,12 +620,14 @@ const handleTalkToJoe = () => {
                     </div>
                     <div className="flex gap-2">
                       <input type="number" placeholder={`>= ${a.currentPrice + 1}`} className="flex-1 p-2 bg-white border rounded-lg text-sm"
-                        onChange={(e) => (a as any).__bid = parseInt(e.target.value)} />
+                        onChange={(e) => setAuctionBids({...auctionBids, [a.id]: parseInt(e.target.value)})} />
                       <button onClick={async () => {
-                        const price = (a as any).__bid || 0;
-                        const res = await fetch('/api/auction/bid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: (user as any).id, itemId: a.id, price }) });
-                        const d = await res.json(); d.success ? showToast("出价成功") : showToast(d.message || "出价失败");
-                        syncAllData();
+                        const price = auctionBids[a.id] || 0;
+                        try {
+                          const res = await fetch('/api/auction/bid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: u.id, itemId: a.id, price }) });
+                          const d = await res.json(); d.success ? showToast("出价成功") : showToast(d.message || "出价失败");
+                          syncAllData();
+                        } catch(e) {}
                       }} className="px-3 rounded-lg bg-violet-600 text-white text-xs font-black">出价</button>
                     </div>
                     <div className="text-[10px] text-violet-600 mt-1">成交后商人收取10%佣金</div>
@@ -609,12 +646,14 @@ const handleTalkToJoe = () => {
                 <input type="number" className="w-full p-3 bg-slate-50 border rounded-xl" placeholder="起拍价" value={consignForm.minPrice} onChange={e => setConsignForm({ ...consignForm, minPrice: parseInt(e.target.value || '0') })}/>
                 <button onClick={async () => {
                   if (!consignForm.itemId) return showToast("请选择物品");
-                  const res = await fetch('/api/auction/consign', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: (user as any).id, itemId: consignForm.itemId, minPrice: consignForm.minPrice })
-                  });
-                  const d = await res.json(); d.success ? showToast("已委托拍卖") : showToast(d.message || "委托失败");
-                  syncAllData(); setMerchantView('menu');
+                  try {
+                    const res = await fetch('/api/auction/consign', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: u.id, itemId: consignForm.itemId, minPrice: consignForm.minPrice })
+                    });
+                    const d = await res.json(); d.success ? showToast("已委托拍卖") : showToast(d.message || "委托失败");
+                    syncAllData(); setMerchantView('menu');
+                  } catch(e) {}
                 }} className="w-full py-3 bg-amber-500 text-white font-black rounded-2xl">提交委托</button>
                 <div className="text-[10px] text-amber-600 text-center">成交后收取10%佣金</div>
                 <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-amber-600">返回</button>
@@ -624,7 +663,7 @@ const handleTalkToJoe = () => {
         )}
       </AnimatePresence>
 
-      {/* 地点操作弹窗：探索/驻扎/进入/取消 */}
+      {/* 地点操作弹窗 */}
       <AnimatePresence>
         {selectedLocation && (
           <NPCModal npc={{ icon: <MapPin size={14}/>, name: selectedLocation.name, role: '地点操作', desc: selectedLocation.description }} onClose={() => setSelectedLocation(null)}>
@@ -636,22 +675,17 @@ const handleTalkToJoe = () => {
                 <button onClick={() => handleLocationAction('enter')} className="py-3 bg-indigo-600 text-white font-black rounded-2xl">进入</button>
               )}
               <button onClick={async () => {
-  // 核心逻辑：从后台配置的物品池中，过滤出属于当前所在地的物品
-  const locationDropPool = globalItems.filter(item => item.locationTag === selectedLocation.id);
-  
-  const drop = Math.random() < 0.5; // 50% 概率判定
-  
-  if (drop && locationDropPool.length > 0) {
-    // 如果后台在这个地点配了物品，随机抽一个
-    const luckyItem = locationDropPool[Math.floor(Math.random() * locationDropPool.length)];
-    await addItemToInventory(luckyItem.name, 1);
-    showToast(`在【${selectedLocation.name}】探索时获得：${luckyItem.name}`);
-  } else {
-    // 概率没中，或者管理员没在这个地方配物品
-    showToast(`在【${selectedLocation.name}】探索无收获`);
-  }
-  setSelectedLocation(null);
-}} className="py-3 bg-emerald-600 text-white font-black rounded-2xl">探索（50% 掉落）</button>
+                const locationDropPool = globalItems.filter(item => item.locationTag === selectedLocation.id);
+                const drop = Math.random() < 0.5;
+                if (drop && locationDropPool.length > 0) {
+                  const luckyItem = locationDropPool[Math.floor(Math.random() * locationDropPool.length)];
+                  await addItemToInventory(luckyItem.name, 1);
+                  showToast(`在【${selectedLocation.name}】探索时获得：${luckyItem.name}`);
+                } else {
+                  showToast(`在【${selectedLocation.name}】探索无收获`);
+                }
+                setSelectedLocation(null);
+              }} className="py-3 bg-emerald-600 text-white font-black rounded-2xl">探索（50% 掉落）</button>
               <button onClick={() => handleLocationAction('stay')} className="py-3 bg-amber-600 text-white font-black rounded-2xl">驻扎</button>
               <button onClick={() => setSelectedLocation(null)} className="py-3 bg-slate-100 text-slate-600 font-black rounded-2xl">取消</button>
             </div>
@@ -666,7 +700,7 @@ const handleTalkToJoe = () => {
             <div className="flex justify-between items-center mb-4"><h3 className="font-black text-lg flex items-center gap-2"><ClipboardList size={20} className="text-sky-600"/>任务行囊</h3><X size={18} onClick={() => setShowCommissionBoard(false)} className="cursor-pointer"/></div>
             <div className="space-y-3 max-h-80 overflow-y-auto">
               <div className="text-[10px] font-black text-gray-400 border-b pb-2">我接取的委托</div>
-              {commissions.filter(c => c.acceptedById === (user as any).id).map(c => (
+              {commissions.filter(c => c.acceptedById === u.id).map(c => (
                 <div key={c.id} className="p-3 bg-sky-50 rounded-2xl border border-sky-100">
                   <p className="font-black text-xs text-sky-900">{c.title}</p>
                   <p className="text-[10px] text-sky-600 mt-1">发布者: {c.publisherName}</p>
@@ -674,7 +708,7 @@ const handleTalkToJoe = () => {
                 </div>
               ))}
               <div className="text-[10px] font-black text-gray-400 border-b pb-2 mt-4">我发布的委托</div>
-              {commissions.filter(c => c.publisherId === (user as any).id).map(c => (
+              {commissions.filter(c => c.publisherId === u.id).map(c => (
                 <div key={c.id} className="p-3 bg-amber-50 rounded-2xl border border-amber-100">
                   <p className="font-black text-xs text-amber-900">{c.title}</p>
                   <p className="text-[10px] text-amber-600 mt-1">状态: {c.status === 'accepted' ? '被接取' : '公示中'}</p>
@@ -714,8 +748,6 @@ const handleTalkToJoe = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* 其他弹窗（Spirit, Tower, Chat, Settings 等）可按原逻辑接入 */}
 
       {/* 全局提示 */}
       <AnimatePresence>
@@ -759,12 +791,4 @@ function ControlBtn({ icon, count, color, onClick }: any) {
       {count > 0 && <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full text-white text-[10px] font-black border-2 border-white animate-bounce flex items-center justify-center shadow-lg">{count}</span>}
     </button>
   );
-}
-
-// 预留未用的按钮类型（如后续需要）
-function FloatActionBtn({ icon, label, sub, color, onClick }: any) {
-  return (<button onClick={onClick} className={`flex flex-col items-center justify-center p-5 rounded-[28px] ${color} shadow-sm border border-transparent hover:scale-105 transition-all`}><div className="mb-2">{icon}</div><span className="text-xs font-black mb-1">{label}</span><span className="text-[9px] font-bold opacity-60">{sub}</span></button>);
-}
-function SpiritSubBtn({ label, val, color, onClick }: any) {
-  return (<button onClick={onClick} className={`p-4 rounded-2xl bg-slate-50 border border-slate-100 font-black transition-all flex flex-col items-center ${color} hover:scale-105 active:scale-95`}><span>{label}</span><span className="text-[10px] opacity-70">{val}</span></button>);
 }
