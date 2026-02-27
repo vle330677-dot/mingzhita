@@ -44,6 +44,14 @@ db.exec(`
     lastResetDate TEXT,
     lastCheckInDate TEXT
   );
+  -- 急救请求表 (用于濒死双重判定)
+  CREATE TABLE IF NOT EXISTS rescue_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    patientId INTEGER,
+    healerId INTEGER,
+    status TEXT DEFAULT 'pending', -- pending, accepted
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
   -- 全局物品库 (增加 npcId 以支持 NPC 专属给予)
   CREATE TABLE IF NOT EXISTS global_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +219,44 @@ app.post('/api/admin/skills', (req, res) => {
   db.prepare('INSERT INTO global_skills (name, faction, description, npcId) VALUES (?, ?, ?, ?)').run(name, faction, description, npcId || null);
   res.json({ success: true });
 });
+// --- 濒死与急救系统 API ---
+  app.post('/api/rescue/request', (req, res) => {
+    const { patientId, healerId } = req.body;
+    db.prepare('INSERT INTO rescue_requests (patientId, healerId) VALUES (?, ?)').run(patientId, healerId);
+    res.json({ success: true });
+  });
+
+  // 轮询查询急救状态 (向导查是否有人求救，濒死者查是否被接受)
+  app.get('/api/rescue/check/:userId', (req, res) => {
+    const { userId } = req.params;
+    // 作为向导，查询是否有 pending 的求救
+    const incoming = db.prepare('SELECT r.*, u.name as patientName FROM rescue_requests r JOIN users u ON r.patientId = u.id WHERE r.healerId = ? AND r.status = "pending"').get(userId);
+    // 作为濒死者，查询自己发出的请求是否被 accepted
+    const outgoing = db.prepare('SELECT * FROM rescue_requests WHERE patientId = ? ORDER BY id DESC LIMIT 1').get(userId);
+    res.json({ success: true, incoming, outgoing });
+  });
+
+  // 向导确认救助
+  app.post('/api/rescue/accept', (req, res) => {
+    const { requestId } = req.body;
+    db.prepare('UPDATE rescue_requests SET status = "accepted" WHERE id = ?').run(requestId);
+    res.json({ success: true });
+  });
+
+  // 濒死者点击“我得救了”双重确认
+  app.post('/api/rescue/confirm', (req, res) => {
+    const { patientId } = req.body;
+    db.prepare('UPDATE users SET hp = 20 WHERE id = ?').run(patientId); // 恢复20%生命
+    db.prepare('DELETE FROM rescue_requests WHERE patientId = ?').run(patientId); // 清理记录
+    res.json({ success: true });
+  });
+
+  // --- 死亡/变鬼 提交审核 API ---
+  app.post('/api/users/:id/submit-death', (req, res) => {
+    const { type, text } = req.body; // type: 'pending_death' | 'pending_ghost'
+    db.prepare('UPDATE users SET status = ?, deathDescription = ? WHERE id = ?').run(type, text, req.params.id);
+    res.json({ success: true });
+  });
 
   // 获取全服玩家数据 (包含年龄和派系预处理)
   app.get('/api/admin/users', (req, res) => {
