@@ -1,0 +1,524 @@
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, BedDouble, DoorOpen, Download, Save, ShieldCheck, Trash2 } from 'lucide-react';
+
+type HomeLocation = 'sanctuary' | 'slums' | 'rich_area';
+const NONE = '无';
+
+interface ReplayItem {
+  id: string;
+  title: string;
+  locationName: string;
+  participantNames: string;
+  createdAt: string;
+  messageCount: number;
+}
+
+interface UserLite {
+  id: number;
+  name?: string;
+  role?: string;
+  age?: number;
+  gold?: number;
+}
+
+export interface HomeRoomDetail {
+  ownerId: number;
+  ownerName: string;
+  avatarUrl?: string;
+  job?: string;
+  role?: string;
+  homeLocation?: HomeLocation | string;
+  bgImage?: string;
+  description?: string;
+  visible?: boolean;
+  allowVisit?: boolean;
+}
+
+interface Props {
+  currentUser: UserLite;
+  room: HomeRoomDetail;
+  sourceMap: HomeLocation;
+  onBack: () => void;
+  showToast: (msg: string) => void;
+  onSaved?: (next: HomeRoomDetail) => void;
+  refreshGlobalData?: () => void;
+}
+
+export function deriveInitialHomeLocation(user: UserLite): HomeLocation {
+  const role = String(user.role || '');
+  const age = Number(user.age || 0);
+  const gold = Number(user.gold || 0);
+  if (role === '未分化' || age < 16) return 'sanctuary';
+  return gold > 9999 ? 'rich_area' : 'slums';
+}
+
+const THEME: Record<HomeLocation, { name: string; backText: string; defaultBg: string; overlay: string; panel: string }> = {
+  sanctuary: {
+    name: '圣所',
+    backText: '返回圣所',
+    defaultBg: '/room/圣所.png',
+    overlay: 'bg-gradient-to-br from-amber-900/30 via-orange-900/20 to-yellow-900/30',
+    panel: 'bg-amber-950/35 border-amber-700/40'
+  },
+  slums: {
+    name: '西区',
+    backText: '返回西区',
+    defaultBg: '/room/西区.png',
+    overlay: 'bg-gradient-to-br from-stone-950/55 via-orange-950/20 to-black/60',
+    panel: 'bg-stone-900/40 border-orange-700/40'
+  },
+  rich_area: {
+    name: '东区',
+    backText: '返回东区',
+    defaultBg: '/room/东区.png',
+    overlay: 'bg-gradient-to-br from-sky-950/35 via-emerald-950/15 to-slate-950/45',
+    panel: 'bg-slate-900/35 border-sky-700/40'
+  }
+};
+
+function normalizeHomeLocation(v: any): HomeLocation | null {
+  if (v === 'sanctuary' || v === 'slums' || v === 'rich_area') return v;
+  return null;
+}
+
+export default function HomeRoomView({
+  currentUser,
+  room,
+  sourceMap,
+  onBack,
+  showToast,
+  onSaved,
+  refreshGlobalData
+}: Props) {
+  const isOwner = Number(currentUser.id) === Number(room.ownerId);
+  const actualLoc = normalizeHomeLocation(room.homeLocation) || sourceMap;
+  const theme = THEME[actualLoc];
+
+  const [editDesc, setEditDesc] = useState(room.description || '');
+  const [editBg, setEditBg] = useState(room.bgImage || '');
+  const [editVisible, setEditVisible] = useState(room.visible !== false);
+  const [editAllowVisit, setEditAllowVisit] = useState(room.allowVisit !== false);
+  const [roomPassword, setRoomPassword] = useState('');
+  const [roomPasswordAgain, setRoomPasswordAgain] = useState('');
+  const [clearRoomPassword, setClearRoomPassword] = useState(false);
+  const [showReplays, setShowReplays] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replays, setReplays] = useState<ReplayItem[]>([]);
+  const [deletingReplayId, setDeletingReplayId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [growing, setGrowing] = useState(false);
+
+  const age = Number(currentUser.age || 0);
+  const role = String(currentUser.role || '');
+  const isUndifferentiatedStage = age < 16 || role === '未分化';
+  const isStudentStage = age >= 16 && age <= 19;
+
+  const canVisitorView = useMemo(() => {
+    if (isOwner) return true;
+    if (room.visible === false) return false;
+    return true;
+  }, [isOwner, room.visible]);
+
+  const bg = editBg.trim() || room.bgImage || theme.defaultBg;
+
+  const fetchReplays = async () => {
+    if (!isOwner) return;
+    try {
+      setReplayLoading(true);
+      const res = await fetch(`/api/rooms/${room.ownerId}/replays`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}` }
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '读取回顾失败');
+        return;
+      }
+      setReplays(Array.isArray(data.archives) ? data.archives : []);
+    } catch {
+      showToast('网络错误，读取回顾失败');
+    } finally {
+      setReplayLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showReplays && isOwner) fetchReplays();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReplays, isOwner, room.ownerId]);
+
+  const saveRoomSettings = async () => {
+    if (!isOwner || saving) return;
+    if (!clearRoomPassword && roomPassword.trim()) {
+      if (roomPassword.trim().length < 4) {
+        showToast('房间密码至少 4 位');
+        return;
+      }
+      if (roomPassword !== roomPasswordAgain) {
+        showToast('两次输入的房间密码不一致');
+        return;
+      }
+    }
+    try {
+      setSaving(true);
+      const res = await fetch(`/api/rooms/${room.ownerId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}`
+        },
+        body: JSON.stringify({
+          visible: editVisible,
+          allowVisit: editAllowVisit,
+          roomDescription: editDesc,
+          roomBgImage: editBg,
+          roomPassword: !clearRoomPassword ? roomPassword.trim() : '',
+          clearRoomPassword
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '保存失败');
+        return;
+      }
+
+      const next: HomeRoomDetail = {
+        ...room,
+        description: editDesc,
+        bgImage: editBg,
+        visible: editVisible,
+        allowVisit: editAllowVisit
+      };
+      onSaved?.(next);
+      setRoomPassword('');
+      setRoomPasswordAgain('');
+      setClearRoomPassword(false);
+      showToast('家园设置已保存');
+    } catch {
+      showToast('网络错误，保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteReplay = async (archiveId: string) => {
+    if (!archiveId || deletingReplayId) return;
+    if (!window.confirm('确定删除这条回顾吗？删除后不可恢复。')) return;
+    try {
+      setDeletingReplayId(archiveId);
+      const res = await fetch(`/api/rooms/${room.ownerId}/replays/${encodeURIComponent(archiveId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}` }
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '删除回顾失败');
+        return;
+      }
+      setReplays((prev) => prev.filter((x) => x.id !== archiveId));
+      showToast('回顾已删除');
+    } catch {
+      showToast('网络错误，删除失败');
+    } finally {
+      setDeletingReplayId(null);
+    }
+  };
+
+  const handleRest = async () => {
+    if (!isOwner) {
+      showToast('只有房主可以在自己的房间休息');
+      return;
+    }
+    try {
+      const res = await fetch('/api/tower/rest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id })
+      });
+      if (!res.ok) {
+        showToast('休息失败，请稍后重试');
+        return;
+      }
+      showToast('休息完成，状态已恢复');
+      refreshGlobalData?.();
+    } catch {
+      showToast('网络错误，休息失败');
+    }
+  };
+
+  const handleGrowthAdvance = async () => {
+    if (!isOwner) {
+      showToast('只有房主可以在自己的房间进行成长推进');
+      return;
+    }
+    if (growing) return;
+
+    try {
+      setGrowing(true);
+
+      if (isUndifferentiatedStage) {
+        const ok = window.confirm('进行成长测试并推进到16-19岁阶段吗？');
+        if (!ok) return;
+
+        const enrollStudent = window.confirm(
+          '是否前往伦敦塔成为学生？\n确定：成为伦敦塔学员\n取消：仅完成成长，不入学'
+        );
+
+        const res = await fetch('/api/growth/advance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            action: 'minor_to_student',
+            enrollStudent
+          })
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok || data.success === false) {
+          showToast(data.message || '成长推进失败');
+          return;
+        }
+
+        showToast(enrollStudent ? '成长完成，已进入伦敦塔学生阶段' : '成长完成，已进入16-19岁阶段');
+        refreshGlobalData?.();
+        return;
+      }
+
+      if (isStudentStage) {
+        const ok = window.confirm('确认毕业并进入19+成年阶段吗？该成长不可逆。');
+        if (!ok) return;
+
+        const res = await fetch('/api/growth/advance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            action: 'graduate'
+          })
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok || data.success === false) {
+          showToast(data.message || '毕业失败');
+          return;
+        }
+
+        showToast('毕业完成，已进入19+成年阶段');
+        refreshGlobalData?.();
+        return;
+      }
+
+      showToast('你已处于成年阶段，成长不可回退');
+    } catch {
+      showToast('网络错误，成长推进失败');
+    } finally {
+      setGrowing(false);
+    }
+  };
+
+  const exportReplayTxt = async () => {
+    try {
+      const res = await fetch(`/api/rooms/${room.ownerId}/replays/export?format=txt`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}` }
+      });
+      if (!res.ok) {
+        showToast('导出失败：暂无记录或接口不可用');
+        return;
+      }
+
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${room.ownerName}-家园回放.txt`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast('回放导出完成');
+    } catch {
+      showToast('导出失败');
+    }
+  };
+
+  if (!canVisitorView) {
+    return (
+      <div className="fixed inset-0 z-[220] bg-black text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+          <p className="text-lg font-black mb-2">该家园暂不开放访问</p>
+          <p className="text-sm text-slate-400 mb-4">房主未公开该房间。</p>
+          <button onClick={onBack} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600">
+            返回
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[220] bg-slate-950 text-white">
+      <div className="absolute inset-0">
+        <img src={bg} className="w-full h-full object-cover opacity-45" alt="home-bg" />
+      </div>
+      <div className={`absolute inset-0 ${theme.overlay}`} />
+      <div className="absolute inset-0 bg-black/35" />
+
+      <div className="relative z-10 p-6 h-full flex flex-col">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onBack}
+            className="px-4 py-2 rounded-xl bg-slate-900/80 border border-slate-600 font-bold flex items-center gap-2"
+          >
+            <ArrowLeft size={16} /> {theme.backText}
+          </button>
+
+          <div className="text-sm font-bold flex items-center gap-2 text-slate-200">
+            <DoorOpen size={16} />
+            {room.ownerName} 的家园（{theme.name}）
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1">
+          <div className={`lg:col-span-2 rounded-2xl border p-5 backdrop-blur ${theme.panel}`}>
+            <h3 className="text-xl font-black mb-3">家园信息</h3>
+            <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">
+              {room.description || '房主还没有设置家园介绍。'}
+            </p>
+          </div>
+
+          <div className={`rounded-2xl border p-4 backdrop-blur ${theme.panel}`}>
+            <h4 className="font-black mb-3">家园面板</h4>
+            <p className="text-xs text-slate-200 mb-1">职业：{room.job || NONE}</p>
+            <p className="text-xs text-slate-300 mb-3">身份：{room.role || '未知'}</p>
+
+            {isOwner ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full h-24 p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  placeholder="输入房间介绍..."
+                />
+                <input
+                  value={editBg}
+                  onChange={(e) => setEditBg(e.target.value)}
+                  className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  placeholder={`背景图 URL（留空使用默认：${theme.defaultBg}）`}
+                />
+
+                <label className="text-xs flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editVisible}
+                    onChange={(e) => setEditVisible(e.target.checked)}
+                  />
+                  房间公开可见
+                </label>
+                <label className="text-xs flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={editAllowVisit}
+                    onChange={(e) => setEditAllowVisit(e.target.checked)}
+                  />
+                  允许访客进入
+                </label>
+
+                <input
+                  type="password"
+                  value={roomPassword}
+                  onChange={(e) => setRoomPassword(e.target.value)}
+                  className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  placeholder="房间密码（留空表示不修改）"
+                />
+                <input
+                  type="password"
+                  value={roomPasswordAgain}
+                  onChange={(e) => setRoomPasswordAgain(e.target.value)}
+                  className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  placeholder="重复输入新密码"
+                />
+                <label className="text-xs flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={clearRoomPassword}
+                    onChange={(e) => setClearRoomPassword(e.target.checked)}
+                  />
+                  清空房间密码
+                </label>
+
+                <button
+                  onClick={saveRoomSettings}
+                  disabled={saving}
+                  className="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  <Save size={14} /> {saving ? '保存中...' : '保存设置'}
+                </button>
+
+                <button
+                  onClick={handleRest}
+                  className="w-full py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-bold flex items-center justify-center gap-2"
+                >
+                  <BedDouble size={14} /> 休息（恢复状态）
+                </button>
+
+                {(isUndifferentiatedStage || isStudentStage) && (
+                  <button
+                    onClick={handleGrowthAdvance}
+                    disabled={growing}
+                    className="w-full py-2 rounded bg-fuchsia-600 hover:bg-fuchsia-500 font-bold disabled:opacity-60"
+                  >
+                    {isUndifferentiatedStage
+                      ? (growing ? '成长推进中...' : '成长推进（未分化→学生）')
+                      : (growing ? '毕业处理中...' : '成长推进（学生毕业→19+）')}
+                  </button>
+                )}
+
+                <button
+                  onClick={exportReplayTxt}
+                  className="w-full py-2 rounded bg-slate-700 hover:bg-slate-600 font-bold flex items-center justify-center gap-2"
+                >
+                  <Download size={14} /> 回放导出 TXT
+                </button>
+
+                <button
+                  onClick={() => setShowReplays((v) => !v)}
+                  className="w-full py-2 rounded bg-slate-800 hover:bg-slate-700 font-bold"
+                >
+                  {showReplays ? '收起回顾列表' : '查看回顾列表'}
+                </button>
+
+                {showReplays && (
+                  <div className="mt-2 max-h-56 overflow-y-auto rounded border border-slate-700 bg-black/20 p-2 space-y-2">
+                    {replayLoading ? (
+                      <p className="text-[11px] text-slate-400">回顾加载中...</p>
+                    ) : replays.length === 0 ? (
+                      <p className="text-[11px] text-slate-400">暂无回顾记录</p>
+                    ) : (
+                      replays.map((arc) => (
+                        <div key={arc.id} className="rounded border border-slate-700 bg-slate-900/60 p-2">
+                          <p className="text-xs font-bold text-slate-100 truncate">{arc.title || arc.id}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {arc.locationName || '未知地点'} · {arc.messageCount} 条
+                          </p>
+                          <p className="text-[10px] text-slate-500">{new Date(arc.createdAt).toLocaleString()}</p>
+                          <button
+                            onClick={() => deleteReplay(arc.id)}
+                            disabled={deletingReplayId === arc.id}
+                            className="mt-2 w-full py-1 rounded bg-rose-700 hover:bg-rose-600 text-[11px] font-bold flex items-center justify-center gap-1 disabled:opacity-60"
+                          >
+                            <Trash2 size={12} />
+                            {deletingReplayId === arc.id ? '删除中...' : '删除'}
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-300 flex items-center gap-2">
+                <ShieldCheck size={14} />
+                访客模式：仅可查看房间展示信息
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

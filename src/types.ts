@@ -13,6 +13,7 @@ export interface User {
   spiritName: string;
   spiritType: string;
   avatarUrl: string;
+  avatarUpdatedAt?: string | null;
 
   status:
     | 'pending'
@@ -20,6 +21,7 @@ export interface User {
     | 'dead'
     | 'ghost'
     | 'rejected'
+    | 'banned'
     | 'pending_death'
     | 'pending_ghost';
 
@@ -36,9 +38,15 @@ export interface User {
   maxHp?: number;
   mp?: number;
   maxMp?: number;
+  erosionLevel?: number;
+  bleedingLevel?: number;
   mentalProgress?: number;
+  physicalProgress?: number;
   workCount?: number;
   trainCount?: number;
+  fury?: number;
+  guideStability?: number;
+  partyId?: string | null;
 
   // 兼容旧字段
   gender?: string;

@@ -1,1395 +1,2790 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Settings,
-  Backpack,
-  X,
-  MapPin,
-  Bell,
-  User as UserIcon,
-  ScrollText,
-  Hammer,
-  HandCoins,
-  MessageSquareText,
-  ArrowLeft,
-  ClipboardList,
-  ShoppingCart,
-  Gavel,
-  Send,
-  LogOut,
-  RefreshCw
-} from 'lucide-react';
-import { ViewState } from '../App';
+import { X, MapPin, Settings, Skull, Cross, Send, Trash2, Heart, ArrowLeft, Users, Gamepad2, UserRound, Palette, ImagePlus, Upload, RotateCcw, Minimize2, Maximize2 } from 'lucide-react';
 import { User } from '../types';
 
-interface Skill {
-  id: number;
-  userId: number;
-  name: string;
-  level: number;
-}
+// ================== 组件导入 ==================
+import { PlayerInteractionUI } from './PlayerInteractionUI';
+import { NpcInteractionUI } from './NpcInteractionUI';
+import { CharacterHUD } from './CharacterHUD';
+import { RoleplayWindow } from './RoleplayWindow';
+
+import { TowerOfLifeView } from './TowerOfLifeView';
+import { LondonTowerView } from './LondonTowerView';
+import { SanctuaryView } from './SanctuaryView';
+import { GuildView } from './GuildView';
+import { ArmyView } from './ArmyView';
+import { SlumsView } from './SlumsView';
+import { RichAreaView } from './RichAreaView';
+import { DemonSocietyView } from './DemonSocietyView';
+import { SpiritBureauView } from './SpiritBureauView';
+import { ObserverView } from './ObserverView';
+import { TowerGuardView } from './TowerGuardView';
+import { WildHuntView } from './WildHuntView';
+
+// ===== 新增：灾厄游戏 =====
+import { CustomGamePlayerView } from './CustomGamePlayerView';
+import CustomGameRunView from './CustomGameRunView';
+
+import { GlobalAnnouncementPrompt } from './GlobalAnnouncementPrompt';
+import {
+  UI_THEME_PRESETS,
+  DEFAULT_UI_THEME,
+  getUiBackgroundUrl,
+  getUiCustomCss,
+  getUiThemePreset,
+  setUiBackgroundUrl,
+  setUiCustomCss,
+  setUiThemePreset,
+  clearUiBackgroundUrl,
+  clearUiCustomCss
+} from '../utils/theme';
+
+// ================== 资源映射配置 ==================
+const LOCATION_BG_MAP: Record<string, string> = {
+  tower_of_life: '/命之塔.jpg',
+  london_tower: '/伦敦塔.jpg',
+  sanctuary: '/圣所.jpg',
+  guild: '/公会.jpg',
+  army: '/军队.jpg',
+  rich_area: '/东市.jpg',
+  slums: '/西市.jpg',
+  demon_society: '/恶魔会.jpg',
+  paranormal_office: '/灵异管理所.jpg',
+  observers: '/观察者.jpg',
+  tower_guard: '/守塔会.jpg'
+};
+
+// ================== 地图坐标配置 ==================
+const LOCATIONS = [
+  { id: 'tower_of_life', name: '命之塔', x: 50, y: 48, type: 'safe', description: '世界的绝对中心，神明降下神谕的圣地。' },
+  { id: 'sanctuary', name: '圣所', x: 42, y: 42, type: 'safe', description: '未分化幼崽的摇篮，充满治愈与宁静的气息。' },
+  { id: 'london_tower', name: '伦敦塔', x: 67, y: 35, type: 'safe', description: '哨兵与向导的最高学府与管理机构。' },
+  { id: 'rich_area', name: '富人区', x: 70, y: 50, type: 'safe', description: '流光溢彩的销金窟，权贵们在此挥霍财富。' },
+  { id: 'slums', name: '贫民区', x: 25, y: 48, type: 'safe', description: '混乱、肮脏，但充满生机。' },
+  { id: 'demon_society', name: '恶魔会', x: 12, y: 20, type: 'safe', description: '混乱之王的狂欢所。(未知区域)' },
+  { id: 'guild', name: '工会', x: 48, y: 78, type: 'safe', description: '鱼龙混杂的地下交易网与冒险者聚集地。' },
+  { id: 'army', name: '军队', x: 50, y: 18, type: 'safe', description: '人类最坚实的物理防线。' },
+  { id: 'tower_guard', name: '守塔会', x: 30, y: 22, type: 'safe', description: '教堂秩序维护组织，可进行冥想与赎罪。' },
+  { id: 'observers', name: '观察者', x: 65, y: 15, type: 'safe', description: '记录世界历史与真相的隐秘结社。' },
+  { id: 'paranormal_office', name: '灵异管理所', x: 88, y: 15, type: 'safe', description: '专门处理非自然精神波动的神秘机关。' }
+];
+
+const SAFE_ZONES = ['tower_of_life', 'sanctuary', 'london_tower', 'tower_guard'];
+const TOWER_ADJACENT_LOCATIONS = new Set(['sanctuary', 'london_tower', 'slums', 'rich_area', 'guild', 'army']);
+
 interface Props {
   user: User;
-  setUser: React.Dispatch<React.SetStateAction<User | null>>;
-  onNavigate: (view: ViewState) => void;
+  onLogout: () => void;
+  showToast: (msg: string) => void;
+  fetchGlobalData: () => void;
 }
 
-interface MapLocation {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  description: string;
-  lootTable: string[];
-  type?: 'world' | 'tower';
-  minMental?: string;
+interface PrisonStateSummary {
+  isImprisoned: boolean;
+  failedAttempts: number;
+  difficultyLevel: number;
+  currentGameId: string;
+  currentGameName: string;
+  jailedAt: string;
+  updatedAt: string;
 }
 
-const worldLocations: MapLocation[] = [
-  { id: 'tower_of_life', name: '命之塔', x: 50, y: 50, description: '世界的权利中心。', lootTable: ['高阶精神结晶'], type: 'world' },
-  { id: 'london_tower', name: '伦敦塔', x: 58, y: 48, description: '哨兵向导学院。', lootTable: ['标准向导素'], type: 'world' },
-  { id: 'sanctuary', name: '圣所', x: 42, y: 48, description: '幼年教育机构。', lootTable: ['幼崽安抚奶嘴'], type: 'world' },
-  { id: 'guild', name: '公会', x: 50, y: 72, description: '处理委托，拥有地下拍卖行。', lootTable: ['悬赏令碎片'], type: 'world' },
-  { id: 'army', name: '军队', x: 50, y: 15, description: '镇压异鬼的武装力量。', lootTable: ['制式军用匕首'], type: 'world' },
-  { id: 'slums', name: '贫民区', x: 25, y: 55, description: '西区技术聚集地。', lootTable: ['废弃机械零件'], type: 'world' },
-  { id: 'rich_area', name: '富人区', x: 75, y: 55, description: '东区财富中心。', lootTable: ['精致的高脚杯'], type: 'world' },
-  { id: 'tower_guard', name: '守塔会', x: 65, y: 35, description: '表里不一的野心组织。', lootTable: ['忏悔书'], type: 'world' },
-  { id: 'demon_society', name: '恶魔会', x: 15, y: 35, description: '追求自由的反抗者。', lootTable: ['反叛标语传单'], type: 'world' },
-  { id: 'paranormal_office', name: '灵异管理所', x: 30, y: 70, description: '管理鬼魂的专门机构。', lootTable: ['引魂灯残片'], type: 'world' },
-  { id: 'observers', name: '观察者', x: 65, y: 15, description: '遍布世界的眼线。', lootTable: ['加密的微型胶卷'], type: 'world' }
-];
+interface GuardPrisonStateSummary {
+  isImprisoned: boolean;
+  arrestCaseId: number;
+  captorUserId: number;
+  captorName: string;
+  jailedAt: string;
+  releasedAt: string;
+  updatedAt: string;
+}
 
-const towerLocations: MapLocation[] = [
-  { id: 'tower_top', name: '神使层', x: 50, y: 12, description: '塔顶，至高无上的神使居所。', lootTable: [], type: 'tower', minMental: 'S' },
-  { id: 'tower_attendant', name: '侍奉者层', x: 50, y: 25, description: '侍奉者居住区。', lootTable: [], type: 'tower', minMental: 'B+' },
-  { id: 'tower_descendant', name: '神使后裔层', x: 50, y: 38, description: '优秀的向导继承人。', lootTable: [], type: 'tower', minMental: 'A+' },
-  { id: 'tower_training', name: '精神力训练所', x: 32, y: 55, description: '通过游戏训练提升精神进度。', lootTable: [], type: 'tower' },
-  { id: 'tower_evaluation', name: '评定所', x: 68, y: 55, description: '分化仪式与等级评定。', lootTable: [], type: 'tower' }
-];
-
-const fixedNPCs = [
-  { id: 'npc_merchant', name: '贾斯汀', role: '拍卖商人', locationId: 'rich_area', desc: '想要宝贝吗？拿金币说话。', icon: <HandCoins size={14} /> },
-  { id: 'npc_craftsman', name: '老乔', role: '怪脾气手艺人', locationId: 'slums', desc: '滚开，别弄乱我的机油！', icon: <Hammer size={14} /> },
-  { id: 'npc_guild_staff', name: '玛丽', role: '公会接待员', locationId: 'guild', desc: '今天也有新的委托呢。', icon: <ScrollText size={14} /> }
-];
-
-interface MarketItem {
+interface GuardArrestCaseSummary {
   id: number;
-  name: string;
-  price: number;
-  rarity?: string;
-}
-interface AuctionItem {
-  id: string;
-  name: string;
-  sellerId: number;
-  currentPrice: number;
-  minPrice: number;
-  highestBidderId?: number;
-  endsAt: string;
-}
-interface InventoryItem {
-  id: number;
-  name: string;
-  qty: number;
-}
-interface RPMessage {
-  id: number;
-  senderId: number;
-  senderName: string;
-  receiverId: number;
-  receiverName: string;
-  content: string;
-  createdAt: string;
+  applicantUserId: number;
+  applicantName: string;
+  targetUserId: number;
+  targetName: string;
+  status: string;
+  cancelStatus: string;
+  updatedAt: string;
+  resultMessage?: string;
 }
 
-export function GameView({ user, setUser, onNavigate }: Props) {
-  const [inTower, setInTower] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<MapLocation | null>(null);
-  const [allPlayers, setAllPlayers] = useState<any[]>([]);
-  const [spiritStatus, setSpiritStatus] = useState<any>({ name: '', intimacy: 0, level: 1, hp: 100 });
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+function hashNum(input: string | number) {
+  const s = String(input);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h);
+  return Math.abs(h);
+}
 
-  const [showLeftPanel, setShowLeftPanel] = useState(true);
-  const [activeNPC, setActiveNPC] = useState<any>(null);
-  const [showTowerActionPanel, setShowTowerActionPanel] = useState(false);
-  const [showSpiritInteraction, setShowSpiritInteraction] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+function buildPairSessionId(a: number, b: number, locationId: string) {
+  const min = Math.min(a, b);
+  const max = Math.max(a, b);
+  return `rp-${locationId || 'unknown'}-${min}-${max}-${Date.now()}`;
+}
 
-  const [chatTarget, setChatTarget] = useState<any | null>(null);
-  const [chatMessages, setChatMessages] = useState<RPMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
+// ✅ 统一头像地址解析 + 版本戳
+function resolveAvatarSrc(raw: any, updatedAt?: any) {
+  if (!raw || typeof raw !== 'string') return '';
+  const s = raw.trim();
+  if (!s) return '';
 
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [showBackpack, setShowBackpack] = useState(false);
-  const [showMessageContacts, setShowMessageContacts] = useState(false);
+  let base = s;
+  if (!/^data:image\//.test(s) && !/^https?:\/\//.test(s) && !s.startsWith('/')) {
+    base = `/${s.replace(/^\.?\//, '')}`;
+  }
+
+  if (/^data:image\//.test(base)) return base;
+
+  const v = updatedAt ? encodeURIComponent(String(updatedAt)) : '';
+  if (!v) return base;
+  return base.includes('?') ? `${base}&v=${v}` : `${base}?v=${v}`;
+}
+
+function getTowerPurifyRate(jobRaw: any) {
+  const job = String(jobRaw || '').trim();
+  if (!job) return 0;
+  if (job.includes('圣子') || job.includes('圣女')) return 1;
+  if (job.includes('候选')) return 0.6;
+  if (job.includes('侍奉')) return 0.3;
+  if (job.includes('仆从')) return 0.05;
+  return 0;
+}
+
+function isTowerGuardJob(jobRaw: any) {
+  const job = String(jobRaw || '').trim();
+  return job === '守塔会成员' || job === '守塔会会长';
+}
+
+function isPlayerImprisoned(player: any) {
+  return (
+    Number(player?.towerGuardImprisoned || 0) === 1 ||
+    Number(player?.paranormalImprisoned || 0) === 1
+  );
+}
+
+export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) {
+  const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const [activeView, setActiveView] = useState<string | null>(null);
+
+  const [localPlayers, setLocalPlayers] = useState<any[]>([]);
+  const [showPlayersPanel, setShowPlayersPanel] = useState(true);
+  const [annQueue, setAnnQueue] = useState<any[]>([]);
+  const [activeAnn, setActiveAnn] = useState<any | null>(null);
+  const [lastSeenAnnId, setLastSeenAnnId] = useState<number>(() => {
+    const k = `ann_last_seen_${user.id}`;
+    return Number(localStorage.getItem(k) || 0);
+  });
+
+  const [interactTarget, setInteractTarget] = useState<any>(null);
+  const [worldNpcs, setWorldNpcs] = useState<any[]>([]);
+  const [interactNpc, setInteractNpc] = useState<any>(null);
+  const [showNpcPanel, setShowNpcPanel] = useState(true);
+  const [showAreaPanel, setShowAreaPanel] = useState(true);
+  const [mobileContextCollapsed, setMobileContextCollapsed] = useState(true);
+
+
+  // ===== RP 状态 =====
+  const [rpSessionId, setRPSessionId] = useState<string | null>(null);
+  const [rpWindowOpen, setRPWindowOpen] = useState(false);
+  const [rpPeerName, setRPPeerName] = useState<string>('');
+  const [rpNearbyHint, setRPNearbyHint] = useState('');
+  const [rpPing, setRPPing] = useState(false);
+  const [isCreatingRP, setIsCreatingRP] = useState(false);
+
+  // ===== 灾厄游戏状态（新增）=====
+  const [showCustomGamePanel, setShowCustomGamePanel] = useState(false);
+  const [activeCustomGameId, setActiveCustomGameId] = useState<number | null>(null);
+
   const [showSettings, setShowSettings] = useState(false);
-  const [showAwakening, setShowAwakening] = useState(false);
+  const [uiThemePreset, setUiThemePresetState] = useState<string>(() => getUiThemePreset());
+  const [bgImageInput, setBgImageInput] = useState<string>(() => getUiBackgroundUrl());
+  const [customCssText, setCustomCssTextState] = useState<string>(() => getUiCustomCss());
+  const [showDeathForm, setShowDeathForm] = useState<'death' | 'ghost' | null>(null);
+  const [deathText, setDeathText] = useState('');
+  const handledSkipRequestIdsRef = useRef<Set<number>>(new Set());
+  const handledPartyRequestIdsRef = useRef<Set<number>>(new Set());
+  const handledMediationInviteIdsRef = useRef<Set<number>>(new Set());
+  const handledEntanglementPromptSignaturesRef = useRef<Set<string>>(new Set());
+  const handledLondonCompatPromptUserIdsRef = useRef<Set<number>>(new Set());
+  const interactionEventCursorRef = useRef<number>(0);
+  const lastIncomingRPSessionIdRef = useRef<string>('');
+  const backgroundFileRef = useRef<HTMLInputElement | null>(null);
+  const customCssFileRef = useRef<HTMLInputElement | null>(null);
 
-  const [joesPatience, setJoesPatience] = useState(0);
-  const [lastJoeTeachDate, setLastJoeTeachDate] = useState<string>(() => localStorage.getItem(`lastJoeTeachDate_${user.id}`) || '');
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [commissions, setCommissions] = useState<any[]>([]);
-  const [showCommissionBoard, setShowCommissionBoard] = useState(false);
-  const [guildView, setGuildView] = useState<'menu' | 'board' | 'publish'>('menu');
-  const [newCommission, setNewCommission] = useState({
-    title: '',
-    content: '',
-    difficulty: 'C',
-    reward: 100,
-    isAnonymous: false
-  });
+  const [isDying, setIsDying] = useState(false);
+  const [rescueReqId, setRescueReqId] = useState<number | null>(null);
+  const prevJobRef = useRef<string>(String(user?.job || '无'));
 
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [marketGoods, setMarketGoods] = useState<MarketItem[]>([]);
-  const [auctionItems, setAuctionItems] = useState<AuctionItem[]>([]);
-  const [merchantView, setMerchantView] = useState<'menu' | 'shop' | 'auction' | 'consign'>('menu');
-  const [consignForm, setConsignForm] = useState<{ itemId: string; minPrice: number }>({ itemId: '', minPrice: 100 });
+  const [showGraveyard, setShowGraveyard] = useState(false);
+  const [tombstones, setTombstones] = useState<any[]>([]);
+  const [expandedTombstone, setExpandedTombstone] = useState<number | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
 
-  const [panelPos, setPanelPos] = useState<{ x: number; y: number }>(() => {
+  const [showWildExplore, setShowWildExplore] = useState(false);
+  const [prisonState, setPrisonState] = useState<PrisonStateSummary | null>(null);
+  const [guardPrisonState, setGuardPrisonState] = useState<GuardPrisonStateSummary | null>(null);
+  const [guardArrestPendingCase, setGuardArrestPendingCase] = useState<GuardArrestCaseSummary | null>(null);
+  const handledGuardArrestAlertsRef = useRef<Set<string>>(new Set());
+
+  const customBackgroundImage = useMemo(() => String(bgImageInput || '').trim(), [bgImageInput]);
+  const globalMapBackground = customBackgroundImage || '/map_background.jpg';
+  const currentBackgroundImage = useMemo(() => {
+    if (customBackgroundImage) return customBackgroundImage;
+    if (activeView && LOCATION_BG_MAP[activeView]) return LOCATION_BG_MAP[activeView];
+    return '/map_background.jpg';
+  }, [activeView, customBackgroundImage]);
+
+  const [runtimeUser, setRuntimeUser] = useState(user);
+  const actor = runtimeUser || user;
+  const effectiveLocationId = activeView || actor.currentLocation;
+
+  const roleText = String(actor.role || '');
+  const isSentinel = roleText === '哨兵' || roleText.toLowerCase() === 'sentinel';
+  const isGuide = roleText === '向导' || roleText.toLowerCase() === 'guide';
+  const fury = Number(actor.fury ?? 0);
+  const guideStability = Number((actor as any).guideStability ?? 100);
+  const isFuryLocked = isSentinel && fury >= 80;
+  const isStabilityLocked = isGuide && guideStability <= 20;
+  const isTreatmentLocked = isFuryLocked || isStabilityLocked;
+  const isGhostActor = String(actor.status || '') === 'ghost';
+  const isParanormalPrisonLocked = isGhostActor && Boolean(prisonState?.isImprisoned);
+  const isTowerGuardPrisonLocked = Boolean(guardPrisonState?.isImprisoned);
+  const isAnyPrisonLocked = isParanormalPrisonLocked || isTowerGuardPrisonLocked;
+  const towerPurifyRate = getTowerPurifyRate(actor.job);
+  const canUseTowerPurify = towerPurifyRate > 0;
+  const canUseGuardArrestSkill = isTowerGuardJob(actor.job);
+
+
+useEffect(() => { setRuntimeUser(user); }, [user]);
+useEffect(() => { prevJobRef.current = String(user?.job || '无'); }, [user?.id, user?.job]);
+
+useEffect(() => {
+  const uid = Number(actor?.id || 0);
+  if (!uid) return;
+  if (handledLondonCompatPromptUserIdsRef.current.has(uid)) return;
+
+  let alive = true;
+  const runPrompt = async () => {
     try {
-      return JSON.parse(localStorage.getItem(`panelPos_${user.id}`) || '') || { x: 24, y: 24 };
+      const res = await fetch(`/api/london/compat/pool/status?userId=${uid}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!alive || !res.ok || data.success === false) return;
+
+      if (!Boolean(data.shouldPrompt)) {
+        handledLondonCompatPromptUserIdsRef.current.add(uid);
+        return;
+      }
+
+      handledLondonCompatPromptUserIdsRef.current.add(uid);
+      const join = window.confirm(
+        '你已满足伦敦塔精神契合度匹配条件。\n选择【确定】加入匹配池。\n选择【取消】我有伴侣，不参与匹配。'
+      );
+
+      const saveRes = await fetch('/api/london/compat/pool/decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, join })
+      });
+      const saveData = await saveRes.json().catch(() => ({} as any));
+      if (!saveRes.ok || saveData.success === false) {
+        showToast(saveData.message || '保存匹配选择失败');
+        return;
+      }
+      showToast(
+        saveData.message ||
+          (join ? '你已加入伦敦塔精神契合度匹配池。' : '你已跳过匹配（我有伴侣）。')
+      );
     } catch {
-      return { x: 24, y: 24 };
+      // ignore
     }
-  });
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const spiritImgInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const showToast = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 2600);
   };
 
-  useEffect(() => {
-    localStorage.setItem(`panelPos_${user.id}`, JSON.stringify(panelPos));
-  }, [panelPos, user.id]);
+  runPrompt();
+  return () => {
+    alive = false;
+  };
+}, [actor?.id, showToast]);
 
-  const syncAllData = async () => {
+useEffect(() => {
+  if (!runtimeUser) return;
+  const currentJob = String(runtimeUser.job || '无');
+  const prevJob = String(prevJobRef.current || '无');
+  if (prevJob !== '无' && currentJob === '无' && prevJob !== currentJob) {
+    showToast('您已被逐出阵营');
+  }
+  prevJobRef.current = currentJob;
+}, [runtimeUser, showToast]);
+
+useEffect(() => {
+  const hpNum = Number(actor.hp);
+  const hpValid = Number.isFinite(hpNum);
+  const shouldDie = actor.status === 'approved' && hpValid && hpNum <= 0;
+  setIsDying(shouldDie);
+}, [actor.hp, actor.status]);
+
+useEffect(() => {
+  let alive = true;
+  const pull = async () => {
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await fetch(`/api/characters/${actor.id}/runtime`, { cache: 'no-store' });
       const data = await res.json();
-      if (data.success) {
-        const users = data.users || [];
-        setAllPlayers(users.filter((p: any) => p.currentLocation));
-        const me = users.find((p: any) => p.id === user.id);
-        if (me) setUser((prev) => ({ ...(prev || user), ...me }));
+      if (!alive) return;
+      if (res.ok && data.success && data.user) setRuntimeUser(data.user);
+    } catch {}
+  };
+  pull();
+  const t = setInterval(pull, 3000);
+  return () => { alive = false; clearInterval(t); };
+}, [actor.id]);
+
+useEffect(() => {
+  if (!isGhostActor) {
+    setPrisonState(null);
+    return;
+  }
+
+  let alive = true;
+  const pullPrisonState = async () => {
+    try {
+      const res = await fetch(`/api/paranormal/prison/state?userId=${actor.id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!alive || !res.ok || data.success === false) return;
+      setPrisonState(data.prison || null);
+    } catch {
+      // ignore
+    }
+  };
+
+  pullPrisonState();
+  const timer = setInterval(pullPrisonState, 2500);
+  return () => {
+    alive = false;
+    clearInterval(timer);
+  };
+}, [actor.id, isGhostActor]);
+
+useEffect(() => {
+  let alive = true;
+  const pullGuardPrisonState = async () => {
+    try {
+      const res = await fetch(`/api/tower-guard/prison/state?userId=${actor.id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!alive || !res.ok || data.success === false) return;
+      setGuardPrisonState(data.prison || null);
+    } catch {
+      // ignore
+    }
+  };
+  pullGuardPrisonState();
+  const timer = setInterval(pullGuardPrisonState, 2500);
+  return () => {
+    alive = false;
+    clearInterval(timer);
+  };
+}, [actor.id]);
+
+useEffect(() => {
+  if (!actor?.id) return;
+  let alive = true;
+
+  const pollGuardArrestInbox = async () => {
+    try {
+      const res = await fetch(`/api/tower-guard/arrest/inbox?userId=${actor.id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!alive || !res.ok || data.success === false) return;
+
+      const incoming = data.incomingPending || null;
+      setGuardArrestPendingCase(incoming);
+
+      if (incoming && Number(incoming.targetUserId || 0) === Number(actor.id || 0)) {
+        const sign = `incoming:${incoming.id}:${incoming.cancelStatus}:${incoming.updatedAt}`;
+        if (!handledGuardArrestAlertsRef.current.has(sign)) {
+          handledGuardArrestAlertsRef.current.add(sign);
+          if (String(incoming.cancelStatus || '') !== 'pending') {
+            window.alert('您被守塔会盯上了。');
+            showToast('你被守塔会盯上了，可在左下角提交撤销抓捕申请。');
+            if (window.confirm('是否立即向命之塔提交撤销抓捕申请？')) {
+              const ok = await submitGuardArrestCancel(Number(incoming.id || 0), true);
+              showToast(ok ? '撤销申请已提交至命之塔审批。' : '撤销申请提交失败。');
+            }
+          }
+        }
       }
 
-      const spiritRes = await fetch(`/api/users/${user.id}/spirit-status`);
-      const sData = await spiritRes.json();
-      if (sData.success) setSpiritStatus(sData.spiritStatus);
+      const outgoing = Array.isArray(data.outgoingRecent) ? data.outgoingRecent : [];
+      for (const row of outgoing) {
+        const status = String(row?.status || '');
+        const cancelStatus = String(row?.cancelStatus || '');
+        const sign = `outgoing:${row?.id}:${status}:${cancelStatus}:${row?.updatedAt || ''}`;
+        if (handledGuardArrestAlertsRef.current.has(sign)) continue;
+        handledGuardArrestAlertsRef.current.add(sign);
 
-      const unreadRes = await fetch(`/api/roleplay/unread/${user.id}`);
-      const uData = await unreadRes.json();
-      if (uData.success) setUnreadCount(uData.count || 0);
-
-      const skillRes = await fetch(`/api/users/${user.id}/skills`);
-      const skillData = await skillRes.json();
-      if (skillData.success) setSkills(skillData.skills || []);
-
-      const commRes = await fetch('/api/commissions');
-      const commData = await commRes.json();
-      if (commData.success) setCommissions(commData.commissions || []);
-
-      const invRes = await fetch(`/api/users/${user.id}/inventory`);
-      const invData = await invRes.json();
-      if (invData.success) setInventory(invData.items || []);
-
-      const marketRes = await fetch('/api/market/goods');
-      const marketData = await marketRes.json();
-      if (marketData.success) setMarketGoods(marketData.goods || []);
-
-      const auctionRes = await fetch('/api/auction/items');
-      const auctionData = await auctionRes.json();
-      if (auctionData.success) setAuctionItems(auctionData.items || []);
-    } catch (e) {
-      console.error(e);
+        if (status === 'cancelled' && cancelStatus === 'approved') {
+          window.alert('抓捕失败：目标的撤销抓捕申请已被命之塔批准。');
+          showToast('抓捕失败：目标撤销申请已通过。');
+        } else if (status === 'captured') {
+          showToast(`抓捕执行成功：${String(row?.targetName || '目标')} 已押入地下监牢。`);
+        } else if (status === 'rejected') {
+          showToast(`抓捕申请被驳回：${String(row?.targetName || '目标')}`);
+        }
+      }
+    } catch {
+      // ignore
     }
   };
 
-  useEffect(() => {
-    syncAllData();
-    const i = setInterval(syncAllData, 5000);
-    return () => clearInterval(i);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.id]);
-
-  useEffect(() => {
-    if (chatTarget) fetchChatMessages(chatTarget.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatTarget]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
-
-  const fetchChatMessages = async (otherId: number) => {
-    const res = await fetch(`/api/roleplay/conversation/${user.id}/${otherId}`);
-    const data = await res.json();
-    if (data.success) setChatMessages(data.messages || []);
+  pollGuardArrestInbox();
+  const timer = setInterval(pollGuardArrestInbox, 2500);
+  return () => {
+    alive = false;
+    clearInterval(timer);
   };
+}, [actor.id, showToast]);
 
-  const openChatWith = async (target: any) => {
-    if (!target || target.id === user.id) return;
-    setChatTarget(target);
-    setShowMessageContacts(false);
-    setChatInput('');
-    await fetchChatMessages(target.id);
-  };
+useEffect(() => {
+  if (!isParanormalPrisonLocked) return;
+  setShowSettings(false);
+  setShowDeathForm(null);
+  setShowWildExplore(false);
+  if (activeView !== 'paranormal_office') setActiveView('paranormal_office');
+  if (selectedLocation) setSelectedLocation(null);
+}, [isParanormalPrisonLocked, activeView, selectedLocation]);
 
-  const sendChatMessage = async () => {
-    if (!chatTarget || !chatInput.trim()) return;
-    const content = chatInput.trim();
+useEffect(() => {
+  if (!isTowerGuardPrisonLocked) return;
+  setShowSettings(false);
+  setShowDeathForm(null);
+  setShowWildExplore(false);
+  if (activeView !== 'tower_guard') setActiveView('tower_guard');
+  if (selectedLocation) setSelectedLocation(null);
+}, [isTowerGuardPrisonLocked, activeView, selectedLocation]);
 
-    const res = await fetch('/api/roleplay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        senderId: user.id,
-        senderName: user.name,
-        receiverId: chatTarget.id,
-        receiverName: chatTarget.name,
-        content,
-        locationId: user.currentLocation || (inTower ? 'tower_of_life' : 'unknown')
-      })
-    });
-    const data = await res.json();
+useEffect(() => {
+    let alive = true;
+    
 
-    if (data.success) {
-      setChatInput('');
-      await fetchChatMessages(chatTarget.id);
-      await syncAllData();
-    } else {
-      showToast(data.message || '发送失败');
+    const pullAnnouncements = async () => {
+      try {
+        const res = await fetch(`/api/announcements?sinceId=${lastSeenAnnId}&limit=20`, {
+          cache: 'no-store'
+        });
+        const data = await res.json();
+        if (!alive || !data?.success) return;
+
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        if (!rows.length) return;
+
+        setAnnQueue((prev) => {
+          const ids = new Set([
+            ...prev.map((x: any) => Number(x.id)),
+            ...(activeAnn ? [Number(activeAnn.id)] : [])
+          ]);
+          const incoming = rows.filter((x: any) => !ids.has(Number(x.id)));
+          return incoming.length ? [...prev, ...incoming] : prev;
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    pullAnnouncements();
+    const t = setInterval(pullAnnouncements, 4000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [lastSeenAnnId, activeAnn]);
+  useEffect(() => {
+    if (!activeAnn && annQueue.length > 0) {
+      setActiveAnn(annQueue[0]);
+      setAnnQueue((q) => q.slice(1));
     }
-  };
+  }, [annQueue, activeAnn]);
 
-  const addItemToInventory = async (name: string, qty = 1) => {
-    await fetch(`/api/users/${user.id}/inventory/add`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, qty, source: selectedLocation?.id })
-    });
-    await syncAllData();
-  };
 
-  const handleTalkToJoe = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    if (lastJoeTeachDate === today) {
-      showToast('老乔：今天我已经指点过你了，明天再来。');
+  useEffect(() => {
+    if (!isDying || !rescueReqId) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/rescue/check/${actor.id}`);
+        const data = await res.json();
+        if (data.outgoing) {
+          if (data.outgoing.status === 'accepted') {
+            await fetch('/api/rescue/confirm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ patientId: actor.id })
+            });
+            showToast('一位医疗向导将你从死亡边缘拉了回来！');
+            setIsDying(false);
+            setRescueReqId(null);
+            fetchGlobalData();
+          } else if (data.outgoing.status === 'rejected') {
+            showToast('你的求救被拒绝了，生机断绝...');
+            setRescueReqId(null);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [isDying, rescueReqId, actor.id, showToast, fetchGlobalData]);
+
+  // ===== 同地图玩家轮询 =====
+  useEffect(() => {
+    if (!effectiveLocationId) {
+      setLocalPlayers([]);
       return;
     }
-    if (joesPatience < 2) {
-      setJoesPatience((prev) => prev + 1);
-      showToast(`老乔：忙着呢！别烦我！(${joesPatience + 1}/3)`);
-    } else {
-      const skillNames = ['机械维修', '零件打磨', '重载组装', '引擎调试'];
-      const randomSkill = skillNames[Math.floor(Math.random() * skillNames.length)];
-      learnSkill(randomSkill);
+
+    const fetchPlayers = async () => {
+      try {
+        const res = await fetch(`/api/locations/${effectiveLocationId}/players?excludeId=${actor.id}`);
+        const data = await res.json();
+        if (data.success) {
+          const unique = (data.players || []).filter(
+            (p: any, idx: number, arr: any[]) => arr.findIndex((x) => x.id === p.id) === idx
+          );
+          setLocalPlayers(unique);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    fetchPlayers();
+    const timer = setInterval(fetchPlayers, 4000);
+    return () => clearInterval(timer);
+  }, [effectiveLocationId, actor.id]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+
+    const fetchWorldNpcs = async () => {
+      try {
+        const res = await fetch(`/api/world/npcs?userId=${actor.id}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({} as any));
+        if (!alive || !res.ok || data.success === false) return;
+        const rows = Array.isArray(data.npcs) ? data.npcs : [];
+        setWorldNpcs(rows);
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchWorldNpcs();
+    const timer = setInterval(fetchWorldNpcs, 12000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id]);
+
+  useEffect(() => {
+    if (!interactNpc) return;
+    const exists = worldNpcs.some((x: any) => String(x.id || '') === String(interactNpc.id || ''));
+    if (!exists) setInteractNpc(null);
+  }, [worldNpcs, interactNpc]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+    const actionLabelMap: Record<string, string> = {
+      combat: '战斗',
+      steal: '偷窃',
+      prank: '恶作剧',
+      soothe: '精神抚慰'
+    };
+
+    const pollSkipRequests = async () => {
+      try {
+        const res = await fetch(`/api/interact/skip/pending/${actor.id}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !res.ok || data.success === false) return;
+        const rows = Array.isArray(data.requests) ? data.requests : [];
+        for (const row of rows) {
+          const requestId = Number(row?.id || 0);
+          if (!requestId || handledSkipRequestIdsRef.current.has(requestId)) continue;
+          handledSkipRequestIdsRef.current.add(requestId);
+
+          const actionType = String(row?.actionType || '');
+          const label = actionLabelMap[actionType] || actionType || '未知动作';
+          const fromUserId = Number(row?.fromUserId || 0);
+          const fromUserName = String(row?.fromUserName || '').trim();
+          const fromLabel = fromUserName || `玩家#${fromUserId}`;
+          const yes = window.confirm(`${fromLabel} 请求跳过对戏直接结算「${label}」，是否同意？`);
+
+          try {
+            const rsp = await fetch('/api/interact/skip/respond', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                requestId,
+                userId: actor.id,
+                accept: yes
+              })
+            });
+            const rData = await rsp.json().catch(() => ({}));
+            showToast(rData.message || (yes ? '你已同意该跳过请求' : '你已拒绝该跳过请求'));
+            if (yes) fetchGlobalData();
+          } catch {
+            showToast('处理跳过请求失败');
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    pollSkipRequests();
+    const timer = setInterval(pollSkipRequests, 1800);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id, showToast, fetchGlobalData]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+    const key = `interaction_event_cursor_${actor.id}`;
+    const stored = Number(localStorage.getItem(key) || 0);
+    const hasStoredCursor = Number.isFinite(stored) && stored > 0;
+    interactionEventCursorRef.current = hasStoredCursor ? Math.floor(stored) : 0;
+
+    const pollInteractionEvents = async () => {
+      try {
+        const afterId = Math.max(0, Number(interactionEventCursorRef.current || 0));
+        const res = await fetch(`/api/interact/events/${actor.id}?afterId=${afterId}&limit=30`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !res.ok || data.success === false) return;
+        const rows = Array.isArray(data.events) ? data.events : [];
+        if (!rows.length) return;
+
+        let maxId = afterId;
+        let shouldRefresh = false;
+        for (const row of rows) {
+          const id = Number(row?.id || 0);
+          if (id > maxId) maxId = id;
+          const msg = String(row?.message || row?.title || '').trim();
+          if (msg) showToast(msg);
+          const t = String(row?.actionType || '').trim();
+          if (['combat', 'steal', 'prank', 'soothe', 'trade'].includes(t)) {
+            shouldRefresh = true;
+          }
+        }
+
+        interactionEventCursorRef.current = maxId;
+        localStorage.setItem(key, String(maxId));
+        if (shouldRefresh) fetchGlobalData();
+      } catch {
+        // ignore
+      }
+    };
+
+    let timer: number | null = null;
+    const beginPolling = () => {
+      pollInteractionEvents();
+      timer = window.setInterval(pollInteractionEvents, 1800);
+    };
+
+    const bootstrapCursor = async () => {
+      if (hasStoredCursor) {
+        beginPolling();
+        return;
+      }
+      try {
+        const res = await fetch(`/api/interact/events/${actor.id}?latestOnly=1`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (alive && res.ok && data.success !== false) {
+          const maxId = Math.max(0, Number(data.maxId || 0));
+          interactionEventCursorRef.current = maxId;
+          localStorage.setItem(key, String(maxId));
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (alive) beginPolling();
+      }
+    };
+
+    bootstrapCursor();
+    return () => {
+      alive = false;
+      if (timer !== null) window.clearInterval(timer);
+    };
+  }, [actor.id, showToast, fetchGlobalData]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+
+    const pollEntanglements = async () => {
+      try {
+        const res = await fetch(`/api/party/entangle/${actor.id}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !res.ok || data.success === false) return;
+
+        const rows = Array.isArray(data.entanglements) ? data.entanglements : [];
+        for (const row of rows) {
+          const entanglementId = Number(row?.id || 0);
+          const otherUserId = Number(row?.otherUserId || 0);
+          const updatedAt = String(row?.updatedAt || '');
+          if (!entanglementId || !otherUserId) continue;
+
+          const sign = `${entanglementId}:${updatedAt}`;
+          if (handledEntanglementPromptSignaturesRef.current.has(sign)) continue;
+          handledEntanglementPromptSignaturesRef.current.add(sign);
+
+          const otherName = String(row?.otherUserName || '').trim() || `玩家#${otherUserId}`;
+          const yes = window.confirm(
+            `${otherName} 正在纠缠你，是否继续纠缠？\n选择“否”将解除纠缠关系。`
+          );
+
+          try {
+            const rsp = await fetch('/api/party/entangle/resolve', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: actor.id,
+                otherUserId,
+                continueEntangle: yes
+              })
+            });
+            const rData = await rsp.json().catch(() => ({}));
+            showToast(rData.message || (yes ? '仍保持纠缠关系' : '已解除纠缠关系'));
+            fetchGlobalData();
+          } catch {
+            showToast('处理纠缠状态失败');
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    pollEntanglements();
+    const timer = setInterval(pollEntanglements, 2200);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id, showToast, fetchGlobalData]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+
+    const pollPartyRequests = async () => {
+      try {
+        const res = await fetch(`/api/party/requests/${actor.id}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !res.ok || data.success === false) return;
+        const rows = Array.isArray(data.requests) ? data.requests : [];
+        for (const row of rows) {
+          const requestId = Number(row?.id || 0);
+          if (!requestId || handledPartyRequestIdsRef.current.has(requestId)) continue;
+          handledPartyRequestIdsRef.current.add(requestId);
+
+          const reqType = String(row?.requestType || '');
+          const fromName = String(row?.fromUserName || '').trim() || `玩家#${Number(row?.fromUserId || 0)}`;
+          const applicantName = String(row?.applicantName || '').trim() || `玩家#${Number(row?.targetUserId || 0)}`;
+          const payload = row?.payload && typeof row.payload === 'object' ? row.payload : {};
+          let promptText = '';
+          if (reqType === 'join_direct') {
+            promptText = `${fromName} 邀请你组队，是否同意？`;
+          } else if (reqType === 'join_vote') {
+            promptText = `${fromName} 发起入队请求：${applicantName} 申请加入队伍，是否同意？`;
+          } else if (reqType === 'leave') {
+            promptText = `${fromName} 请求解除组队，是否同意？\n若拒绝，将触发纠缠状态。`;
+          } else if (reqType === 'follow') {
+            const loc = String(payload?.locationId || '').trim() || '未知地点';
+            promptText = `${fromName} 前往了 ${loc}，你是否跟随？\n拒绝将解除组队。`;
+          } else {
+            continue;
+          }
+
+          const yes = window.confirm(promptText);
+          try {
+            const rsp = await fetch('/api/party/respond', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                requestId,
+                userId: actor.id,
+                accept: yes
+              })
+            });
+            const rData = await rsp.json().catch(() => ({}));
+            showToast(rData.message || (yes ? '已同意该请求' : '已拒绝该请求'));
+            fetchGlobalData();
+          } catch {
+            showToast('处理组队请求失败');
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    pollPartyRequests();
+    const timer = setInterval(pollPartyRequests, 1800);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id, showToast, fetchGlobalData]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+
+    const pollMediationInvites = async () => {
+      try {
+        const res = await fetch(`/api/rp/mediation/invites/${actor.id}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!alive || !res.ok || data.success === false) return;
+        const rows = Array.isArray(data.invites) ? data.invites : [];
+        for (const row of rows) {
+          const inviteId = Number(row?.id || 0);
+          if (!inviteId || handledMediationInviteIdsRef.current.has(inviteId)) continue;
+          handledMediationInviteIdsRef.current.add(inviteId);
+
+          const requester = String(row?.requestedByName || '').trim() || `玩家#${Number(row?.requestedByUserId || 0)}`;
+          const loc = String(row?.locationName || '').trim() || '未知地点';
+          const reason = String(row?.reason || '').trim();
+          const yes = window.confirm(
+            `${requester} 在 ${loc} 发起评理请求，是否加入调解？${reason ? `\n理由：${reason}` : ''}`
+          );
+          try {
+            const rsp = await fetch(`/api/rp/mediation/invites/${inviteId}/respond`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: actor.id,
+                accept: yes
+              })
+            });
+            const rData = await rsp.json().catch(() => ({}));
+            showToast(rData.message || (yes ? '已加入评理会话' : '已拒绝评理邀请'));
+            if (yes && rData.sessionId) {
+              setRPSessionId(String(rData.sessionId));
+              setRPWindowOpen(true);
+              setRPPing(false);
+              setRPPeerName('评理会话');
+            }
+          } catch {
+            showToast('处理评理邀请失败');
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    pollMediationInvites();
+    const timer = setInterval(pollMediationInvites, 2200);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id, showToast]);
+
+  // ===== 被动接收/同步对戏会话（不自动弹窗）=====
+  useEffect(() => {
+    let alive = true;
+
+    const pollIncoming = async () => {
+      try {
+        const res = await fetch(`/api/rp/session/active/${actor.id}`);
+        const data = await res.json();
+
+        if (!alive || !res.ok || !data.success) return;
+
+        if (data.sessionId) {
+          const sid = String(data.sessionId);
+          const s = data.session || {};
+          const peer = Number(s.userAId) === Number(actor.id) ? s.userBName || '' : s.userAName || '';
+
+          setRPSessionId(sid);
+          setRPPeerName(peer);
+
+          // 只提示，不自动打开窗口
+          if (sid !== lastIncomingRPSessionIdRef.current && sid !== rpSessionId) {
+            showToast(`${peer || '有玩家'} 向你发起了对戏，点击左下角“对戏聊天”查看`);
+            if (!rpWindowOpen) setRPPing(true);
+          }
+
+          lastIncomingRPSessionIdRef.current = sid;
+        } else {
+          if (isCreatingRP) return;
+          setRPSessionId(null);
+          setRPPeerName('');
+          setRPWindowOpen(false);
+          setRPPing(false);
+          lastIncomingRPSessionIdRef.current = '';
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    pollIncoming();
+    const t = setInterval(pollIncoming, 1500);
+
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [actor.id, showToast, rpSessionId, rpWindowOpen, isCreatingRP]);
+
+  // ===== 对戏对象“在你身边”提示 =====
+  useEffect(() => {
+    if (!rpSessionId || !rpPeerName) {
+      setRPNearbyHint('');
+      return;
+    }
+
+    const nearby = localPlayers.some((p: any) => String(p.name || '').trim() === String(rpPeerName).trim());
+    setRPNearbyHint(nearby ? `${rpPeerName} 玩家在你身边` : '');
+  }, [rpSessionId, rpPeerName, localPlayers, effectiveLocationId]);
+
+  const userAge = actor?.age || 0;
+  const isUndifferentiated = userAge < 16;
+  const isStudentAge = userAge >= 16 && userAge <= 19;
+  const hasGuideEscort =
+    isUndifferentiated &&
+    !!(actor as any).partyId &&
+    localPlayers.some((p: any) => {
+      const sameParty = String(p.partyId || '') !== '' && String(p.partyId || '') === String((actor as any).partyId || '');
+      const role = String(p.role || '');
+      return sameParty && (role === '向导' || role.toLowerCase() === 'guide');
+    });
+  const isMinorFogMode =
+    isUndifferentiated &&
+    !hasGuideEscort &&
+    !!effectiveLocationId &&
+    !SAFE_ZONES.includes(String(effectiveLocationId));
+
+  useEffect(() => {
+    if (isMinorFogMode && activeView && !SAFE_ZONES.includes(activeView)) {
+      setActiveView(null);
+      showToast('与向导脱队后迷雾加深，你被迫退出该区域交互。');
+    }
+  }, [isMinorFogMode, activeView, showToast]);
+
+  // ===== 主动发起对戏（稳态 + 不吞错）=====
+  const startRoleplaySession = async (target: User): Promise<any> => {
+    if (isCreatingRP) return { ok: false, message: '正在建立连接，请稍候' };
+    if (!target?.id || target.id === actor.id) return { ok: false, message: '目标玩家无效' };
+
+    setIsCreatingRP(true);
+    let timer: number | null = null;
+    try {
+      const sid = buildPairSessionId(actor.id, target.id, effectiveLocationId || 'unknown');
+      const locationName = LOCATIONS.find((l) => l.id === effectiveLocationId)?.name || '未知区域';
+
+      const payload = {
+        sessionId: sid,
+        userAId: actor.id,
+        userAName: actor.name,
+        userBId: target.id,
+        userBName: target.name,
+        locationId: effectiveLocationId || 'unknown',
+        locationName
+      };
+
+      const ctl = new AbortController();
+      timer = window.setTimeout(() => ctl.abort(), 10000);
+      const res = await fetch('/api/rp/session/upsert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: ctl.signal
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.success === false) {
+        return { ok: false, message: data.message || '建立连接失败（会话创建失败）' };
+      }
+
+      const finalSid = String(data.sessionId || sid);
+      setRPSessionId(finalSid);
+      setRPPeerName(target.name || '');
+      setRPWindowOpen(true);
+      setRPPing(false);
+      lastIncomingRPSessionIdRef.current = finalSid;
+      showToast(`已向 ${target.name} 发起对戏连接`);
+      return { ok: true, sessionId: finalSid };
+    } catch (e: any) {
+      const msg =
+        e?.name === 'AbortError'
+          ? '建立连接超时，请检查网络后重试'
+          : (e?.message || '建立连接失败');
+      return { ok: false, message: msg };
+    } finally {
+      if (timer !== null) window.clearTimeout(timer);
+      setIsCreatingRP(false);
     }
   };
 
-  const learnSkill = async (name: string) => {
-    await fetch(`/api/users/${user.id}/skills`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-    showToast(`老乔骂骂咧咧地教了你一招：${name}`);
-    const today = new Date().toISOString().slice(0, 10);
-    setLastJoeTeachDate(today);
-    localStorage.setItem(`lastJoeTeachDate_${user.id}`, today);
-    setJoesPatience(0);
-    syncAllData();
-  };
-
-  const publishCommission = async () => {
-    if (!newCommission.title || !newCommission.reward) return showToast('请填写标题和奖励');
-
-    const res = await fetch('/api/commissions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: `COMM-${Date.now()}`,
-        publisherId: user.id,
-        publisherName: newCommission.isAnonymous ? '匿名发布者' : user.name,
-        ...newCommission
-      })
-    });
-
-    if (res.ok) {
-      showToast('委托已在公会公示');
-      setGuildView('menu');
-      setNewCommission({ title: '', content: '', difficulty: 'C', reward: 100, isAnonymous: false });
-      syncAllData();
-    }
-  };
-
-  const acceptCommission = async (comm: any) => {
-    const res = await fetch(`/api/commissions/${comm.id}/accept`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id, userName: user.name })
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast('委托已接取，请尽快完成');
-      syncAllData();
-    } else {
-      showToast(data.message || '接取失败');
-    }
-  };
-
-  const handleLocationAction = async (action: 'enter' | 'explore' | 'stay') => {
+  const handleLocationAction = async (action: 'enter' | 'stay') => {
     if (!selectedLocation) return;
+    if (isParanormalPrisonLocked && selectedLocation.id !== 'paranormal_office') {
+      showToast('你被收容在灵异管理所监牢中，当前无法前往其他区域。');
+      return;
+    }
+    if (isTowerGuardPrisonLocked && selectedLocation.id !== 'tower_guard') {
+      showToast('你被关押在守塔会地下监牢中，当前无法前往其他区域。');
+      return;
+    }
+    const targetUnsafe = !SAFE_ZONES.includes(selectedLocation.id);
+    let minorRiskConfirmed = false;
 
-    if (action === 'enter' && selectedLocation.id === 'tower_of_life') {
-      setInTower(true);
-      setSelectedLocation(null);
+    if (isTreatmentLocked && selectedLocation.id !== 'sanctuary') {
+      showToast('当前状态异常，必须前往圣所进行治疗后才能离开');
       return;
     }
 
-    if (inTower && action === 'enter') {
-      const jobRooms: Record<string, string> = { 神使: 'tower_top', 侍奉者: 'tower_attendant', 神使后裔: 'tower_descendant' };
-      if (selectedLocation.id === 'tower_evaluation' && user.role === '未分化') {
-        setShowAwakening(true);
-      } else if (jobRooms[user.job || ''] === selectedLocation.id) {
-        setShowTowerActionPanel(true);
-      } else if (selectedLocation.id === 'tower_training') {
-        showToast('训练所：可进行精神体互动训练。');
-        setShowSpiritInteraction(true);
-      } else {
-        showToast('权限不足。');
-      }
-      setSelectedLocation(null);
+    if (
+      String(actor.currentLocation || '') === 'tower_of_life' &&
+      selectedLocation.id !== 'tower_of_life' &&
+      !TOWER_ADJACENT_LOCATIONS.has(selectedLocation.id)
+    ) {
+      showToast('您无法一下子走那么远');
       return;
+    }
+
+    if (isUndifferentiated && targetUnsafe && !hasGuideEscort) {
+      const headstrong = window.confirm('这里太危险了，未分化者不建议前往。\n选择【确定】头铁前往（迷雾模式），选择【取消】留在安全区。');
+      if (!headstrong) {
+        showToast('你决定继续留在安全区域。');
+        return;
+      }
+      minorRiskConfirmed = true;
+    }
+
+    const hasFaction = !!(actor.faction && actor.faction !== '无');
+    if (isStudentAge && !hasFaction && action === 'enter' && targetUnsafe) {
+      if (!window.confirm('你尚未加入阵营，当前进入将按最低职位处理，是否继续？')) {
+        const londonTower = LOCATIONS.find((l) => l.id === 'london_tower');
+        if (londonTower) {
+          setSelectedLocation(londonTower);
+          showToast('已为你切换到伦敦塔。');
+        }
+        return;
+      }
     }
 
     if (action === 'stay') {
-      await fetch(`/api/users/${user.id}/location`, {
+      const res = await fetch(`/api/characters/${actor.id}/location`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locationId: selectedLocation.id })
+        body: JSON.stringify({ locationId: selectedLocation.id, minorRiskConfirmed })
       });
-      showToast(`已在【${selectedLocation.name}】驻扎`);
-      syncAllData();
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '无法驻足该区域');
+        return;
+      }
+      if (data.prison) setPrisonState(data.prison);
+      if (data.guardPrison) setGuardPrisonState(data.guardPrison);
+      showToast(`已在 ${selectedLocation.name} 驻足。`);
+      fetchGlobalData();
+      return;
     }
 
-    setSelectedLocation(null);
+    if (action === 'enter') {
+      const res = await fetch(`/api/characters/${actor.id}/location`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locationId: selectedLocation.id, minorRiskConfirmed })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '无法进入该区域');
+        return;
+      }
+      if (data.prison) setPrisonState(data.prison);
+      if (data.guardPrison) setGuardPrisonState(data.guardPrison);
+      if (data.prisonTriggered) {
+        showToast('你触发了收容机制，已被关入灵异管理所监牢。');
+      }
+
+      if (isUndifferentiated && targetUnsafe && !hasGuideEscort) {
+        setActiveView(null);
+        setSelectedLocation(null);
+        showToast('迷雾笼罩了前方，NPC会驱离你；你仍可在此区域探索掉落。');
+        fetchGlobalData();
+        return;
+      }
+
+      setActiveView(selectedLocation.id);
+      setSelectedLocation(null);
+      fetchGlobalData();
+    }
   };
 
-  const activeMap = inTower ? towerLocations : worldLocations;
-  const playersForContacts = allPlayers.filter((p: any) => p.id !== user.id && p.currentLocation);
+  const handleExitActiveView = () => {
+    if (isParanormalPrisonLocked && activeView === 'paranormal_office') {
+      showToast('你被收容在监牢中，当前无法撤离灵异管理所。');
+      return;
+    }
+    if (isTowerGuardPrisonLocked && activeView === 'tower_guard') {
+      showToast('你被关押在地下监牢中，当前无法撤离守塔会。');
+      return;
+    }
+    setActiveView(null);
+  };
+
+  const handleExploreSkill = async () => {
+    if (!selectedLocation) return;
+    try {
+      const res = await fetch('/api/explore/skill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: actor.id, locationId: selectedLocation.id })
+      });
+      const data = await res.json();
+      showToast(data.success ? `🎉 ${data.message}` : `⚠️ ${data.message}`);
+    } catch {
+      showToast('错误！');
+    }
+  };
+
+  const handleExploreItem = async () => {
+    if (!selectedLocation && !activeView) return;
+    const locId = activeView || selectedLocation?.id;
+    try {
+      const res = await fetch('/api/explore/item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: actor.id, locationId: locId })
+      });
+      const data = await res.json();
+      showToast(data.success ? `🎉 ${data.message}` : `⚠️ ${data.message}`);
+    } catch {
+      showToast('错误！');
+    }
+  };
+
+  const handleStruggle = async () => {
+    try {
+      const res = await fetch('/api/rescue/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: actor.id, healerId: 0 })
+      });
+      if ((await res.json()).success) {
+        setRescueReqId(Date.now());
+        showToast('求救信号已发出...');
+      }
+    } catch {
+      showToast('求救发送失败');
+    }
+  };
+
+  const handlePurifyErosion = async () => {
+    if (!canUseTowerPurify) {
+      showToast('当前职位无法执行净化');
+      return;
+    }
+    try {
+      const res = await fetch('/api/tower/purify-erosion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: actor.id })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '净化失败');
+        return;
+      }
+      showToast(data.message || '净化完成');
+      fetchGlobalData();
+    } catch {
+      showToast('网络异常，净化失败');
+    }
+  };
+
+  const submitGuardArrestCancel = async (caseId: number, silent = false) => {
+    if (!caseId) return false;
+    try {
+      const res = await fetch('/api/tower-guard/arrest/cancel-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: actor.id,
+          caseId,
+          reason: '被申请人主动提交撤销抓捕申请'
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        if (!silent) showToast(data.message || '撤销申请提交失败');
+        return false;
+      }
+      if (!silent) showToast(data.message || '撤销申请已提交');
+      fetchGlobalData();
+      return true;
+    } catch {
+      if (!silent) showToast('网络异常，撤销申请提交失败');
+      return false;
+    }
+  };
+
+  const handleGuardArrestSkill = async () => {
+    if (!canUseGuardArrestSkill) {
+      showToast('当前职位无法使用守塔会抓捕技能');
+      return;
+    }
+    if (isAnyPrisonLocked) {
+      showToast('监牢状态下无法使用抓捕技能');
+      return;
+    }
+
+    const chosenTarget =
+      interactTarget && localPlayers.some((p: any) => Number(p.id || 0) === Number(interactTarget.id || 0))
+        ? interactTarget
+        : localPlayers.length === 1
+          ? localPlayers[0]
+          : null;
+
+    if (!chosenTarget) {
+      showToast('请先点选一名同地图玩家，再使用抓捕技能。');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/tower-guard/arrest/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: actor.id, targetUserId: Number(chosenTarget.id || 0) })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '抓捕申请提交失败');
+        return;
+      }
+      showToast(data.message || '抓捕申请已提交');
+    } catch {
+      showToast('网络异常，抓捕申请提交失败');
+    }
+  };
+
+  const handleSubmitDeath = async () => {
+    if (!deathText.trim()) return showToast('必须填写谢幕词');
+    await fetch(`/api/users/${actor.id}/submit-death`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: showDeathForm === 'death' ? 'pending_death' : 'pending_ghost', text: deathText })
+    });
+    showToast('申请已提交...');
+    setShowDeathForm(null);
+    fetchGlobalData();
+  };
+
+  const fetchGraveyard = async () => {
+    const res = await fetch('/api/graveyard');
+    const data = await res.json();
+    if (data.success) {
+      setTombstones(data.tombstones);
+      setShowGraveyard(true);
+    }
+  };
+
+  const loadComments = async (tombstoneId: number) => {
+    if (expandedTombstone === tombstoneId) {
+      setExpandedTombstone(null);
+      return;
+    }
+    const res = await fetch(`/api/graveyard/${tombstoneId}/comments`);
+    const data = await res.json();
+    if (data.success) {
+      setComments(data.comments);
+      setExpandedTombstone(tombstoneId);
+    }
+  };
+
+  const addComment = async (tombstoneId: number) => {
+    if (!newComment.trim()) return;
+    await fetch(`/api/graveyard/${tombstoneId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: actor.id, userName: user.name, content: newComment })
+    });
+    setNewComment('');
+    loadComments(tombstoneId);
+  };
+
+  const handleThemePresetApply = (themeId: string) => {
+    const safe = (themeId || DEFAULT_UI_THEME) as any;
+    setUiThemePreset(safe);
+    setUiThemePresetState(safe);
+    showToast(`已切换主题：${UI_THEME_PRESETS.find((x) => x.id === safe)?.name || safe}`);
+  };
+
+  const handleBackgroundApply = () => {
+    const url = String(bgImageInput || '').trim();
+    setUiBackgroundUrl(url);
+    setBgImageInput(url);
+    showToast(url ? '背景图已更新' : '已清空自定义背景图');
+  };
+
+  const handleBackgroundReset = () => {
+    clearUiBackgroundUrl();
+    setBgImageInput('');
+    showToast('已恢复默认背景图');
+  };
+
+  const handleImportBackgroundFile = async (file: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('read background failed'));
+        reader.readAsDataURL(file);
+      });
+      setUiBackgroundUrl(dataUrl);
+      setBgImageInput(dataUrl);
+      showToast(`已导入背景图：${file.name}`);
+    } catch {
+      showToast('读取背景图失败');
+    }
+  };
+
+  const handleImportCustomCssFile = async (file: File) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setUiCustomCss(text);
+      setCustomCssTextState(text);
+      showToast(`已导入自定义 CSS：${file.name}`);
+    } catch {
+      showToast('读取 CSS 文件失败');
+    }
+  };
+
+  const handleCustomCssApply = () => {
+    setUiCustomCss(customCssText);
+    showToast(customCssText.trim() ? '自定义 CSS 已应用' : '已清空自定义 CSS');
+  };
+
+  const handleCustomCssReset = () => {
+    clearUiCustomCss();
+    setCustomCssTextState('');
+    showToast('已清除自定义 CSS');
+  };
+
+  const handleThemeResetAll = () => {
+    setUiThemePreset(DEFAULT_UI_THEME as any);
+    clearUiBackgroundUrl();
+    clearUiCustomCss();
+    setUiThemePresetState(DEFAULT_UI_THEME);
+    setBgImageInput('');
+    setCustomCssTextState('');
+    showToast('已恢复默认圣洁白雾风格');
+  };
+
+const closeAnnouncement = () => {
+  const ids = [
+    Number(activeAnn?.id || 0),
+    ...annQueue.map((x: any) => Number(x?.id || 0))
+  ].filter((n) => n > 0);
+
+  const maxId = ids.length ? Math.max(...ids) : 0;
+  if (maxId > 0) {
+    const k = `ann_last_seen_${actor.id}`;
+    localStorage.setItem(k, String(maxId));
+    setLastSeenAnnId((prev) => Math.max(prev, maxId));
+  }
+
+  setAnnQueue([]);   // ✅ 清空剩余队列
+  setActiveAnn(null);
+};
+
+
+
+  const deleteComment = async (commentId: number, tombstoneId: number) => {
+    await fetch(`/api/graveyard/comments/${commentId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: actor.id })
+    });
+    loadComments(tombstoneId);
+  };
+
+  // ================= 🚀 核心修复：更精准、不乱飘的气泡定位算法 =================
+  const bubbleLayout = useMemo(() => {
+    const result: Record<string, { left: number; top: number; scale: number; depth: number; delay: number; z: number }> = {};
+    const placed: Array<{ x: number; y: number }> = [];
+
+    // 寻找当前地点的物理坐标信息
+    const loc = LOCATIONS.find((l) => l.id === effectiveLocationId);
+    const isWorldMap = !activeView; // 如果没有 activeView，说明在大地图视角
+
+    // 定位基准点：如果在大地图，基准点直接绑定该地标坐标（稍微往上移一点点免得挡住文字）；
+    // 如果在进入了室内区域，基准点在屏幕中心（50, 50）
+    const baseX = isWorldMap && loc ? loc.x : 50;
+    const baseY = isWorldMap && loc ? loc.y - 4 : 50;
+
+    // 头像散布的范围限制：大地图聚集在坐标点周围，室内可以稍微散开
+    const spread = isWorldMap ? 6 : 30;
+
+    localPlayers.forEach((p: any, idx: number) => {
+      const h = hashNum(`${p.id}-${idx}`);
+
+      let angle = (h % 360) * (Math.PI / 180);
+      let r = isWorldMap ? (h % spread) : (h % spread) + 5;
+
+      let x = baseX + Math.cos(angle) * r;
+      let y = baseY + Math.sin(angle) * r * 0.8; // 视觉上 Y 轴呈扁平椭圆
+
+      // 防重叠计算
+      let found = false;
+      for (let t = 0; t < 50; t++) {
+        const ok = placed.every((pt) => {
+          const dx = x - pt.x;
+          const dy = y - pt.y;
+          // 大地图重叠容忍度高（靠得紧密），室内容忍度低（散开）
+          return dx * dx + dy * dy >= (isWorldMap ? 9 : 45);
+        });
+        if (ok) {
+          found = true;
+          break;
+        }
+        r += isWorldMap ? 0.8 : 2;
+        angle += 0.5;
+        x = baseX + Math.cos(angle) * r;
+        y = baseY + Math.sin(angle) * r * 0.8;
+      }
+
+      // 边缘安全限制，防止挤出屏幕边界
+      x = Math.max(5, Math.min(95, x));
+      y = Math.max(5, Math.min(95, y));
+
+      placed.push({ x, y });
+
+      // 大地图视角下头像等比例缩小
+      const baseScale = isWorldMap ? 0.48 : 0.82;
+      const scale = baseScale + (h % 10) * 0.01;
+      const depth = (y - baseY) / 100;
+      const z = Math.floor(20 + depth * 40);
+      const delay = (h % 9) * 0.12;
+
+      result[String(p.id)] = { left: x, top: y, scale, depth, delay, z };
+    });
+
+    return result;
+  }, [localPlayers, effectiveLocationId, activeView]);
+
+  const locationNpcs = useMemo(() => {
+    if (!activeView) return [];
+    if (!effectiveLocationId) return [];
+    return worldNpcs.filter((npc: any) => String(npc.currentLocation || '') === String(effectiveLocationId));
+  }, [worldNpcs, effectiveLocationId, activeView]);
+
+  const currentLocationMeta = useMemo(() => {
+    if (!effectiveLocationId) return null;
+    return LOCATIONS.find((loc) => String(loc.id) === String(effectiveLocationId)) || null;
+  }, [effectiveLocationId]);
+
+  const currentLocationName = useMemo(() => {
+    if (!currentLocationMeta) return '未知区域';
+    if (isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(currentLocationMeta.id)) {
+      return '迷雾区域';
+    }
+    return currentLocationMeta.name;
+  }, [currentLocationMeta, isUndifferentiated, hasGuideEscort]);
+
+  const currentLocationDesc = useMemo(() => {
+    if (!currentLocationMeta) return '地图信息读取中';
+    if (isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(currentLocationMeta.id)) {
+      return '当前区域被迷雾覆盖，需向导陪同才能完整辨识。';
+    }
+    return currentLocationMeta.description;
+  }, [currentLocationMeta, isUndifferentiated, hasGuideEscort]);
+
+  const renderActiveView = () => {
+    if (!activeView) return null;
+    const commonProps = { user: actor, onExit: handleExitActiveView, showToast, fetchGlobalData };
+    const blockExit =
+      (isParanormalPrisonLocked && activeView === 'paranormal_office') ||
+      (isTowerGuardPrisonLocked && activeView === 'tower_guard');
+    let content: React.ReactNode = null;
+    switch (activeView) {
+      case 'tower_of_life':
+        content = <TowerOfLifeView {...commonProps} />;
+        break;
+      case 'london_tower':
+        content = <LondonTowerView {...commonProps} />;
+        break;
+      case 'sanctuary':
+        content = <SanctuaryView {...commonProps} />;
+        break;
+      case 'guild':
+        content = <GuildView {...commonProps} />;
+        break;
+      case 'army':
+        content = <ArmyView {...commonProps} />;
+        break;
+      case 'slums':
+        content = <SlumsView {...commonProps} />;
+        break;
+      case 'rich_area':
+        content = <RichAreaView {...commonProps} />;
+        break;
+      case 'demon_society':
+        content = <DemonSocietyView {...commonProps} />;
+        break;
+      case 'paranormal_office':
+        content = <SpiritBureauView {...commonProps} />;
+        break;
+      case 'observers':
+        content = <ObserverView {...commonProps} />;
+        break;
+      case 'tower_guard':
+        content = <TowerGuardView {...commonProps} />;
+        break;
+      default:
+        content = null;
+        break;
+    }
+
+    if (!content) return null;
+
+    return (
+      <div className="w-full h-full min-h-screen overflow-y-auto pt-20 pb-10 px-4 md:px-0 flex justify-center">
+        <div className="w-full max-w-6xl relative z-10">
+          <button
+            onClick={handleExitActiveView}
+            className={`mb-4 flex items-center gap-2 px-4 py-2 backdrop-blur rounded-xl transition-colors border ${
+              blockExit
+                ? 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed'
+                : 'bg-slate-900/60 text-white hover:bg-slate-800 border-slate-700/50'
+            }`}
+          >
+            <ArrowLeft size={18} /> 返回世界地图
+          </button>
+          {content}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 relative overflow-hidden font-sans select-none">
-      {/* 地图层 */}
-      <div
-        className="absolute inset-0 bg-cover bg-center transition-all duration-1000"
-        style={{ backgroundImage: `url('${inTower ? '/命之塔.jpg' : '/map_background.jpg'}')` }}
-      >
-        <div className="absolute inset-0 bg-black/20 pointer-events-none" />
-
-        {inTower && (
-          <button
-            onClick={() => setInTower(false)}
-            className="absolute top-8 left-8 z-50 bg-white/90 shadow-xl px-6 py-2 rounded-2xl font-black flex items-center gap-2"
-          >
-            <ArrowLeft size={20} /> 返回大地图
-          </button>
-        )}
-
-        {activeMap.map((loc) => {
-          const playersHere = allPlayers.filter((p) => p.currentLocation === loc.id);
-          const npcsHere = fixedNPCs.filter((n) => n.locationId === loc.id);
-
-          return (
-            <div
-              key={loc.id}
-              className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center"
-              style={{ left: `${loc.x}%`, top: `${loc.y}%` }}
-            >
-              <div className="flex -space-x-2 mb-1">
-                {npcsHere.map((npc) => (
-                  <div
-                    key={npc.id}
-                    onClick={() => setActiveNPC(npc)}
-                    className="w-8 h-8 rounded-full border-2 border-emerald-400 bg-white flex items-center justify-center cursor-pointer shadow-lg z-20 hover:scale-110 transition-all"
-                  >
-                    {npc.icon}
-                  </div>
-                ))}
-
-                {playersHere.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => openChatWith(p)}
-                    className={`w-8 h-8 rounded-full border-2 shadow-xl cursor-pointer overflow-hidden transition-all
-                      ${p.id === user.id ? 'border-amber-400 z-30 scale-125' : 'border-white bg-slate-200 hover:scale-110 z-10'}
-                      ${p.status === 'ghost' ? 'opacity-60 ring-2 ring-violet-400' : ''}`}
-                    title={p.id === user.id ? `${p.name}(我)` : `与 ${p.name} 对戏`}
-                  >
-                    {p.avatarUrl ? (
-                      <img src={p.avatarUrl} className="w-full h-full object-cover" alt="avatar" />
-                    ) : (
-                      <span className="text-[10px] w-full h-full flex items-center justify-center font-black">
-                        {p.name?.[0] || '?'}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <button onClick={() => setSelectedLocation(loc)} className="group flex flex-col items-center">
-                <div
-                  className={`p-2 rounded-full shadow-2xl border-2 transition-all group-hover:scale-125 ${
-                    inTower ? 'bg-sky-500 border-sky-100' : 'bg-rose-600 border-white'
-                  }`}
-                >
-                  <MapPin size={18} className="text-white" />
-                </div>
-                <span className="mt-1 px-3 py-1 bg-black/80 text-white text-[10px] font-black rounded-lg">{loc.name}</span>
-              </button>
-            </div>
-          );
-        })}
+    <div className="theme-shell fixed inset-0 overflow-hidden font-sans select-none text-slate-100 bg-transparent">
+      {/* 背景 */}
+      <div className="absolute inset-0 z-0">
+        <motion.div
+          key={activeView || 'world_map'}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="absolute inset-0 bg-cover bg-center transition-all duration-700"
+          style={{
+            backgroundImage: `url(${currentBackgroundImage})`,
+            filter: activeView ? 'brightness(0.4) blur(4px)' : 'brightness(0.6)'
+          }}
+        />
       </div>
 
-      {/* 可拖拽角色面板 */}
-      <AnimatePresence>
-        {showLeftPanel ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            drag
-            dragMomentum={false}
-            dragElastic={0.1}
-            onDragEnd={(_, info) => setPanelPos({ x: info.point.x, y: info.point.y })}
-            className="absolute w-64 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl p-6 z-[60] border border-white/50"
-            style={{ left: panelPos.x, top: panelPos.y }}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div
-                className="w-14 h-14 rounded-2xl border-2 border-sky-500 overflow-hidden bg-slate-100 cursor-pointer"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {user.avatarUrl ? (
-                  <img src={user.avatarUrl} className="w-full h-full object-cover" alt="avatar" />
-                ) : (
-                  <UserIcon className="m-auto text-gray-300" size={24} />
-                )}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const r = new FileReader();
-                    r.onload = async (ev) => {
-                      await fetch(`/api/users/${user.id}/avatar`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ avatarUrl: ev.target?.result })
-                      });
-                      syncAllData();
-                    };
-                    if (e.target.files?.[0]) r.readAsDataURL(e.target.files[0]);
-                  }}
-                />
-              </div>
-              <button onClick={() => setShowLeftPanel(false)} className="text-[10px] font-black text-slate-400 hover:text-slate-900">
-                隐藏
-              </button>
-            </div>
+      {/* HUD */}
+      <CharacterHUD user={runtimeUser} onLogout={onLogout} onRefresh={fetchGlobalData} />
 
-            <h2
-              className="font-black text-xl text-slate-900 mb-1 cursor-pointer hover:text-sky-600 transition-colors"
-              onClick={() => setShowProfileModal(true)}
-            >
-              {user.name}
-            </h2>
-            <p className="text-[10px] font-black text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded-full mb-6">
-              {user.job || user.role || '未知'}
-            </p>
+      {/* 对戏对象在附近提示 */}
+      {rpNearbyHint && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[120] px-4 py-2 rounded-full bg-emerald-600/90 text-white text-xs font-black shadow-lg border border-emerald-300/40">
+          {rpNearbyHint}
+        </div>
+      )}
 
-            <div className="space-y-3 mb-6">
-              <StatusRow label="生命值" cur={user.hp || 100} color="bg-rose-500" />
-              <StatusRow label="精神力" cur={user.mentalProgress || 0} color="bg-indigo-600" />
-              <StatusRow label="灵契" cur={spiritStatus.intimacy || 0} color="bg-pink-500" />
-            </div>
+      {/* 地图容器 */}
+      <AnimatePresence mode="wait">
+        {!activeView && (
+          <motion.div className="relative w-full h-full flex items-center justify-center p-2 md:p-8 z-10">
+            <div className="relative aspect-[16/9] w-full max-w-[1200px] bg-slate-900/50 rounded-2xl md:rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
+              <img src={globalMapBackground} className="w-full h-full object-cover opacity-80" />
 
-            <div className="border-t border-gray-100 pt-3 mb-4">
-              <p className="text-[9px] font-black text-gray-400 mb-2">技能</p>
-              <div className="flex flex-wrap gap-1">
-                {skills.length === 0 && <span className="text-[10px] text-gray-300 italic">尚未习得技能</span>}
-                {skills.map((s) => (
-                  <span
-                    key={s.id}
-                    className="px-2 py-0.5 bg-sky-50 text-sky-600 rounded-md text-[10px] font-bold border border-sky-100"
+              {LOCATIONS.map((loc) => (
+                <div
+                  key={loc.id}
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer touch-manipulation"
+                  style={{ left: `${loc.x}%`, top: `${loc.y}%` }}
+                  onClick={() => setSelectedLocation(loc)}
+                >
+                  <div
+                    className={`w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center backdrop-blur-sm transition-all
+                    ${actor.currentLocation === loc.id ? 'bg-sky-500 border-white animate-pulse' : 'bg-slate-900/80 border-slate-400'}`}
                   >
-                    {s.name} Lv.{s.level}
-                  </span>
-                ))}
-              </div>
-            </div>
+                    <MapPin size={14} />
+                  </div>
+                  <div
+                    className={`absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 rounded-lg text-[10px] md:text-xs font-bold text-slate-200 transition-all duration-300 shadow-xl
+                    ${selectedLocation?.id === loc.id ? 'opacity-100 scale-110 z-20 border-sky-500/50 text-white' : 'opacity-0 hover:opacity-100 translate-y-2 hover:translate-y-0'}
+                  `}
+                  >
+                    {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(loc.id) ? '迷雾区域' : loc.name}
+                  </div>
+                </div>
+              ))}
 
-            <div className="bg-slate-900 text-white p-3 rounded-2xl flex justify-between items-center">
-              <HandCoins size={16} className="text-amber-400" />
-              <span className="font-black text-sm">{user.gold || 0} G</span>
             </div>
           </motion.div>
-        ) : (
-          <motion.button
-            drag
-            dragMomentum={false}
-            onClick={() => setShowLeftPanel(true)}
-            className="absolute top-6 left-6 z-[60] bg-white shadow-2xl px-5 py-3 rounded-full font-black text-xs flex items-center gap-2 cursor-move border border-slate-200"
+        )}
+
+        {activeView && (
+          <motion.div
+            key="location-view"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.4 }}
+            className="absolute inset-0 z-20 relative"
           >
-            <UserIcon size={14} className="text-sky-500" /> 资料
-          </motion.button>
+            {renderActiveView()}
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* NPC弹窗 */}
-      <AnimatePresence>
-        {activeNPC?.id === 'npc_craftsman' && (
-          <NPCModal npc={activeNPC} onClose={() => setActiveNPC(null)}>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={handleTalkToJoe} className="w-full py-4 bg-sky-600 text-white font-black rounded-2xl shadow-lg">
-                搭话 ({joesPatience}/3)
-              </button>
-              <button onClick={() => setActiveNPC(null)} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl">
-                离开
-              </button>
-            </div>
-          </NPCModal>
-        )}
+      {isTreatmentLocked && (
+        <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-red-950/90 border border-red-700 text-red-100 text-xs font-black shadow-lg">
+          当前精神状态异常，必须先前往圣所治疗
+        </div>
+      )}
 
-        {activeNPC?.id === 'npc_guild_staff' && (
-          <NPCModal
-            npc={activeNPC}
-            onClose={() => {
-              setActiveNPC(null);
-              setGuildView('menu');
-            }}
-          >
-            {guildView === 'menu' && (
-              <div className="grid grid-cols-1 gap-3">
-                <button
-                  onClick={() => setGuildView('board')}
-                  className="py-4 bg-sky-50 text-sky-600 font-black rounded-2xl border border-sky-100"
-                >
-                  查看委托板
-                </button>
-                <button
-                  onClick={() => setGuildView('publish')}
-                  className="py-4 bg-amber-50 text-amber-600 font-black rounded-2xl border border-amber-100"
-                >
-                  发布新委托
-                </button>
-                <button onClick={() => setActiveNPC(null)} className="py-4 bg-slate-100 text-slate-500 font-black rounded-2xl">
-                  以后再说
-                </button>
-              </div>
-            )}
+      {isMinorFogMode && (
+        <div className="absolute left-1/2 top-16 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-slate-900/90 border border-slate-600 text-slate-100 text-xs font-black shadow-lg">
+          迷雾状态：NPC将驱离你，仅可探索掉落
+        </div>
+      )}
+      {isTowerGuardPrisonLocked && (
+        <div className="absolute left-1/2 top-28 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-amber-950/90 border border-amber-700 text-amber-100 text-xs font-black shadow-lg">
+          地下监牢状态：你被关押在守塔会，当前无法离开该区域
+        </div>
+      )}
 
-            {guildView === 'board' && (
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {commissions.length === 0 && <p className="text-center text-gray-400 py-4">目前没有公示委托</p>}
-                {commissions
-                  .filter((c) => c.status === 'open')
-                  .map((c) => (
-                    <div key={c.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-black text-slate-900">{c.title}</span>
-                        <span className="text-[10px] font-bold text-amber-600">{c.reward} G</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 mb-3">{c.content}</p>
-                      <button onClick={() => acceptCommission(c)} className="w-full py-2 bg-sky-600 text-white text-[11px] font-black rounded-xl">
-                        接受委托
-                      </button>
-                    </div>
-                  ))}
-                <button onClick={() => setGuildView('menu')} className="w-full py-2 text-xs font-bold text-sky-600">
-                  返回
-                </button>
-              </div>
-            )}
+      {/* 气泡头像区 */}
+      <div className="absolute inset-0 z-30 pointer-events-none">
+        {localPlayers.map((p, idx) => {
+          const b = bubbleLayout[String(p.id)];
+          if (!b) return null;
 
-            {guildView === 'publish' && (
-              <div className="space-y-3">
-                <input
-                  placeholder="任务标题"
-                  className="w-full p-3 bg-slate-50 border rounded-xl outline-none"
-                  value={newCommission.title}
-                  onChange={(e) => setNewCommission({ ...newCommission, title: e.target.value })}
-                />
-                <textarea
-                  placeholder="任务详情内容..."
-                  className="w-full p-3 bg-slate-50 border rounded-xl h-24 outline-none resize-none"
-                  value={newCommission.content}
-                  onChange={(e) => setNewCommission({ ...newCommission, content: e.target.value })}
-                />
-                <div className="flex gap-2">
-                  <input
-                    placeholder="报酬"
-                    type="number"
-                    className="flex-1 p-3 bg-slate-50 border rounded-xl outline-none"
-                    value={newCommission.reward}
-                    onChange={(e) => setNewCommission({ ...newCommission, reward: parseInt(e.target.value || '0', 10) })}
-                  />
-                  <button
-                    onClick={() => setNewCommission({ ...newCommission, isAnonymous: !newCommission.isAnonymous })}
-                    className={`px-4 rounded-xl font-black text-xs ${
-                      newCommission.isAnonymous ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {newCommission.isAnonymous ? '匿名发布' : '公开身份'}
-                  </button>
-                </div>
-                <button onClick={publishCommission} className="w-full py-4 bg-amber-500 text-white font-black rounded-2xl">
-                  发布并扣除报酬
-                </button>
-              </div>
-            )}
-          </NPCModal>
-        )}
+          const avatarSrc = resolveAvatarSrc(p.avatarUrl, p.avatarUpdatedAt);
 
-        {activeNPC?.id === 'npc_merchant' && (
-          <NPCModal
-            npc={activeNPC}
-            onClose={() => {
-              setActiveNPC(null);
-              setMerchantView('menu');
-            }}
-          >
-            {merchantView === 'menu' && (
-              <div className="grid grid-cols-1 gap-3">
-                <button
-                  onClick={() => setMerchantView('shop')}
-                  className="py-4 bg-emerald-50 text-emerald-600 font-black rounded-2xl border border-emerald-100 flex items-center justify-center gap-2"
-                >
-                  <ShoppingCart size={16} /> 购买商品
-                </button>
-                <button
-                  onClick={() => setMerchantView('auction')}
-                  className="py-4 bg-violet-50 text-violet-600 font-black rounded-2xl border border-violet-100 flex items-center justify-center gap-2"
-                >
-                  <Gavel size={16} /> 拍卖行（竞价）
-                </button>
-                <button onClick={() => setMerchantView('consign')} className="py-4 bg-amber-50 text-amber-600 font-black rounded-2xl border border-amber-100">
-                  委托拍卖（成交收取10%）
-                </button>
-                <button onClick={() => setActiveNPC(null)} className="py-4 bg-slate-100 text-slate-600 font-black rounded-2xl">
-                  离开
-                </button>
-              </div>
-            )}
-
-            {merchantView === 'shop' && (
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {marketGoods.length === 0 && <p className="text-center text-gray-400 py-4">暂无上架商品</p>}
-                {marketGoods.map((g) => (
-                  <div key={g.id} className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                    <div className="flex justify-between items-center">
-                      <div className="font-black text-emerald-900">{g.name}</div>
-                      <div className="text-amber-600 font-bold">{g.price} G</div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        const res = await fetch('/api/market/buy', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ userId: user.id, itemId: g.id })
-                        });
-                        const d = await res.json();
-                        d.success ? showToast('购买成功，已放入背包') : showToast(d.message || '购买失败');
-                        syncAllData();
-                      }}
-                      className="w-full mt-2 py-2 bg-emerald-600 text-white text-[12px] font-black rounded-xl"
-                    >
-                      购买
-                    </button>
-                  </div>
-                ))}
-                <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-emerald-600">
-                  返回
-                </button>
-              </div>
-            )}
-
-            {merchantView === 'auction' && (
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {auctionItems.length === 0 && <p className="text-center text-gray-400 py-4">暂无拍卖品</p>}
-                {auctionItems.map((a) => (
-                  <div key={a.id} className="p-3 bg-violet-50 rounded-2xl border border-violet-100">
-                    <div className="flex justify-between items-center mb-1">
-                      <div className="font-black text-violet-900">{a.name}</div>
-                      <div className="text-violet-700 text-[12px]">当前价 {a.currentPrice} G</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        placeholder={`>= ${a.currentPrice + 1}`}
-                        className="flex-1 p-2 bg-white border rounded-lg text-sm"
-                        onChange={(e) => ((a as any).__bid = parseInt(e.target.value || '0', 10))}
-                      />
-                      <button
-                        onClick={async () => {
-                          const price = (a as any).__bid || 0;
-                          const res = await fetch('/api/auction/bid', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId: user.id, itemId: a.id, price })
-                          });
-                          const d = await res.json();
-                          d.success ? showToast('出价成功') : showToast(d.message || '出价失败');
-                          syncAllData();
-                        }}
-                        className="px-3 rounded-lg bg-violet-600 text-white text-xs font-black"
-                      >
-                        出价
-                      </button>
-                    </div>
-                    <div className="text-[10px] text-violet-600 mt-1">成交后商人收取10%佣金</div>
-                  </div>
-                ))}
-                <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-violet-600">
-                  返回
-                </button>
-              </div>
-            )}
-
-            {merchantView === 'consign' && (
-              <div className="space-y-3">
-                <select
-                  className="w-full p-3 bg-slate-50 border rounded-xl"
-                  value={consignForm.itemId}
-                  onChange={(e) => setConsignForm({ ...consignForm, itemId: e.target.value })}
-                >
-                  <option value="">选择要拍卖的物品</option>
-                  {inventory.map((it) => (
-                    <option key={it.id} value={String(it.id)}>
-                      {it.name} x{it.qty}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  className="w-full p-3 bg-slate-50 border rounded-xl"
-                  placeholder="起拍价"
-                  value={consignForm.minPrice}
-                  onChange={(e) => setConsignForm({ ...consignForm, minPrice: parseInt(e.target.value || '0', 10) })}
-                />
-                <button
-                  onClick={async () => {
-                    if (!consignForm.itemId) return showToast('请选择物品');
-                    const res = await fetch('/api/auction/consign', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id, itemId: Number(consignForm.itemId), minPrice: consignForm.minPrice })
-                    });
-                    const d = await res.json();
-                    d.success ? showToast('已委托拍卖') : showToast(d.message || '委托失败');
-                    syncAllData();
-                    setMerchantView('menu');
-                  }}
-                  className="w-full py-3 bg-amber-500 text-white font-black rounded-2xl"
-                >
-                  提交委托
-                </button>
-                <div className="text-[10px] text-amber-600 text-center">成交后收取10%佣金</div>
-                <button onClick={() => setMerchantView('menu')} className="w-full py-2 text-xs font-bold text-amber-600">
-                  返回
-                </button>
-              </div>
-            )}
-          </NPCModal>
-        )}
-      </AnimatePresence>
-
-      {/* 地点操作弹窗 */}
-      <AnimatePresence>
-        {selectedLocation && (
-          <NPCModal
-            npc={{ icon: <MapPin size={14} />, name: selectedLocation.name, role: '地点操作', desc: selectedLocation.description }}
-            onClose={() => setSelectedLocation(null)}
-          >
-            <div className="text-[11px] text-slate-500 mb-3">坐标：X {selectedLocation.x} / Y {selectedLocation.y}</div>
-            <div className="grid grid-cols-1 gap-3">
-              {!inTower && selectedLocation.id === 'tower_of_life' && (
-                <button onClick={() => handleLocationAction('enter')} className="py-3 bg-indigo-600 text-white font-black rounded-2xl">
-                  进入命之塔
-                </button>
-              )}
-              {inTower && selectedLocation.type === 'tower' && (
-                <button onClick={() => handleLocationAction('enter')} className="py-3 bg-indigo-600 text-white font-black rounded-2xl">
-                  进入
-                </button>
-              )}
+          return (
+            <motion.div
+              key={`bubble-${p.id}-${idx}`}
+              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+              style={{
+                left: `${b.left}%`,
+                top: `${b.top}%`,
+                zIndex: b.z
+              }}
+              initial={{ opacity: 0, scale: b.scale * 0.7, y: 10 }}
+              animate={{
+                opacity: 1,
+                scale: b.scale,
+                y: [0, -3, 0]
+              }}
+              transition={{
+                opacity: { duration: 0.35, delay: b.delay },
+                scale: { duration: 0.35, delay: b.delay },
+                y: { duration: 2.5 + (idx % 3) * 0.4, repeat: Infinity, ease: 'easeInOut' }
+              }}
+            >
               <button
                 onClick={async () => {
-                  const drop = Math.random() < 0.5;
-                  if (drop && selectedLocation.lootTable.length > 0) {
-                    const item = selectedLocation.lootTable[Math.floor(Math.random() * selectedLocation.lootTable.length)];
-                    await addItemToInventory(item, 1);
-                    showToast(`在【${selectedLocation.name}】探索时获得：${item}`);
-                  } else {
-                    showToast(`在【${selectedLocation.name}】探索无收获`);
+                  const targetInPrison = isPlayerImprisoned(p as any);
+                  if (isAnyPrisonLocked || targetInPrison) {
+                    const result = await startRoleplaySession(p as any);
+                    if (!result?.ok) {
+                      showToast(result?.message || '当前无法发起对戏');
+                    }
+                    return;
                   }
-                  setSelectedLocation(null);
+                  setInteractTarget(p);
                 }}
-                className="py-3 bg-emerald-600 text-white font-black rounded-2xl"
+                className="group relative"
+                title={`与 ${p.name} 互动`}
               >
-                探索（50% 掉落）
-              </button>
-              <button onClick={() => handleLocationAction('stay')} className="py-3 bg-amber-600 text-white font-black rounded-2xl">
-                驻扎
-              </button>
-              <button onClick={() => setSelectedLocation(null)} className="py-3 bg-slate-100 text-slate-600 font-black rounded-2xl">
-                取消
-              </button>
-            </div>
-          </NPCModal>
-        )}
-      </AnimatePresence>
-
-      {/* 任务面板 */}
-      <AnimatePresence>
-        {showCommissionBoard && (
-          <motion.div
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 50, opacity: 0 }}
-            className="fixed bottom-24 right-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[80]"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-lg flex items-center gap-2">
-                <ClipboardList size={20} className="text-sky-600" />
-                任务行囊
-              </h3>
-              <X size={18} onClick={() => setShowCommissionBoard(false)} className="cursor-pointer" />
-            </div>
-
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              <div className="text-[10px] font-black text-gray-400 border-b pb-2">我接取的委托</div>
-              {commissions
-                .filter((c) => c.acceptedById === user.id)
-                .map((c) => (
-                  <div key={c.id} className="p-3 bg-sky-50 rounded-2xl border border-sky-100">
-                    <p className="font-black text-xs text-sky-900">{c.title}</p>
-                    <p className="text-[10px] text-sky-600 mt-1">发布者: {c.publisherName}</p>
-                    <button onClick={() => showToast('已提交至发布者审核...')} className="w-full mt-2 py-1.5 bg-sky-600 text-white text-[10px] font-black rounded-lg">
-                      提交任务
-                    </button>
-                  </div>
-                ))}
-
-              <div className="text-[10px] font-black text-gray-400 border-b pb-2 mt-4">我发布的委托</div>
-              {commissions
-                .filter((c) => c.publisherId === user.id)
-                .map((c) => (
-                  <div key={c.id} className="p-3 bg-amber-50 rounded-2xl border border-amber-100">
-                    <p className="font-black text-xs text-amber-900">{c.title}</p>
-                    <p className="text-[10px] text-amber-600 mt-1">状态: {c.status === 'accepted' ? '被接取' : '公示中'}</p>
-                    {c.status === 'accepted' && (
-                      <button onClick={() => showToast('审核通过，报酬已发放')} className="w-full mt-2 py-1.5 bg-amber-600 text-white text-[10px] font-black rounded-lg">
-                        确认完成
-                      </button>
-                    )}
-                  </div>
-                ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 联系人列表 */}
-      <AnimatePresence>
-        {showMessageContacts && (
-          <motion.div
-            initial={{ y: 30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 30, opacity: 0 }}
-            className="fixed bottom-24 right-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[90]"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-lg flex items-center gap-2">
-                <MessageSquareText size={20} className="text-sky-600" />
-                对戏联系人
-              </h3>
-              <X size={18} onClick={() => setShowMessageContacts(false)} className="cursor-pointer" />
-            </div>
-
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {playersForContacts.length === 0 && <div className="text-center text-gray-400 py-6">暂无可联系玩家</div>}
-              {playersForContacts.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => openChatWith(p)}
-                  className="w-full p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3 hover:bg-white"
+                <div
+                  className="rounded-full overflow-hidden border-2 border-sky-300/70 bg-slate-800 shadow-[0_0_22px_rgba(56,189,248,0.38)] group-hover:scale-110 group-hover:border-sky-200 transition-all"
+                  style={{
+                    width: `${46 * b.scale}px`,
+                    height: `${46 * b.scale}px`,
+                    opacity: 0.78 + b.depth * 0.22
+                  }}
                 >
-                  <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-200 border">
-                    {p.avatarUrl ? (
-                      <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
+                  {avatarSrc ? (
+                    <img src={avatarSrc} className="w-full h-full object-cover" alt={p.name || 'avatar'} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-white font-black text-lg">
+                      {(p.name || '?')[0]}
+                    </div>
+                  )}
+                </div>
+
+                <span
+                  className="absolute bottom-0 right-0 rounded-full bg-emerald-400 border border-white animate-pulse"
+                  style={{ width: `${8 * b.scale}px`, height: `${8 * b.scale}px` }}
+                />
+
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 mt-1 px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap
+                                bg-slate-900/90 border border-slate-700 text-slate-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {p.name}
+                  {isPlayerImprisoned(p) ? ' · 在押' : ''}
+                </div>
+              </button>
+            </motion.div>
+          );
+        })}
+
+        {localPlayers.length === 0 && activeView && (
+          <div
+            className="absolute right-4 top-4 pointer-events-none px-3 py-1.5 rounded-lg text-[11px] font-bold
+                          bg-slate-900/80 border border-slate-700 text-slate-400"
+          >
+            当前地点暂无其他玩家
+          </div>
+        )}
+      </div>
+
+      {/* 桌面端：当前地图 + 同地区信息面板 */}
+      <div className="hidden md:block fixed right-4 top-24 z-40">
+        <div className="bg-slate-900/88 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+          <button
+            onClick={() => setShowAreaPanel((v) => !v)}
+            className="w-full px-4 py-3 text-xs font-black text-slate-100 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+          >
+            <span className="flex items-center gap-2">
+              <MapPin size={14} /> 当前地图面板
+            </span>
+            <span className="inline-flex items-center gap-2 text-[11px] text-sky-300">
+              {currentLocationName}
+              {showAreaPanel ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            </span>
+          </button>
+
+          {showAreaPanel && (
+            <div className="p-4 space-y-3">
+              <div>
+                <div className="text-lg font-black text-white">{currentLocationName}</div>
+                <div className="text-[11px] text-slate-300 mt-1 leading-relaxed">{currentLocationDesc}</div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                    (currentLocationMeta?.type || 'safe') === 'safe'
+                      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                      : 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                  }`}
+                >
+                  {(currentLocationMeta?.type || 'safe') === 'safe' ? '安全区' : '危险区'}
+                </span>
+                <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-sky-500/40 bg-sky-500/10 text-sky-200">
+                  同地区玩家 {localPlayers.length}
+                </span>
+                <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
+                  同地区 NPC {locationNpcs.length}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+          <button
+            onClick={() => setShowPlayersPanel((v) => !v)}
+            className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+          >
+            <span className="flex items-center gap-2">
+              <Users size={14} /> 同地区玩家
+            </span>
+            <span className="text-sky-400">{localPlayers.length}</span>
+          </button>
+
+          {showPlayersPanel && (
+            <div className="max-h-64 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+              {localPlayers.length === 0 ? (
+                <div className="text-[11px] text-slate-500 text-center py-3">当前区域暂无其他玩家</div>
+              ) : (
+                localPlayers.map((p: any) => {
+                  const avatarSrc = resolveAvatarSrc(p.avatarUrl, p.avatarUpdatedAt);
+                  const targetInPrison = isPlayerImprisoned(p);
+                  const secondaryLabel = targetInPrison
+                    ? (Number(p.towerGuardImprisoned || 0) === 1 ? '守塔会地下监牢在押' : '灵异监牢收容中')
+                    : (p.job || p.role || '自由人');
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={async () => {
+                        if (isAnyPrisonLocked || targetInPrison) {
+                          const result = await startRoleplaySession(p as any);
+                          if (!result?.ok) {
+                            showToast(result?.message || '当前无法发起对戏');
+                          }
+                          return;
+                        }
+                        setInteractTarget(p);
+                      }}
+                      className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700 hover:border-sky-500 hover:bg-slate-800 transition-all text-left"
+                    >
+                      <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-600 bg-slate-700 shrink-0">
+                        {avatarSrc ? (
+                          <img src={avatarSrc} className="w-full h-full object-cover" alt={p.name || 'avatar'} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-white text-xs font-black">
+                            {(p.name || '?')[0]}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-white truncate">{p.name}</div>
+                        <div className={`text-[10px] truncate ${targetInPrison ? 'text-rose-300' : 'text-slate-400'}`}>
+                          {secondaryLabel}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+          <button
+            onClick={() => setShowNpcPanel((v) => !v)}
+            className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+          >
+            <span className="flex items-center gap-2">
+              <UserRound size={14} /> 同区域 NPC
+            </span>
+            <span className="text-emerald-300">{locationNpcs.length}</span>
+          </button>
+
+          {showNpcPanel && (
+            <div className="max-h-56 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+              {locationNpcs.length === 0 ? (
+                <div className="text-[11px] text-slate-500 text-center py-3">
+                  {activeView ? '当前区域暂无可见 NPC' : '进入地区后显示当前小地图 NPC'}
+                </div>
+              ) : (
+                locationNpcs.map((npc: any) => {
+                  const affinity = Number(npc?.affinity || 0);
+                  const affinityColor =
+                    affinity >= 80 ? 'text-emerald-300' : affinity >= 60 ? 'text-sky-300' : affinity <= 30 ? 'text-rose-300' : 'text-amber-300';
+                  return (
+                    <button
+                      key={String(npc.id || '')}
+                      onClick={() => setInteractNpc(npc)}
+                      className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700 hover:border-emerald-500 hover:bg-slate-800 transition-all text-left"
+                    >
+                      <div className="w-9 h-9 rounded-full border border-slate-600 bg-slate-700 shrink-0 flex items-center justify-center text-slate-100">
+                        <UserRound size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-white truncate">{String(npc.name || '未知NPC')}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{String(npc.skillFaction || '通用')} · {String(npc.personality || '神秘')}</div>
+                        <div className={`text-[10px] font-bold ${affinityColor}`}>
+                          好感 {affinity} · {String(npc.affinityStage || '中立')}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 移动端：同地区信息面板（可折叠） */}
+      <div className="md:hidden fixed left-3 right-3 bottom-20 z-[165] pointer-events-none">
+        {!mobileContextCollapsed && (
+          <div className="pointer-events-auto bg-slate-900/92 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+              <div className="text-xs font-black text-slate-100">同地区信息</div>
+              <button
+                onClick={() => setMobileContextCollapsed(true)}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-300 border border-slate-600 bg-slate-800 hover:bg-slate-700"
+              >
+                <Minimize2 size={12} /> 收起
+              </button>
+            </div>
+
+            <div className="max-h-[44vh] overflow-y-auto p-2 space-y-2 custom-scrollbar">
+              <div className="rounded-xl border border-slate-700 bg-slate-800/70 overflow-hidden">
+                <button
+                  onClick={() => setShowAreaPanel((v) => !v)}
+                  className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700/80 flex items-center justify-between hover:bg-slate-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <MapPin size={14} /> 地区信息
+                  </span>
+                  <span className="inline-flex items-center gap-2 text-[10px] text-sky-300">
+                    {currentLocationName}
+                    {showAreaPanel ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                  </span>
+                </button>
+                {showAreaPanel && (
+                  <div className="p-3">
+                    <div className="text-sm font-black text-white">{currentLocationName}</div>
+                    <div className="text-[11px] text-slate-300 mt-1 leading-relaxed">{currentLocationDesc}</div>
+                    <div className="flex items-center gap-2 flex-wrap mt-2">
+                      <span
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                          (currentLocationMeta?.type || 'safe') === 'safe'
+                            ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                            : 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                        }`}
+                      >
+                        {(currentLocationMeta?.type || 'safe') === 'safe' ? '安全区' : '危险区'}
+                      </span>
+                      <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-sky-500/40 bg-sky-500/10 text-sky-200">
+                        玩家 {localPlayers.length}
+                      </span>
+                      <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
+                        NPC {locationNpcs.length}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-700 bg-slate-800/70 overflow-hidden">
+                <button
+                  onClick={() => setShowPlayersPanel((v) => !v)}
+                  className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700/80 flex items-center justify-between hover:bg-slate-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <Users size={14} /> 同地区玩家
+                  </span>
+                  <span className="text-sky-400">{localPlayers.length}</span>
+                </button>
+                {showPlayersPanel && (
+                  <div className="max-h-40 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                    {localPlayers.length === 0 ? (
+                      <div className="text-[11px] text-slate-500 text-center py-3">当前区域暂无其他玩家</div>
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs font-black text-slate-500">{p.name?.[0] || '?'}</div>
+                      localPlayers.map((p: any) => {
+                        const avatarSrc = resolveAvatarSrc(p.avatarUrl, p.avatarUpdatedAt);
+                        const targetInPrison = isPlayerImprisoned(p);
+                        const secondaryLabel = targetInPrison
+                          ? (Number(p.towerGuardImprisoned || 0) === 1 ? '守塔会地下监牢在押' : '灵异监牢收容中')
+                          : (p.job || p.role || '自由人');
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={async () => {
+                              if (isAnyPrisonLocked || targetInPrison) {
+                                const result = await startRoleplaySession(p as any);
+                                if (!result?.ok) {
+                                  showToast(result?.message || '当前无法发起对戏');
+                                }
+                                return;
+                              }
+                              setInteractTarget(p);
+                            }}
+                            className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-sky-500 transition-all text-left"
+                          >
+                            <div className="w-8 h-8 rounded-full overflow-hidden border border-slate-600 bg-slate-700 shrink-0">
+                              {avatarSrc ? (
+                                <img src={avatarSrc} className="w-full h-full object-cover" alt={p.name || 'avatar'} />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-white text-xs font-black">
+                                  {(p.name || '?')[0]}
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-black text-white truncate">{p.name}</div>
+                              <div className={`text-[10px] truncate ${targetInPrison ? 'text-rose-300' : 'text-slate-400'}`}>
+                                {secondaryLabel}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
-                  <div className="text-left">
-                    <div className="font-bold text-sm">{p.name}</div>
-                    <div className="text-[10px] text-slate-500">{p.currentLocation || '未知地点'}</div>
-                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-700 bg-slate-800/70 overflow-hidden">
+                <button
+                  onClick={() => setShowNpcPanel((v) => !v)}
+                  className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700/80 flex items-center justify-between hover:bg-slate-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <UserRound size={14} /> 同区域 NPC
+                  </span>
+                  <span className="text-emerald-300">{locationNpcs.length}</span>
                 </button>
-              ))}
+                {showNpcPanel && (
+                  <div className="max-h-40 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                    {locationNpcs.length === 0 ? (
+                      <div className="text-[11px] text-slate-500 text-center py-3">
+                        {activeView ? '当前区域暂无可见 NPC' : '进入地区后显示当前小地图 NPC'}
+                      </div>
+                    ) : (
+                      locationNpcs.map((npc: any) => {
+                        const affinity = Number(npc?.affinity || 0);
+                        const affinityColor =
+                          affinity >= 80 ? 'text-emerald-300' : affinity >= 60 ? 'text-sky-300' : affinity <= 30 ? 'text-rose-300' : 'text-amber-300';
+                        return (
+                          <button
+                            key={String(npc.id || '')}
+                            onClick={() => setInteractNpc(npc)}
+                            className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-emerald-500 transition-all text-left"
+                          >
+                            <div className="w-8 h-8 rounded-full border border-slate-600 bg-slate-700 shrink-0 flex items-center justify-center text-slate-100">
+                              <UserRound size={14} />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-black text-white truncate">{String(npc.name || '未知NPC')}</div>
+                              <div className="text-[10px] text-slate-400 truncate">{String(npc.skillFaction || '通用')} · {String(npc.personality || '神秘')}</div>
+                              <div className={`text-[10px] font-bold ${affinityColor}`}>
+                                好感 {affinity} · {String(npc.affinityStage || '中立')}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </motion.div>
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {showWildExplore && (
+          <WildHuntView
+            user={actor}
+            onClose={() => {
+              setShowWildExplore(false);
+              fetchGlobalData();
+            }}
+            onDefeatReturn={(returnLocation?: string) => {
+              setShowWildExplore(false);
+              setActiveView(null);
+              setSelectedLocation(null);
+              const backName =
+                LOCATIONS.find((x) => x.id === String(returnLocation || ''))?.name ||
+                (returnLocation ? String(returnLocation) : '城中');
+              showToast(`战败后已返回：${backName}`);
+              fetchGlobalData();
+            }}
+            showToast={showToast}
+            fetchGlobalData={fetchGlobalData}
+          />
         )}
       </AnimatePresence>
 
-      {/* 背包弹窗 */}
+      {/* 地点详情弹窗 */}
       <AnimatePresence>
-        {showBackpack && (
+        {selectedLocation && !activeView && (
           <motion.div
-            initial={{ y: 30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 30, opacity: 0 }}
-            className="fixed bottom-24 right-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[80]"
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            className="fixed bottom-0 left-0 right-0 md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[450px] bg-slate-900/95 backdrop-blur-xl p-6 rounded-t-3xl md:rounded-3xl border-t md:border border-white/20 z-50 shadow-2xl"
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-lg flex items-center gap-2">
-                <Backpack size={20} className="text-slate-700" />
-                背包
-              </h3>
-              <X size={18} onClick={() => setShowBackpack(false)} className="cursor-pointer" />
+            <div className="absolute inset-0 rounded-[2rem] overflow-hidden -z-10 opacity-30">
+              <img
+                src={customBackgroundImage || LOCATION_BG_MAP[selectedLocation.id] || globalMapBackground}
+                className="w-full h-full object-cover blur-md scale-110"
+              />
             </div>
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {inventory.length === 0 && <div className="text-center text-gray-400 py-6">空空如也</div>}
-              {inventory.map((it) => (
-                <div key={it.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-                  <div className="font-bold text-slate-800">{it.name}</div>
-                  <div className="text-xs text-slate-500">x{it.qty}</div>
+
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <h3 className="text-2xl font-black text-white mb-2 flex items-center gap-2">
+                  {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(selectedLocation.id) ? '迷雾区域' : selectedLocation.name}
+                  <span
+                    className={`text-[10px] px-2 py-1 rounded-lg border backdrop-blur-sm ${
+                      selectedLocation.type === 'safe'
+                        ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
+                        : 'text-rose-300 border-rose-500/30 bg-rose-500/10'
+                    }`}
+                  >
+                    {selectedLocation.type === 'safe' ? '安全区' : '危险区'}
+                  </span>
+                </h3>
+                <p className="text-sm text-slate-300 leading-relaxed mb-6 font-medium">
+                  {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(selectedLocation.id)
+                    ? '这里雾蒙蒙的，仿佛有迷雾笼罩。真的要去吗？'
+                    : selectedLocation.description}
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleLocationAction('enter')}
+                    className="flex-1 px-6 py-3.5 bg-white text-slate-950 font-black rounded-xl text-sm hover:bg-slate-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                  >
+                    进入区域
+                  </button>
+                  <button
+                    onClick={() => handleLocationAction('stay')}
+                    className="flex-1 px-6 py-3.5 bg-slate-800/80 text-white font-black rounded-xl text-sm hover:bg-slate-700 transition-colors border border-slate-600"
+                  >
+                    在此驻足
+                  </button>
                 </div>
-              ))}
+
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  <button
+                    onClick={handleExploreSkill}
+                    className="w-full px-4 py-3 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold rounded-xl text-xs hover:bg-indigo-500 hover:text-white transition-all"
+                  >
+                    🧠 领悟派系技能
+                  </button>
+                  <button
+                    onClick={handleExploreItem}
+                    className="w-full px-4 py-3 bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold rounded-xl text-xs hover:bg-amber-500 hover:text-white transition-all"
+                  >
+                    📦 搜索区域物资
+                  </button>
+                </div>
+
+                {selectedLocation.type === 'danger' && (
+                  <button
+                    onClick={() => {
+                      if (isAnyPrisonLocked) {
+                        showToast('收容状态下无法进入界域探索。');
+                        return;
+                      }
+                      setSelectedLocation(null);
+                      setActiveView(null);
+                      setShowWildExplore(true);
+                    }}
+                    className="w-full mt-2 px-4 py-3 bg-rose-600/20 text-rose-300 border border-rose-500/30 font-black rounded-xl text-xs hover:bg-rose-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                  >
+                    <Skull size={14} /> 进入界外打怪界面
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedLocation(null)}
+                className="p-2 -mr-2 -mt-2 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 rounded-full transition-colors backdrop-blur-sm"
+              >
+                <X size={20} />
+              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 对戏窗口 */}
+      {/* 玩家交互弹窗 */}
       <AnimatePresence>
-        {chatTarget && (
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-4"
-          >
-            <div className="w-full max-w-2xl bg-white rounded-[28px] shadow-2xl border border-slate-200 p-4">
-              <div className="flex justify-between items-center mb-3">
-                <div className="font-black text-lg">与 {chatTarget.name} 的对戏</div>
+        {interactTarget && !isAnyPrisonLocked && (
+          <PlayerInteractionUI
+            currentUser={actor}
+            targetUser={interactTarget}
+            onClose={() => setInteractTarget(null)}
+            showToast={showToast}
+            onStartRP={async (target) => {
+              return await startRoleplaySession(target);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {interactNpc && (
+          <NpcInteractionUI
+            currentUser={actor}
+            npc={interactNpc}
+            onClose={() => setInteractNpc(null)}
+            showToast={showToast}
+            onUpdated={async () => {
+              try {
+                const res = await fetch(`/api/world/npcs?userId=${actor.id}`, { cache: 'no-store' });
+                const data = await res.json().catch(() => ({} as any));
+                if (res.ok && data.success !== false) {
+                  setWorldNpcs(Array.isArray(data.npcs) ? data.npcs : []);
+                }
+              } catch {
+                // ignore
+              }
+              fetchGlobalData();
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {(actor.status === 'pending_death' || actor.status === 'pending_ghost') && (
+        <div className="fixed inset-0 z-[99999] bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center backdrop-blur-md">
+          <Skull size={64} className="text-slate-600 mb-6 animate-pulse" />
+          <h1 className="text-3xl font-black text-white mb-4 tracking-widest">命运审视中</h1>
+          <p className="text-slate-400 font-bold max-w-md leading-relaxed">
+            您的谢幕戏正在递交至「塔」的最高议会。
+            <br />
+            在获得批准前，您的灵魂被锁定于此。
+          </p>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {isDying && actor.status === 'approved' && (
+          <div className="fixed inset-0 z-[9999] bg-red-950/90 flex items-center justify-center p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-black border border-red-900 p-8 rounded-[32px] w-full max-w-md text-center shadow-[0_0_100px_rgba(220,38,38,0.3)]"
+            >
+              <Heart size={48} className="text-red-600 mx-auto mb-4 animate-pulse" />
+              <h2 className="text-2xl font-black text-red-500 mb-2">生命体征已消失</h2>
+              <p className="text-slate-400 text-sm mb-8">黑暗正在吞噬你的意识...</p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleStruggle}
+                  disabled={rescueReqId !== null}
+                  className="w-full py-4 bg-red-600 text-white rounded-2xl font-black hover:bg-red-500 transition-colors disabled:opacity-50"
+                >
+                  {rescueReqId ? '正在等待向导回应...' : '挣扎 (向区域内治疗向导求救)'}
+                </button>
                 <button
                   onClick={() => {
-                    setChatTarget(null);
-                    setChatMessages([]);
-                    setChatInput('');
-                    syncAllData();
+                    setIsDying(false);
+                    setShowDeathForm('death');
                   }}
-                  className="px-3 py-1.5 bg-slate-100 rounded-lg text-sm font-bold"
+                  className="w-full py-4 bg-slate-900 text-slate-400 rounded-2xl font-bold hover:bg-slate-800 transition-colors"
+                >
+                  拥抱死亡 (生成墓碑)
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 右下功能按钮 */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        <button
+          onClick={() => {
+            if (isAnyPrisonLocked) {
+              showToast('收容状态下无法进行该互动。');
+              return;
+            }
+            fetchGraveyard();
+          }}
+          className={`p-3.5 backdrop-blur-md border rounded-full transition-all shadow-lg group relative ${
+            isAnyPrisonLocked
+              ? 'bg-slate-900/70 border-slate-800 text-slate-600 cursor-not-allowed'
+              : 'bg-slate-900/80 border-slate-600 text-slate-300 hover:text-white hover:bg-sky-600 hover:border-sky-400 hover:scale-110'
+          }`}
+        >
+          <Cross size={20} />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-black text-white text-[10px] rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+            世界公墓
+          </span>
+        </button>
+        <button
+          onClick={() => {
+            if (isAnyPrisonLocked) {
+              showToast('收容状态下无法进行该互动。');
+              return;
+            }
+            setShowSettings(!showSettings);
+          }}
+          className={`p-3.5 backdrop-blur-md border rounded-full transition-all shadow-lg group relative ${
+            isAnyPrisonLocked
+              ? 'bg-slate-900/70 border-slate-800 text-slate-600 cursor-not-allowed'
+              : 'bg-slate-900/80 border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700 hover:scale-110'
+          }`}
+        >
+          <Settings size={20} />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-black text-white text-[10px] rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+            设置/谢幕
+          </span>
+        </button>
+      </div>
+      {/* 左下交互功能区（移动端收起后横向一行） */}
+      <div className="fixed bottom-4 left-3 right-3 md:bottom-6 md:left-6 md:right-auto z-[160] flex items-center gap-2 md:flex-col md:items-stretch overflow-x-auto">
+        <button
+          onClick={() => {
+            if (isAnyPrisonLocked) {
+              showToast('收容状态下无法进入界域探索。');
+              return;
+            }
+            setSelectedLocation(null);
+            setActiveView(null);
+            setShowWildExplore(true);
+          }}
+          className={`shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl inline-flex items-center gap-1.5 ${
+            isAnyPrisonLocked
+              ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+              : 'bg-rose-600 text-white hover:bg-rose-500'
+          }`}
+        >
+          <Gamepad2 size={14} />
+          <span className="md:hidden">界域探索</span>
+          <span className="hidden md:inline">前往界域探索</span>
+        </button>
+
+        <button
+          onClick={() => setMobileContextCollapsed((v) => !v)}
+          className="md:hidden shrink-0 px-3 py-2.5 rounded-2xl font-black text-[11px] shadow-xl inline-flex items-center gap-1.5 bg-slate-800 text-slate-100 border border-slate-600"
+        >
+          {mobileContextCollapsed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+          {mobileContextCollapsed ? '展开地区' : '收起地区'}
+        </button>
+
+        {canUseGuardArrestSkill && (
+          <button
+            onClick={handleGuardArrestSkill}
+            disabled={isAnyPrisonLocked}
+            className={`shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl transition-all ${
+              isAnyPrisonLocked
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-rose-700 text-white hover:bg-rose-600'
+            }`}
+          >
+            <span className="md:hidden">守塔抓捕</span>
+            <span className="hidden md:inline">守塔抓捕技能（先点选目标）</span>
+          </button>
+        )}
+        {guardArrestPendingCase &&
+          Number(guardArrestPendingCase.targetUserId || 0) === Number(actor.id || 0) &&
+          String(guardArrestPendingCase.status || '') === 'pending_review' &&
+          String(guardArrestPendingCase.cancelStatus || 'none') !== 'pending' && (
+            <button
+              onClick={() => submitGuardArrestCancel(Number(guardArrestPendingCase.id || 0))}
+              className="shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl transition-all bg-amber-600 text-white hover:bg-amber-500"
+            >
+              <span className="md:hidden">撤销抓捕</span>
+              <span className="hidden md:inline">提交撤销抓捕申请</span>
+            </button>
+          )}
+        {canUseTowerPurify && (
+          <button
+            onClick={handlePurifyErosion}
+            disabled={isAnyPrisonLocked}
+            className={`shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl transition-all ${
+              isAnyPrisonLocked
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-emerald-600 text-white hover:bg-emerald-500'
+            }`}
+          >
+            <span className="md:hidden">净化侵蚀</span>
+            <span className="hidden md:inline">净化侵蚀（职位净化率 {Math.round(towerPurifyRate * 100)}%）</span>
+          </button>
+        )}
+        <button
+          onClick={() => {
+            if (!rpSessionId) {
+              showToast('当前没有活跃对戏会话');
+              return;
+            }
+            setRPWindowOpen((v) => !v);
+            setRPPing(false);
+          }}
+          className={`relative shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl transition-all ${
+            rpSessionId ? 'bg-sky-600 text-white hover:bg-sky-500' : 'bg-slate-700 text-slate-300'
+          }`}
+        >
+          <span className="md:hidden">对戏{rpPeerName ? `·${rpPeerName}` : ''}</span>
+          <span className="hidden md:inline">对戏聊天{rpPeerName ? ` · ${rpPeerName}` : ''}</span>
+          {rpPing && !rpWindowOpen && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rose-500 border border-white" />
+          )}
+        </button>
+      </div>
+
+      {/* 设置弹窗 */}
+      <AnimatePresence>
+        {showSettings && !showDeathForm && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed bottom-24 right-4 md:right-6 w-[92vw] max-w-sm bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl p-4 shadow-2xl z-50 settings-scroll"
+          >
+            <h4 className="text-xs font-black text-slate-400 uppercase mb-3 px-2">主题与命运设置</h4>
+
+            <div className="space-y-3 mb-4 pb-4 border-b border-slate-700/60">
+              <div className="flex items-center gap-2 text-xs font-black text-slate-300">
+                <Palette size={14} /> 主题模板
+              </div>
+              <select
+                value={uiThemePreset}
+                onChange={(e) => handleThemePresetApply(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500"
+              >
+                {UI_THEME_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name} · {preset.desc}
+                  </option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-2 text-xs font-black text-slate-300">
+                <ImagePlus size={14} /> 背景图 URL
+              </div>
+              <input
+                type="text"
+                value={bgImageInput}
+                onChange={(e) => setBgImageInput(e.target.value)}
+                placeholder="https://... 或 /your-bg.jpg"
+                className="w-full px-3 py-2 text-xs bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500"
+              />
+              <input
+                ref={backgroundFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) await handleImportBackgroundFile(file);
+                  e.currentTarget.value = '';
+                }}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => backgroundFileRef.current?.click()}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                >
+                  上传图片
+                </button>
+                <button
+                  onClick={handleBackgroundApply}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-sky-600 text-white hover:bg-sky-500 transition-colors"
+                >
+                  应用背景
+                </button>
+                <button
+                  onClick={handleBackgroundReset}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-slate-700 text-slate-100 hover:bg-slate-600 transition-colors"
+                >
+                  恢复默认
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs font-black text-slate-300">
+                <Upload size={14} /> 自定义全局 CSS
+              </div>
+              <input
+                ref={customCssFileRef}
+                type="file"
+                accept=".css,text/css"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) await handleImportCustomCssFile(file);
+                  e.currentTarget.value = '';
+                }}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => customCssFileRef.current?.click()}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+                >
+                  导入 CSS
+                </button>
+                <button
+                  onClick={handleCustomCssReset}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-slate-700 text-slate-100 hover:bg-slate-600 transition-colors"
+                >
+                  清空 CSS
+                </button>
+              </div>
+              <textarea
+                value={customCssText}
+                onChange={(e) => setCustomCssTextState(e.target.value)}
+                placeholder="可直接粘贴自定义 CSS..."
+                className="w-full h-24 px-3 py-2 text-[11px] bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500 resize-none"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleCustomCssApply}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
+                >
+                  应用 CSS
+                </button>
+                <button
+                  onClick={handleThemeResetAll}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-amber-600 text-white hover:bg-amber-500 transition-colors flex items-center justify-center gap-1"
+                >
+                  <RotateCcw size={12} /> 全部重置
+                </button>
+              </div>
+            </div>
+
+            <h4 className="text-xs font-black text-slate-400 uppercase mb-3 px-2">命运抉择</h4>
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowDeathForm('death')}
+                className="w-full flex items-center gap-3 p-3 text-sm font-bold text-rose-400 bg-rose-500/10 rounded-xl hover:bg-rose-500/20 transition-colors"
+              >
+                <Skull size={16} /> 申请谢幕 (死亡)
+              </button>
+              {actor.role !== '鬼魂' && (
+                <button
+                  onClick={() => setShowDeathForm('ghost')}
+                  className="w-full flex items-center gap-3 p-3 text-sm font-bold text-violet-400 bg-violet-500/10 rounded-xl hover:bg-violet-500/20 transition-colors"
+                >
+                  <Skull size={16} className="opacity-50" /> 转化鬼魂 (换皮)
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 公墓 */}
+      <AnimatePresence>
+        {showGraveyard && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <motion.div
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="bg-slate-900 border border-slate-700 rounded-[32px] w-full max-w-3xl h-[80vh] flex flex-col shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                <h2 className="text-2xl font-black text-white flex items-center gap-3">
+                  <Cross className="text-slate-500" /> 世界公墓
+                </h2>
+                <button onClick={() => setShowGraveyard(false)} className="text-slate-500 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-950">
+                {tombstones.length === 0 ? (
+                  <div className="text-center py-20 text-slate-600 font-bold tracking-widest">目前无人长眠于此</div>
+                ) : (
+                  tombstones.map((t) => (
+                    <div key={t.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 transition-all hover:border-slate-700">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="text-xl font-black text-slate-200">{t.name} 的墓碑</h3>
+                          <div className="text-[10px] uppercase font-bold text-slate-500 mt-1 space-x-2">
+                            <span>生前: {t.role}</span>
+                            <span>
+                              {t.mentalRank}/{t.physicalRank}
+                            </span>
+                            {t.spiritName && <span>精神体: {t.spiritName}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => loadComments(t.id)}
+                          className="text-xs font-bold text-sky-500 bg-sky-500/10 px-3 py-1.5 rounded-lg hover:bg-sky-500/20"
+                        >
+                          {expandedTombstone === t.id ? '收起留言' : '献花/留言'}
+                        </button>
+                      </div>
+
+                      <p className="text-sm text-slate-400 bg-slate-950 p-4 rounded-xl border border-slate-800/50 italic">"{t.deathDescription}"</p>
+
+                      <AnimatePresence>
+                        {expandedTombstone === t.id && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="mt-4 pt-4 border-t border-slate-800">
+                              <div className="space-y-2 mb-4 max-h-40 overflow-y-auto custom-scrollbar">
+                                {comments.length === 0 && <div className="text-xs text-slate-600">还没有人留下只言片语...</div>}
+                                {comments.map((c) => (
+                                  <div key={c.id} className="group flex justify-between items-start p-2 bg-slate-950/50 rounded-lg">
+                                    <div className="text-xs">
+                                      <span className="font-bold text-sky-400 mr-2">{c.userName}:</span>
+                                      <span className="text-slate-300">{c.content}</span>
+                                    </div>
+                                    {c.userId === actor.id && (
+                                      <button
+                                        onClick={() => deleteComment(c.id, t.id)}
+                                        className="text-rose-500/50 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={newComment}
+                                  onChange={(e) => setNewComment(e.target.value)}
+                                  placeholder="写下你的悼词..."
+                                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-sky-500"
+                                />
+                                <button
+                                  onClick={() => addComment(t.id)}
+                                  className="bg-sky-600 text-white p-2 rounded-lg hover:bg-sky-500 transition-colors"
+                                >
+                                  <Send size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 对戏窗口（可开关，不再强制弹） */}
+      <AnimatePresence>
+        {rpSessionId && rpWindowOpen && (
+          <RoleplayWindow
+            sessionId={rpSessionId}
+            currentUser={actor}
+            onClose={() => setRPWindowOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeAnn && (
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 14 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[1000] w-[92vw] max-w-xl"
+          >
+            <div className="bg-slate-900/95 border border-amber-400/40 rounded-2xl shadow-2xl p-4 backdrop-blur-md">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] text-amber-300 font-black mb-1">全服通报</div>
+                  <h4 className="text-white font-black text-base">
+                    {activeAnn.title || '系统公告'}
+                  </h4>
+                </div>
+                <button
+                  onClick={closeAnnouncement}
+                  className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 text-xs font-bold"
                 >
                   关闭
                 </button>
               </div>
 
-              <div className="h-80 overflow-y-auto bg-slate-50 border rounded-xl p-3 space-y-2">
-                {chatMessages.length === 0 ? (
-                  <div className="text-sm text-slate-500">暂无对话，开始第一句吧。</div>
-                ) : (
-                  chatMessages.map((m) => {
-                    const mine = m.senderId === user.id;
-                    return (
-                      <div key={m.id} className={mine ? 'text-right' : 'text-left'}>
-                        <div className="text-[11px] text-slate-500 mb-1">
-                          {m.senderName} · {new Date(m.createdAt).toLocaleString()}
-                        </div>
-                        <div
-                          className={`inline-block px-3 py-2 rounded-xl text-sm border ${
-                            mine ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-800 border-slate-200'
-                          }`}
-                        >
-                          {m.content}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
-                  placeholder="输入对戏内容..."
-                  className="flex-1 border rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-sky-200"
-                />
-                <button
-                  onClick={sendChatMessage}
-                  disabled={!chatInput.trim()}
-                  className="px-4 py-2 rounded-xl bg-sky-600 text-white font-black disabled:opacity-50 flex items-center gap-1"
-                >
-                  <Send size={15} /> 发送
-                </button>
-              </div>
+              <p className="mt-2 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+                {activeAnn.content || ''}
+              </p>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 塔内职位面板 */}
+      {/* ===== 新增：灾厄游戏面板 ===== */}
       <AnimatePresence>
-        {showTowerActionPanel && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[36px] p-8 w-full max-w-sm shadow-2xl">
-              <h3 className="font-black text-xl mb-5">房间管理 · {user.job || '无职位'}</h3>
-              <div className="grid grid-cols-2 gap-3">
+        {showCustomGamePanel && (
+          <div className="fixed inset-0 z-[9996] bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="max-w-3xl mx-auto mt-10">
+              <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 mb-3 flex justify-between items-center">
+                <h3 className="font-black text-white">灾厄游戏中心</h3>
                 <button
-                  onClick={async () => {
-                    const r = await fetch('/api/tower/checkin', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id })
-                    });
-                    const d = await r.json();
-                    d.success ? showToast(`签到成功 +${d.reward}G`) : showToast(d.message || '签到失败');
-                    syncAllData();
-                  }}
-                  className="p-4 rounded-2xl bg-emerald-50 text-emerald-700 font-black"
+                  onClick={() => setShowCustomGamePanel(false)}
+                  className="px-3 py-1 rounded bg-slate-700 text-white"
                 >
-                  签到领薪
-                </button>
-
-                <button
-                  onClick={async () => {
-                    const r = await fetch('/api/tower/work', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id })
-                    });
-                    const d = await r.json();
-                    d.success ? showToast(`打工成功 +${d.reward}G`) : showToast(d.message || '打工失败');
-                    syncAllData();
-                  }}
-                  className="p-4 rounded-2xl bg-sky-50 text-sky-700 font-black"
-                >
-                  开始打工
-                </button>
-
-                <button
-                  onClick={() => {
-                    setShowSpiritInteraction(true);
-                    setShowTowerActionPanel(false);
-                  }}
-                  className="p-4 rounded-2xl bg-pink-50 text-pink-700 font-black"
-                >
-                  精神体互动
-                </button>
-
-                <button
-                  onClick={async () => {
-                    const r = await fetch('/api/tower/quit', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id })
-                    });
-                    const d = await r.json();
-                    d.success ? showToast(`离职成功，扣除 ${d.penalty}G`) : showToast(d.message || '离职失败');
-                    syncAllData();
-                  }}
-                  className="p-4 rounded-2xl bg-rose-50 text-rose-700 font-black"
-                >
-                  申请离职
+                  关闭
                 </button>
               </div>
 
-              <button onClick={() => setShowTowerActionPanel(false)} className="w-full mt-4 py-3 bg-slate-100 rounded-2xl font-black">
-                关闭
-              </button>
+              <CustomGamePlayerView
+                {...({
+                  user,
+                  showToast,
+                  onEnterRun: (gameId: number) => {
+                    setActiveCustomGameId(Number(gameId || 0));
+                    setShowCustomGamePanel(false);
+                  }
+                } as any)}
+              />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 精神体互动 */}
-      <AnimatePresence>
-        {showSpiritInteraction && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/60 z-[120] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[40px] p-8 w-full max-w-md shadow-2xl relative">
-              <button onClick={() => setShowSpiritInteraction(false)} className="absolute top-5 right-5 text-slate-400">
-                <X />
-              </button>
-
-              <div className="relative w-40 h-40 mx-auto mb-5">
-                <div className="w-full h-full rounded-[28px] border-4 border-pink-100 overflow-hidden bg-slate-50 flex items-center justify-center">
-                  {spiritStatus.imageUrl ? (
-                    <img src={spiritStatus.imageUrl} className="w-full h-full object-cover" alt="spirit" />
-                  ) : (
-                    <span className="text-slate-300 text-sm">精神体立绘</span>
-                  )}
-                </div>
-                <input
-                  ref={spiritImgInputRef}
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                      await fetch('/api/tower/interact-spirit', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: user.id, imageUrl: ev.target?.result, intimacyGain: 0 })
-                      });
-                      syncAllData();
-                    };
-                    reader.readAsDataURL(f);
-                  }}
-                />
-                <button
-                  onClick={() => spiritImgInputRef.current?.click()}
-                  className="absolute -bottom-2 -right-2 bg-white border shadow p-2 rounded-full text-pink-500 text-xs font-black"
-                >
-                  换图
-                </button>
-              </div>
-
-              <h3 className="font-black text-2xl text-center mb-1">{spiritStatus.name || '未命名精神体'}</h3>
-              {!spiritStatus.name && (
-                <button
-                  className="block mx-auto text-sky-600 font-black mb-4 text-sm"
-                  onClick={async () => {
-                    const n = prompt('锁定名字后不可更改：');
-                    if (!n) return;
-                    await fetch('/api/tower/interact-spirit', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id, name: n, intimacyGain: 0 })
-                    });
-                    syncAllData();
-                  }}
-                >
-                  [ 点击取名 ]
-                </button>
-              )}
-
-              <div className="grid grid-cols-3 gap-3">
-                <SpiritSubBtn
-                  label="摸摸"
-                  val="+5"
-                  color="text-pink-600"
-                  onClick={async () => {
-                    await fetch('/api/tower/interact-spirit', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id, intimacyGain: 5 })
-                    });
-                    syncAllData();
-                  }}
-                />
-                <SpiritSubBtn
-                  label="喂食"
-                  val="+10"
-                  color="text-amber-600"
-                  onClick={async () => {
-                    await fetch('/api/tower/interact-spirit', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id, intimacyGain: 10 })
-                    });
-                    syncAllData();
-                  }}
-                />
-                <SpiritSubBtn
-                  label="训练"
-                  val="+15"
-                  color="text-indigo-600"
-                  onClick={async () => {
-                    const r = await fetch('/api/tower/interact-spirit', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId: user.id, intimacyGain: 15 })
-                    });
-                    const d = await r.json();
-                    if (d.levelUp) showToast('🎉 精神体升级！');
-                    syncAllData();
-                  }}
-                />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 分化弹窗 */}
-      <AnimatePresence>
-        {showAwakening && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/60 z-[130] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[32px] p-8 max-w-md w-full shadow-2xl text-center">
-              <h3 className="font-black text-xl mb-3">评定所</h3>
-              <p className="text-slate-600 mb-5">未分化角色的正式分化流程请走管理员审核流程。</p>
-              <button onClick={() => setShowAwakening(false)} className="px-5 py-2 bg-slate-900 text-white rounded-xl font-black">
-                我知道了
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 个人资料 */}
-      <AnimatePresence>
-        {showProfileModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/50 z-[120] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[32px] p-8 w-full max-w-lg shadow-2xl relative">
-              <button onClick={() => setShowProfileModal(false)} className="absolute top-5 right-5 text-slate-400">
-                <X />
-              </button>
-              <h3 className="font-black text-xl mb-4">角色档案</h3>
-              <div className="space-y-2 text-sm">
-                <p>姓名：<b>{user.name}</b></p>
-                <p>年龄：<b>{user.age ?? '未知'}</b></p>
-                <p>身份：<b>{user.role || '未知'}</b></p>
-                <p>派系：<b>{user.faction || '未知'}</b></p>
-                <p>精神/肉体：<b>{user.mentalRank || '—'} / {user.physicalRank || '—'}</b></p>
-                <p>能力：<b>{user.ability || '—'}</b></p>
-                <p>精神体：<b>{user.spiritName || '未命名'}</b></p>
-                <p>当前位置：<b>{user.currentLocation || '未驻扎'}</b></p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 设置面板 */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 30, opacity: 0 }} className="fixed bottom-24 right-8 w-80 bg-white/95 backdrop-blur-xl rounded-[32px] shadow-2xl border p-6 z-[100]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-black text-lg flex items-center gap-2">
-                <Settings size={20} className="text-slate-700" />
-                系统设置
-              </h3>
-              <X size={18} onClick={() => setShowSettings(false)} className="cursor-pointer" />
-            </div>
-
-            <div className="space-y-3">
-              <button
-                onClick={async () => {
-                  await syncAllData();
-                  showToast('已刷新全部数据');
-                }}
-                className="w-full py-3 rounded-2xl bg-sky-50 text-sky-700 font-black flex items-center justify-center gap-2"
-              >
-                <RefreshCw size={16} /> 刷新数据
-              </button>
-
-              <button
-                onClick={() => {
-                  setUser(null);
-                  onNavigate('LOGIN');
-                }}
-                className="w-full py-3 rounded-2xl bg-rose-50 text-rose-700 font-black flex items-center justify-center gap-2"
-              >
-                <LogOut size={16} /> 退出登录
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 底部控制栏 */}
-      <div className="absolute bottom-8 right-8 flex gap-4 z-40">
-        <ControlBtn icon={<ClipboardList />} color="text-amber-500" onClick={() => setShowCommissionBoard(!showCommissionBoard)} />
-        <ControlBtn icon={<MessageSquareText />} count={unreadCount} color="text-sky-500" onClick={() => setShowMessageContacts(!showMessageContacts)} />
-        <ControlBtn icon={<Backpack />} color="text-slate-700" onClick={() => setShowBackpack(true)} />
-        <ControlBtn icon={<Settings />} color="text-slate-400" onClick={() => setShowSettings(true)} />
-      </div>
-
-      {/* 全局提示 */}
-      <AnimatePresence>
-        {toastMsg && (
-          <motion.div
-            initial={{ y: -20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -20, opacity: 0 }}
-            className="absolute top-8 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-6 py-3 rounded-2xl z-[500] flex items-center gap-3 border border-gray-700 text-sm shadow-2xl"
-          >
-            <Bell size={16} className="text-amber-400" />
-            {toastMsg}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function NPCModal({ npc, onClose, children }: any) {
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-4">
-      <div className="bg-white rounded-[40px] p-10 w-full max-w-sm shadow-2xl relative border-t-8 border-emerald-400">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">{npc.icon}</div>
-          <div>
-            <h3 className="font-black text-xl">{npc.name}</h3>
-            <p className="text-xs text-emerald-600 font-bold">{npc.role}</p>
           </div>
-        </div>
-        <p className="text-gray-600 italic mb-8">"{npc.desc}"</p>
-        {children}
-        <X onClick={onClose} className="absolute top-6 right-6 text-slate-400 cursor-pointer" />
-      </div>
-    </motion.div>
-  );
-}
+        )}
+      </AnimatePresence>
 
-function StatusRow({ label, cur, color }: any) {
-  return (
-    <div className="w-full">
-      <div className="flex justify-between text-[9px] font-black text-slate-400 mb-1 tracking-tighter">
-        <span>{label}</span>
-        <span>{Math.floor(cur)}%</span>
-      </div>
-      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-        <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(100, cur)}%` }} className={`h-full ${color} rounded-full`} />
-      </div>
+      {/* ===== 新增：灾厄运行页 ===== */}
+      <AnimatePresence>
+        {activeCustomGameId && (
+          <CustomGameRunView
+            gameId={Number(activeCustomGameId)}
+            currentUser={{
+              id: Number(user.id || 0),
+              username: String(user.name || ''),
+              nickname: String(user.name || ''),
+              isAdmin: false
+            }}
+            onExit={() => setActiveCustomGameId(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ===== 新增：全服公告弹窗（投票/灾厄降临）===== */}
+      <GlobalAnnouncementPrompt
+        user={user}
+        showToast={showToast}
+        onEnterRun={({ gameId }) => {
+          setActiveCustomGameId(Number(gameId || 0));
+        }}
+      />
+
+      {/* 死亡表单 */}
+      {showDeathForm && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-slate-900 border border-slate-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl"
+          >
+            <h2 className="text-2xl font-black text-white mb-2">
+              {showDeathForm === 'death' ? '谢幕与墓志铭' : '化鬼契约'}
+            </h2>
+            <p className="text-sm text-slate-400 mb-6">
+              {showDeathForm === 'death'
+                ? '写下你的死因与墓志铭，提交后将生成世界墓碑，数据将被剥夺。'
+                : '放弃肉身与精神体，以灵体状态游荡于世。'}
+            </p>
+            <textarea
+              value={deathText}
+              onChange={(e) => setDeathText(e.target.value)}
+              placeholder="在此书写你的落幕之辞..."
+              className="w-full h-32 p-4 bg-slate-950 border border-slate-800 rounded-xl text-slate-300 outline-none focus:border-sky-500/50 mb-6 text-sm resize-none"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeathForm(null)}
+                className="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSubmitDeath}
+                className="flex-[2] py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-500 shadow-lg"
+              >
+                提交审核
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ControlBtn({ icon, count, color, onClick }: any) {
-  return (
-    <button onClick={onClick} className={`relative w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center ${color} hover:scale-110 transition-all border border-slate-50`}>
-      {icon}
-      {count > 0 && (
-        <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full text-white text-[10px] font-black border-2 border-white animate-bounce flex items-center justify-center shadow-lg">
-          {count}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function SpiritSubBtn({ label, val, color, onClick }: any) {
-  return (
-    <button onClick={onClick} className={`p-4 rounded-2xl bg-slate-50 border border-slate-100 font-black transition-all flex flex-col items-center ${color} hover:scale-105 active:scale-95`}>
-      <span>{label}</span>
-      <span className="text-[10px] opacity-70">{val}</span>
-    </button>
-  );
-}

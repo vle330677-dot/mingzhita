@@ -71,12 +71,18 @@ export function TowerView({ user, setUser, onExit, showToast, fetchGlobalData }:
     if (data.success) { showToast(`离职成功，扣除 ${data.penalty} G`); setShowActionPanel(false); fetchGlobalData(); }
   };
 
-  const handleSpiritInteract = async (gain: number) => {
-    const res = await fetch('/api/tower/interact-spirit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, intimacyGain: gain }) });
+  const handleSpiritInteract = async (action: 'feed' | 'pet' | 'train') => {
+    const res = await fetch('/api/tower/interact-spirit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, action })
+    });
     const data = await res.json();
     if (data.success) {
       if (data.levelUp) showToast("等级提升！精神进度 +20%");
       fetchSpiritStatus(); fetchGlobalData();
+    } else {
+      showToast(data.message || '互动失败');
     }
   };
 
@@ -137,9 +143,9 @@ export function TowerView({ user, setUser, onExit, showToast, fetchGlobalData }:
               <h3 className="font-black text-3xl text-center mb-1">{spiritStatus.name || "未命名精神体"}</h3>
               {!spiritStatus.name && <button className="block mx-auto text-sky-600 font-black mb-6" onClick={async () => { const n = prompt("锁定名字后不可更改："); if(n) { await fetch(`/api/tower/interact-spirit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, name: n, intimacyGain: 0 }) }); fetchSpiritStatus(); } }}>[ 点击取名 ]</button>}
               <div className="grid grid-cols-2 gap-4">
-                <SpiritBtn label="摸摸" sub="+5" color="text-pink-600" onClick={() => handleSpiritInteract(5)}/>
-                <SpiritBtn label="喂食" sub="+10" color="text-amber-600" onClick={() => handleSpiritInteract(10)}/>
-                <SpiritBtn label="训练" sub="+15" color="text-indigo-600" onClick={() => handleSpiritInteract(15)}/>
+                <SpiritBtn label="喂食" sub="+5 亲密" color="text-amber-600" onClick={() => handleSpiritInteract('feed')}/>
+                <SpiritBtn label="摸摸" sub="+8 亲密" color="text-pink-600" onClick={() => handleSpiritInteract('pet')}/>
+                <SpiritBtn label="训练" sub="+3 亲密 +5% 精神" color="text-indigo-600" onClick={() => handleSpiritInteract('train')}/>
                 <SpiritBtn label="离开" sub="" color="text-slate-400" onClick={() => setShowSpiritPanel(false)}/>
               </div>
             </div>

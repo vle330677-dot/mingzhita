@@ -1,1 +1,173 @@
 @import "tailwindcss";
+
+:root {
+  --user-bg-image: none;
+  --ui-font-main: "Noto Serif SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --ui-text-primary: #142032;
+  --ui-text-secondary: #4f6277;
+  --ui-border: rgba(140, 165, 188, 0.35);
+  --ui-panel-strong: rgba(255, 255, 255, 0.72);
+  --ui-panel-soft: rgba(255, 255, 255, 0.48);
+  --ui-bg-main: radial-gradient(circle at 14% 18%, #f6fbff 0%, #edf2ff 42%, #e5ecfb 76%, #dce5f8 100%);
+  --ui-accent: #4d86ff;
+  --ui-accent-soft: #9ab8ff;
+  --ui-danger: #ff5b76;
+  --ui-success: #16a34a;
+  --ui-card-shadow: 0 28px 62px rgba(29, 43, 64, 0.2);
+}
+
+html[data-ui-theme='holy_glass'] {
+  --ui-text-primary: #1b2a43;
+  --ui-text-secondary: #576b83;
+  --ui-border: rgba(129, 152, 186, 0.35);
+  --ui-panel-strong: rgba(255, 255, 255, 0.72);
+  --ui-panel-soft: rgba(255, 255, 255, 0.48);
+  --ui-bg-main: radial-gradient(circle at 16% 14%, #f6f9ff 0%, #f0f4ff 42%, #e8eef9 78%, #dfe7f5 100%);
+  --ui-accent: #4f8eff;
+  --ui-accent-soft: #9cbcfb;
+}
+
+html[data-ui-theme='crystal_glass'] {
+  --ui-text-primary: #162942;
+  --ui-text-secondary: #4a6487;
+  --ui-border: rgba(129, 170, 204, 0.35);
+  --ui-panel-strong: rgba(239, 249, 255, 0.62);
+  --ui-panel-soft: rgba(229, 244, 255, 0.36);
+  --ui-bg-main: radial-gradient(circle at 12% 14%, #eefbff 0%, #dff4ff 38%, #d3ebff 66%, #d1e2fc 100%);
+  --ui-accent: #1e90ff;
+  --ui-accent-soft: #77b7ff;
+}
+
+html[data-ui-theme='pink_sweet'] {
+  --ui-text-primary: #4b2843;
+  --ui-text-secondary: #8f5f82;
+  --ui-border: rgba(224, 149, 196, 0.35);
+  --ui-panel-strong: rgba(255, 236, 246, 0.72);
+  --ui-panel-soft: rgba(255, 214, 237, 0.45);
+  --ui-bg-main: radial-gradient(circle at 15% 12%, #ffe9f5 0%, #ffd8ee 36%, #f6c4e2 70%, #efbad8 100%);
+  --ui-accent: #ff63b0;
+  --ui-accent-soft: #ff9cd0;
+}
+
+html[data-ui-theme='cyber_blue'] {
+  --ui-text-primary: #d8f6ff;
+  --ui-text-secondary: #8bc4d8;
+  --ui-border: rgba(48, 122, 157, 0.55);
+  --ui-panel-strong: rgba(8, 30, 55, 0.74);
+  --ui-panel-soft: rgba(7, 23, 44, 0.48);
+  --ui-bg-main: radial-gradient(circle at 14% 12%, #142f50 0%, #0b213d 34%, #08162d 72%, #050d1c 100%);
+  --ui-accent: #00d8ff;
+  --ui-accent-soft: #4ce4ff;
+}
+
+html[data-ui-theme='wasteland_brown'] {
+  --ui-text-primary: #2f1e13;
+  --ui-text-secondary: #6f513f;
+  --ui-border: rgba(164, 128, 94, 0.38);
+  --ui-panel-strong: rgba(245, 226, 199, 0.7);
+  --ui-panel-soft: rgba(221, 194, 161, 0.46);
+  --ui-bg-main: radial-gradient(circle at 16% 14%, #f2ddbd 0%, #e2c296 36%, #ca9f6d 69%, #a37f54 100%);
+  --ui-accent: #b87437;
+  --ui-accent-soft: #d49a5a;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ui-text-primary);
+  font-family: var(--ui-font-main);
+  background-color: #f4f7ff;
+  background-image: var(--user-bg-image), var(--ui-bg-main);
+  background-size: cover, cover;
+  background-position: center, center;
+  background-attachment: fixed, fixed;
+}
+
+.theme-shell {
+  min-height: 100vh;
+  color: var(--ui-text-primary);
+}
+
+.theme-shell [class*="bg-slate-950"],
+.theme-shell [class*="bg-slate-900"] {
+  background-color: var(--ui-panel-strong) !important;
+  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: var(--ui-card-shadow);
+}
+
+.theme-shell [class*="bg-slate-800"],
+.theme-shell [class*="bg-gray-900"],
+.theme-shell [class*="bg-gray-800"] {
+  background-color: var(--ui-panel-soft) !important;
+  backdrop-filter: blur(14px) saturate(128%);
+}
+
+.theme-shell [class*="border-slate-700"],
+.theme-shell [class*="border-slate-800"],
+.theme-shell [class*="border-gray-200"],
+.theme-shell [class*="border-gray-100"] {
+  border-color: var(--ui-border) !important;
+}
+
+.theme-shell [class*="text-slate-100"],
+.theme-shell [class*="text-white"] {
+  color: var(--ui-text-primary) !important;
+}
+
+.theme-shell [class*="text-slate-400"],
+.theme-shell [class*="text-slate-500"],
+.theme-shell [class*="text-gray-500"],
+.theme-shell [class*="text-gray-600"] {
+  color: var(--ui-text-secondary) !important;
+}
+
+.theme-shell [class*="bg-sky-600"],
+.theme-shell [class*="bg-sky-500"],
+.theme-shell [class*="bg-indigo-600"],
+.theme-shell [class*="bg-indigo-500"] {
+  background: linear-gradient(135deg, var(--ui-accent), var(--ui-accent-soft)) !important;
+  color: #fff !important;
+}
+
+.theme-shell [class*="bg-rose-600"],
+.theme-shell [class*="bg-rose-500"],
+.theme-shell [class*="bg-red-600"] {
+  background: linear-gradient(135deg, var(--ui-danger), #ff8da1) !important;
+  color: #fff !important;
+}
+
+.theme-shell [class*="bg-emerald-600"],
+.theme-shell [class*="bg-emerald-500"] {
+  background: linear-gradient(135deg, var(--ui-success), #4fd37a) !important;
+  color: #fff !important;
+}
+
+.login-shell {
+  background-image: var(--user-bg-image), var(--ui-bg-main);
+  background-size: cover, cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.glass-card {
+  border: 1px solid var(--ui-border);
+  background: var(--ui-panel-strong);
+  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: var(--ui-card-shadow);
+}
+
+.settings-scroll {
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+
+@media (max-width: 767px) {
+  .settings-scroll {
+    max-height: 58vh;
+  }
+}

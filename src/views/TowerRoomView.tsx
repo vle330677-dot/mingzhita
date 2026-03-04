@@ -1,147 +1,416 @@
-import React, { useState, useRef } from 'react';
-import { motion } from 'motion/react';
-import { X, Heart, Zap, Briefcase, DoorOpen, Camera, Edit3, UserMinus, CheckCircle, Trophy } from 'lucide-react';
-import { User } from '../types';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-interface SpiritStatus {
-  name: string;
-  intimacy: number;
-  level: number;
-  hp: number;
-  imageUrl: string;
+type RoomStatus = 'vacant' | 'occupied' | 'reserved' | 'maintenance';
+
+export interface TowerRoom {
+  id: string;
+  code: string;          // 房号/编码
+  name?: string;         // 房间名（可选）
+  floor: number;         // 楼层
+  area?: number;         // 面积
+  roomType?: string;     // 户型/用途
+  status: RoomStatus;
+  tenantName?: string;   // 租户
+  updatedAt?: string;
 }
 
-interface Props {
-  user: User;
-  spiritStatus: SpiritStatus;
-  onClose: () => void;
-  showToast: (msg: string) => void;
-  onUpdateData: () => void; // 用于通知父组件刷新全局数据
+interface TowerRoomViewProps {
+  towerId: string;
+  loading?: boolean; // 外部可选 loading（会和内部 loading 合并）
+  onCreateRoom?: () => void;
+  onEditRoom?: (room: TowerRoom) => void;
+  onViewRoom?: (room: TowerRoom) => void;
+  /** 删除成功后的回调（可选） */
+  onDeleted?: (roomId: string) => void;
 }
 
-export function TowerRoomView({ user, spiritStatus, onClose, showToast, onUpdateData }: Props) {
-  const [showSpiritPanel, setShowSpiritPanel] = useState(false);
-  const spiritImgInputRef = useRef<HTMLInputElement>(null);
+const STATUS_META: Record<RoomStatus, { text: string; className: string }> = {
+  vacant: { text: '空置', className: 'bg-slate-700 text-slate-100' },
+  occupied: { text: '已入住', className: 'bg-emerald-700 text-emerald-100' },
+  reserved: { text: '预留', className: 'bg-sky-700 text-sky-100' },
+  maintenance: { text: '维修中', className: 'bg-amber-700 text-amber-100' },
+};
 
-  // --- 交互逻辑 ---
-  const handleAction = async (endpoint: string, body: any = {}) => {
-    const res = await fetch(`/api/tower/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id, ...body })
-    });
-    const data = await res.json();
-    if (data.success) {
-      if (data.reward) showToast(`获得奖励: ${data.reward} G`);
-      if (data.levelUp) showToast("🎉 精神体升级！精神进度提升 20%");
-      if (data.penalty) showToast(`已支付违约金: ${data.penalty} G`);
-      onUpdateData(); // 触发全局刷新
-      if (endpoint === 'quit') onClose();
-    } else {
-      showToast(data.message);
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+function formatTime(v?: string) {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '-';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${hh}:${mm}`;
+}
+
+/**
+ * ===== 内置服务层（替代缺失的 @/services/towerRoomService）=====
+ */
+function normalizeRoomsPayload(payload: any): TowerRoom[] {
+  const raw = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.rooms)
+    ? payload.rooms
+    : Array.isArray(payload?.data)
+    ? payload.data
+    : [];
+
+  return raw.map((r: any) => ({
+    id: String(r.id),
+    code: String(r.code ?? r.roomCode ?? ''),
+    name: r.name ?? r.roomName ?? undefined,
+    floor: Number(r.floor ?? 0),
+    area: r.area != null ? Number(r.area) : undefined,
+    roomType: r.roomType ?? r.type ?? undefined,
+    status: (r.status ?? 'vacant') as RoomStatus,
+    tenantName: r.tenantName ?? r.tenant ?? undefined,
+    updatedAt: r.updatedAt ?? r.updated_at ?? undefined,
+  }));
+}
+
+async function getTowerRoomList(towerId: string): Promise<TowerRoom[]> {
+  const candidates = [
+    `/api/tower/rooms?towerId=${encodeURIComponent(towerId)}`,
+    `/api/tower/${encodeURIComponent(towerId)}/rooms`,
+  ];
+
+  let lastError = '房间列表接口不可用';
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 404) {
+        lastError = data?.message || `接口不存在: ${url}`;
+        continue;
+      }
+
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message || `请求失败: ${url}`);
+      }
+
+      return normalizeRoomsPayload(data);
+    } catch (e: any) {
+      lastError = e?.message || String(e);
     }
-  };
+  }
 
-  const handleRename = async () => {
-    if (spiritStatus.name) return;
-    const n = prompt("请为精神体取名（一旦确定无法修改）：");
-    if (n) handleAction('interact-spirit', { name: n, intimacyGain: 0 });
-  };
+  throw new Error(lastError);
+}
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      handleAction('interact-spirit', { imageUrl: ev.target?.result, intimacyGain: 0 });
-    };
-    reader.readAsDataURL(file);
-  };
+async function removeTowerRoom(roomId: string): Promise<void> {
+  const candidates = [
+    `/api/tower/rooms/${encodeURIComponent(roomId)}`,
+    `/api/tower/room/${encodeURIComponent(roomId)}`,
+  ];
+
+  let lastError = '删除接口不可用';
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 404) {
+        lastError = data?.message || `接口不存在: ${url}`;
+        continue;
+      }
+
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message || `删除失败: ${url}`);
+      }
+
+      return;
+    } catch (e: any) {
+      lastError = e?.message || String(e);
+    }
+  }
+
+  throw new Error(lastError);
+}
+
+const btnBase =
+  'px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const btnGhost = `${btnBase} bg-slate-700 text-slate-100 hover:bg-slate-600`;
+const btnPrimary = `${btnBase} bg-sky-600 text-white hover:bg-sky-500`;
+const btnDanger = `${btnBase} bg-rose-700 text-rose-100 hover:bg-rose-600`;
+
+// ✅ 同时提供“具名导出 + 默认导出”
+export const TowerRoomView: React.FC<TowerRoomViewProps> = ({
+  towerId,
+  loading: outerLoading = false,
+  onCreateRoom,
+  onEditRoom,
+  onViewRoom,
+  onDeleted,
+}) => {
+  const [listLoading, setListLoading] = useState(false);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<TowerRoom[]>([]);
+
+  const [keyword, setKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState<RoomStatus | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<string | 'all'>('all');
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const mergedLoading = outerLoading || listLoading;
+
+  const loadData = useCallback(async () => {
+    if (!towerId) return;
+    setListLoading(true);
+    try {
+      const data = await getTowerRoomList(towerId);
+      setRooms(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      alert('房间数据加载失败');
+      setRooms([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, [towerId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const roomTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+    rooms.forEach((r) => r.roomType && set.add(r.roomType));
+    return Array.from(set).sort();
+  }, [rooms]);
+
+  const filteredRooms = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+
+    return rooms.filter((room) => {
+      const hitKeyword =
+        !kw ||
+        room.code?.toLowerCase().includes(kw) ||
+        room.name?.toLowerCase().includes(kw) ||
+        room.tenantName?.toLowerCase().includes(kw) ||
+        String(room.floor).includes(kw);
+
+      const hitStatus = statusFilter === 'all' || room.status === statusFilter;
+      const hitType = typeFilter === 'all' || room.roomType === typeFilter;
+
+      return hitKeyword && hitStatus && hitType;
+    });
+  }, [rooms, keyword, statusFilter, typeFilter]);
+
+  // 过滤变化后，自动回到第一页
+  useEffect(() => {
+    setPage(1);
+  }, [keyword, statusFilter, typeFilter]);
+
+  const total = filteredRooms.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pageStart = (safePage - 1) * pageSize;
+  const pageData = filteredRooms.slice(pageStart, pageStart + pageSize);
+
+  const handleDelete = useCallback(
+    async (room: TowerRoom) => {
+      const ok = window.confirm(`确认删除房间「${room.code}」吗？\n删除后不可恢复，请谨慎操作。`);
+      if (!ok) return;
+
+      try {
+        setDeleteLoadingId(room.id);
+        await removeTowerRoom(room.id);
+        setRooms((prev) => prev.filter((x) => x.id !== room.id));
+        onDeleted?.(room.id);
+        alert('删除成功');
+      } catch (err) {
+        console.error(err);
+        alert('删除失败，请稍后重试');
+      } finally {
+        setDeleteLoadingId(null);
+      }
+    },
+    [onDeleted],
+  );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-      {!showSpiritPanel ? (
-        // --- 房间管理主面板 ---
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} 
-          className="bg-white rounded-[48px] p-10 w-full max-w-sm shadow-2xl relative border border-white/20">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h3 className="font-black text-2xl text-slate-900">房间管理</h3>
-              <p className="text-xs font-bold text-sky-600">{(user as any).job} 专属领地</p>
-            </div>
-            <button onClick={onClose} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"><X/></button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <RoomBtn icon={<CheckCircle/>} label="签到领薪" sub="每日月薪" color="bg-emerald-50 text-emerald-700" onClick={() => handleAction('checkin')}/>
-            <RoomBtn icon={<Briefcase/>} label="开始打工" sub={`次数: ${(user as any).workCount}/3`} color="bg-sky-50 text-sky-700" onClick={() => handleAction('work')}/>
-            <RoomBtn icon={<Heart/>} label="精神体互动" sub="培养契约" color="bg-pink-50 text-pink-700" onClick={() => setShowSpiritPanel(true)}/>
-            <RoomBtn icon={<UserMinus/>} label="申请离职" sub="30%违约金" color="bg-rose-50 text-rose-600" onClick={() => handleAction('quit')}/>
-          </div>
-          
-          <button onClick={() => handleAction('rest')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-800 transition-all">
-            <DoorOpen size={18}/> 深度休息 (回复HP/MP)
+    <div className="rounded-2xl border border-slate-700 bg-slate-900 text-slate-100 shadow-xl p-4">
+      {/* 头部 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 className="text-base font-black">房间列表</h3>
+        <div className="flex gap-2">
+          <button className={btnGhost} onClick={loadData} disabled={mergedLoading}>
+            {mergedLoading ? '刷新中...' : '刷新'}
           </button>
-        </motion.div>
-      ) : (
-        // --- 精神体深度互动面板 ---
-        <motion.div initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-          className="bg-white rounded-[56px] p-10 w-full max-w-md shadow-2xl relative border-t-8 border-pink-400">
-          <button onClick={() => setShowSpiritPanel(false)} className="absolute top-8 right-8 text-slate-400"><X/></button>
-          
-          <div className="relative w-48 h-48 mx-auto mb-8">
-            <div className="w-full h-full bg-slate-50 rounded-[48px] border-4 border-pink-50 overflow-hidden flex items-center justify-center shadow-inner">
-              {spiritStatus.imageUrl ? (
-                <img src={spiritStatus.imageUrl} className="w-full h-full object-cover" />
-              ) : (
-                <Zap size={64} className="text-pink-200 animate-pulse" />
-              )}
-            </div>
-            <button onClick={() => spiritImgInputRef.current?.click()} className="absolute -bottom-2 -right-2 bg-white p-3 rounded-full shadow-2xl text-pink-500 hover:scale-110 border border-pink-50">
-              <Camera size={20}/>
-            </button>
-            <input type="file" ref={spiritImgInputRef} className="hidden" accept="image/*" onChange={handleImageUpload}/>
-          </div>
+          <button className={btnPrimary} onClick={onCreateRoom}>
+            新建房间
+          </button>
+        </div>
+      </div>
 
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <h3 className="font-black text-3xl text-slate-800">{spiritStatus.name || "未命名精神体"}</h3>
-              {!spiritStatus.name && <Edit3 size={20} className="text-sky-500 cursor-pointer" onClick={handleRename}/>}
-            </div>
-            <div className="flex justify-center gap-4 text-[10px] font-black tracking-widest text-pink-500 uppercase">
-              <span>Level {spiritStatus.level}</span>
-              <span>HP {spiritStatus.hp}/100</span>
-            </div>
-          </div>
+      {/* 筛选区 */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="搜索房号/名称/租户/楼层"
+          className="w-[280px] max-w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm outline-none focus:border-sky-500"
+        />
 
-          <div className="grid grid-cols-3 gap-3">
-            <SpiritInteractBtn label="摸摸" val="+5" color="hover:bg-pink-50 text-pink-600" onClick={() => handleAction('interact-spirit', { intimacyGain: 5 })}/>
-            <SpiritInteractBtn label="喂食" val="+10" color="hover:bg-amber-50 text-amber-600" onClick={() => handleAction('interact-spirit', { intimacyGain: 10 })}/>
-            <SpiritInteractBtn label="训练" val="+15" color="hover:bg-indigo-50 text-indigo-600" onClick={() => handleAction('interact-spirit', { intimacyGain: 15 })}/>
-          </div>
-          <button onClick={() => setShowSpiritPanel(false)} className="w-full mt-6 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black">返回房间</button>
-        </motion.div>
-      )}
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as RoomStatus | 'all')}
+          className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm outline-none focus:border-sky-500"
+        >
+          <option value="all">全部状态</option>
+          <option value="vacant">空置</option>
+          <option value="occupied">已入住</option>
+          <option value="reserved">预留</option>
+          <option value="maintenance">维修中</option>
+        </select>
+
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sm outline-none focus:border-sky-500"
+        >
+          <option value="all">全部类型</option>
+          {roomTypeOptions.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+
+        <span className="text-xs text-slate-400">共 {filteredRooms.length} 条</span>
+      </div>
+
+      {/* 表格 */}
+      <div className="overflow-auto rounded-xl border border-slate-700">
+        <table className="min-w-[1100px] w-full text-sm">
+          <thead className="bg-slate-800 text-slate-200">
+            <tr>
+              <th className="px-3 py-2 text-left">房号</th>
+              <th className="px-3 py-2 text-left">名称</th>
+              <th className="px-3 py-2 text-left">楼层</th>
+              <th className="px-3 py-2 text-left">类型</th>
+              <th className="px-3 py-2 text-left">面积(㎡)</th>
+              <th className="px-3 py-2 text-left">状态</th>
+              <th className="px-3 py-2 text-left">租户</th>
+              <th className="px-3 py-2 text-left">更新时间</th>
+              <th className="px-3 py-2 text-left">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mergedLoading ? (
+              <tr>
+                <td className="px-3 py-6 text-center text-slate-400" colSpan={9}>
+                  加载中...
+                </td>
+              </tr>
+            ) : pageData.length === 0 ? (
+              <tr>
+                <td className="px-3 py-6 text-center text-slate-500" colSpan={9}>
+                  暂无房间数据
+                </td>
+              </tr>
+            ) : (
+              pageData.map((room) => {
+                const meta = STATUS_META[room.status] || {
+                  text: room.status,
+                  className: 'bg-slate-700 text-slate-100',
+                };
+                return (
+                  <tr key={room.id} className="border-t border-slate-800">
+                    <td className="px-3 py-2">
+                      <button
+                        className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-2"
+                        onClick={() => onViewRoom?.(room)}
+                      >
+                        {room.code}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">{room.name || '-'}</td>
+                    <td className="px-3 py-2">{room.floor}</td>
+                    <td className="px-3 py-2">{room.roomType || '-'}</td>
+                    <td className="px-3 py-2">{room.area ? room.area.toFixed(2) : '-'}</td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${meta.className}`}>
+                        {meta.text}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">{room.tenantName || '-'}</td>
+                    <td className="px-3 py-2">{formatTime(room.updatedAt)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1">
+                        <button className={btnGhost} onClick={() => onViewRoom?.(room)}>
+                          查看
+                        </button>
+                        <button className={btnGhost} onClick={() => onEditRoom?.(room)}>
+                          编辑
+                        </button>
+                        <button
+                          className={btnDanger}
+                          disabled={deleteLoadingId === room.id}
+                          onClick={() => handleDelete(room)}
+                        >
+                          {deleteLoadingId === room.id ? '删除中...' : '删除'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 分页 */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+        <div className="text-slate-400">共 {total} 条</div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-slate-400">每页</label>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              const ps = Number(e.target.value) || 20;
+              setPageSize(ps);
+              setPage(1);
+            }}
+            className="px-2 py-1 rounded bg-slate-950 border border-slate-700"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className={btnGhost}
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            上一页
+          </button>
+
+          <span className="text-slate-300">
+            第 {safePage} / {pageCount} 页
+          </span>
+
+          <button
+            className={btnGhost}
+            disabled={safePage >= pageCount}
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+          >
+            下一页
+          </button>
+        </div>
+      </div>
     </div>
   );
-}
+};
 
-// 子组件：图标按钮
-function RoomBtn({ icon, label, sub, color, onClick }: any) {
-  return (
-    <button onClick={onClick} className={`flex flex-col items-center justify-center p-5 rounded-[32px] transition-all active:scale-95 shadow-sm border border-transparent hover:border-current/10 ${color}`}>
-      <div className="mb-2 scale-125">{icon}</div>
-      <span className="text-xs font-black mb-1">{label}</span>
-      <span className="text-[9px] font-bold opacity-60">{sub}</span>
-    </button>
-  );
-}
-
-function SpiritInteractBtn({ label, val, color, onClick }: any) {
-  return (
-    <button onClick={onClick} className={`p-4 rounded-3xl bg-slate-50 border border-slate-100 font-black transition-all flex flex-col items-center ${color} hover:shadow-md`}>
-      <span className="text-sm">{label}</span>
-      <span className="text-[10px] opacity-70">{val}</span>
-    </button>
-  );
-}
+export default TowerRoomView;

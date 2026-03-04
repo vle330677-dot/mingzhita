@@ -4,32 +4,40 @@ import { ViewState } from '../App';
 
 interface Props {
   onNavigate: (view: ViewState) => void;
+  userName?: string;
 }
 
-export function AgeCheckView({ onNavigate }: Props) {
-  const [rejected, setRejected] = useState(false);
+export function AgeCheckView({ onNavigate, userName }: Props) {
+  const [saving, setSaving] = useState(false);
 
-  if (rejected) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6 text-center">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="max-w-md bg-white p-8 rounded-2xl shadow-sm border border-red-100"
-        >
-          <div className="text-red-500 mb-4">
-            <svg className="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-medium text-gray-900 mb-2">访问受限</h2>
-          <p className="text-gray-600 leading-relaxed">
-            好的，未分化的成员，请去审核群：<span className="font-bold text-gray-900">740196067</span>，获取您的身份。
-          </p>
-        </motion.div>
-      </div>
-    );
-  }
+  const applyAgeAndContinue = async (isAdult: boolean) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const age = isAdult ? 16 : 15;
+      if (userName) {
+        const profileRes = await fetch(`/api/users/${encodeURIComponent(userName)}`);
+        const profile = await profileRes.json().catch(() => ({} as any));
+        const oldUser = profile?.user || {};
+
+        await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: oldUser?.id,
+            name: userName,
+            age,
+            role: isAdult ? (oldUser?.role || '普通人') : '未分化',
+          })
+        });
+      }
+    } catch {
+      // keep flow forward even if save fails
+    } finally {
+      setSaving(false);
+      onNavigate('EXTRACTOR');
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
@@ -38,19 +46,23 @@ export function AgeCheckView({ onNavigate }: Props) {
         animate={{ y: 0, opacity: 1 }}
         className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center"
       >
-        <h2 className="text-2xl font-serif text-gray-800 mb-8">您是否成年（年满16周岁）？</h2>
+        <h2 className="text-2xl font-serif text-gray-800 mb-4">年龄确认</h2>
+        <p className="text-gray-500 text-sm mb-8">这会影响未分化/学生/成年阶段机制。</p>
+
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
-            onClick={() => onNavigate('EXTRACTOR')}
-            className="flex-1 py-3 px-6 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors"
+            onClick={() => applyAgeAndContinue(true)}
+            disabled={saving}
+            className="flex-1 py-3 px-6 bg-gray-900 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors disabled:opacity-60"
           >
-            是，我已成年
+            我已满16岁
           </button>
           <button
-            onClick={() => setRejected(true)}
-            className="flex-1 py-3 px-6 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+            onClick={() => applyAgeAndContinue(false)}
+            disabled={saving}
+            className="flex-1 py-3 px-6 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-60"
           >
-            否，我未成年
+            我未满16岁
           </button>
         </div>
       </motion.div>

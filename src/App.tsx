@@ -1,43 +1,297 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+
 import { WelcomeView } from './views/WelcomeView';
 import { LoginView } from './views/LoginView';
 import { AgeCheckView } from './views/AgeCheckView';
 import { ExtractorView } from './views/ExtractorView';
 import { PendingView } from './views/PendingView';
 import { GameView } from './views/GameView';
+import { TowerOfLifeView } from './views/TowerOfLifeView';
 import { AdminView } from './views/AdminView';
-import { User } from './types';
 
-export type ViewState = 'WELCOME' | 'LOGIN' | 'AGE_CHECK' | 'EXTRACTOR' | 'PENDING' | 'GAME' | 'ADMIN';
+import { User } from './types';
+import { apiFetch, clearUserSession, clearAdminSession } from './utils/http';
+import { APP_TOAST_EVENT } from './utils/appEvents';
+import { hydrateUiTheme } from './utils/theme';
+
+export type ViewState =
+  | 'WELCOME'
+  | 'LOGIN'
+  | 'AGE_CHECK'
+  | 'EXTRACTOR'
+  | 'PENDING'
+  | 'GAME'
+  | 'TOWER_OF_LIFE'
+  | 'ADMIN';
+
+type ToastType = 'info' | 'success' | 'warn';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>('WELCOME');
   const [userName, setUserName] = useState('');
   const [user, setUser] = useState<User | null>(null);
 
+  // 管理员视图重挂载 key（管理员会话失效时强制重挂载）
+  const [adminViewKey, setAdminViewKey] = useState(0);
+
+  // 全局 Toast
+  const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = (msg: string, type: ToastType = 'info', duration = 3000) => {
+    setToast({ msg, type });
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), duration);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    hydrateUiTheme();
+  }, []);
+
+  // 全局 app:toast 事件监听（任何组件可触发，无需修改 GameView props）
+  useEffect(() => {
+    const onAppToast = (e: Event) => {
+      const ce = e as CustomEvent<{ msg: string; type?: ToastType; duration?: number }>;
+      const msg = ce.detail?.msg;
+      const type = ce.detail?.type || 'info';
+      const duration = ce.detail?.duration ?? 3000;
+      if (!msg) return;
+      showToast(msg, type, duration);
+    };
+
+    window.addEventListener(APP_TOAST_EVENT, onAppToast as EventListener);
+    return () => window.removeEventListener(APP_TOAST_EVENT, onAppToast as EventListener);
+  }, []);
+
+  // 全局认证事件监听（被顶号 / 管理员会话失效）
+  useEffect(() => {
+    const onKicked = (e: Event) => {
+      const ce = e as CustomEvent<{ message?: string }>;
+      const msg = ce?.detail?.message || 'You were logged out because this account signed in elsewhere.';
+      clearUserSession();
+      setUser(null);
+      setUserName('');
+      setCurrentView('LOGIN');
+      showToast(msg, 'warn');
+    };
+
+    const onAdminExpired = (e: Event) => {
+      const ce = e as CustomEvent<{ message?: string }>;
+      const msg = ce?.detail?.message || 'Admin session expired, please sign in again.';
+      clearAdminSession();
+      setAdminViewKey((v) => v + 1);
+      setCurrentView('ADMIN');
+      showToast(msg, 'warn');
+    };
+
+    window.addEventListener('auth:kicked', onKicked as EventListener);
+    window.addEventListener('auth:admin_expired', onAdminExpired as EventListener);
+
+    return () => {
+      window.removeEventListener('auth:kicked', onKicked as EventListener);
+      window.removeEventListener('auth:admin_expired', onAdminExpired as EventListener);
+    };
+  }, []);
+
+  // PENDING 审核轮询
   useEffect(() => {
     if (userName && currentView === 'PENDING') {
       const interval = setInterval(async () => {
-        const res = await fetch(`/api/users/${userName}`);
-        const data = await res.json();
-        if (data.success && data.user.status === 'approved') {
-          setUser(data.user);
-          setCurrentView('GAME');
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent(userName)}`);
+          const data = await res.json();
+          if (data.success && data.user.status === 'approved') {
+            setUser(data.user);
+
+            // 标记“刚审核通过的新用户”，用于命之塔首次欢迎弹窗触发
+            sessionStorage.setItem(`tower_newcomer_welcome_trigger_${data.user.id}`, '1');
+
+            setCurrentView('TOWER_OF_LIFE');
+            showToast('身份审核通过，欢迎来到命之塔！', 'success');
+          }
+        } catch (error) {
+          console.error('Failed to fetch user status', error);
         }
-      }, 3000);
+      }, 1500);
+
       return () => clearInterval(interval);
     }
   }, [userName, currentView]);
 
+  // GAME / TOWER_OF_LIFE 内定时同步用户信息
+  useEffect(() => {
+    if (user && (currentView === 'GAME' || currentView === 'TOWER_OF_LIFE')) {
+      const timer = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/users/${encodeURIComponent((user as any).name)}`);
+          const data = await res.json();
+          if (data.success) setUser(data.user);
+        } catch (e) {
+          console.error('Sync failed', e);
+        }
+      }, 5000);
+
+      return () => clearInterval(timer);
+    }
+  }, [user, currentView]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const ping = async () => {
+      try {
+        await fetch('/api/presence/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id })
+        });
+      } catch {
+        // ignore
+      }
+    };
+    ping();
+    const timer = setInterval(ping, 6000);
+    return () => clearInterval(timer);
+  }, [user?.id, currentView]);
+
+  useEffect(() => {
+    const nativeFetch = window.fetch.bind(window);
+
+    const wrappedFetch: typeof window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      const method = String(init?.method || (typeof input === 'string' ? 'GET' : input.method || 'GET')).toUpperCase();
+      const isTowerJoin = method === 'POST' && /\/api\/tower\/join(?:\?|$)/i.test(url);
+      if (!isTowerJoin) return nativeFetch(input, init);
+
+      const res = await nativeFetch(input, init);
+      if (res.status !== 409) return res;
+
+      let payload: any = null;
+      try {
+        payload = await res.clone().json();
+      } catch {
+        return res;
+      }
+      if (payload?.code !== 'MINOR_CONFIRM_REQUIRED') return res;
+
+      let reqBody: any = {};
+      try {
+        reqBody = init?.body ? JSON.parse(String(init.body)) : {};
+      } catch {
+        reqBody = {};
+      }
+
+      const joinOtherFaction = window.confirm(
+        'You have not graduated yet. Join another faction now?\nOK: join at lowest rank\nCancel: go to London Tower as student'
+      );
+
+      const followBody = joinOtherFaction
+        ? { ...reqBody, minorConfirm: true }
+        : { ...reqBody, jobName: payload.suggestedJob || '\u4F26\u6566\u5854\u5B66\u5458' };
+
+      return nativeFetch('/api/tower/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(followBody)
+      });
+    };
+
+    window.fetch = wrappedFetch;
+    return () => {
+      window.fetch = nativeFetch;
+    };
+  }, []);
+
+  const fetchGlobalData = useCallback(async () => {
+    if (!user?.name) return;
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(user.name)}`);
+      const data = await res.json();
+      if (data.success) setUser(data.user);
+    } catch (e) {
+      console.error('fetchGlobalData failed', e);
+    }
+  }, [user?.name]);
+
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST', auth: 'user' });
+    } catch {
+      // ignore
+    }
+    clearUserSession();
+    setUser(null);
+    setUserName('');
+    setCurrentView('LOGIN');
+    showToast('已断开连接', 'info');
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
+    <div className="theme-shell min-h-screen font-sans relative overflow-hidden">
+      {/* 全局 Toast 渲染层 */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 20, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            className={`fixed top-0 left-1/2 z-[10000] px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-md border border-white/20 text-sm font-bold flex items-center gap-2
+              ${
+                toast.type === 'success'
+                  ? 'bg-emerald-500/90 text-white'
+                  : toast.type === 'warn'
+                  ? 'bg-rose-500/90 text-white'
+                  : 'bg-slate-900/90 text-white'
+              }`}
+          >
+            {toast.type === 'success' && '🎉'}
+            {toast.type === 'warn' && '⚠️'}
+            {toast.type === 'info' && '💡'}
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 视图渲染 */}
       {currentView === 'WELCOME' && <WelcomeView onNavigate={setCurrentView} />}
-      {currentView === 'LOGIN' && <LoginView onNavigate={setCurrentView} setUserName={setUserName} setUser={setUser} />}
-      {currentView === 'AGE_CHECK' && <AgeCheckView onNavigate={setCurrentView} />}
-      {currentView === 'EXTRACTOR' && <ExtractorView onNavigate={setCurrentView} userName={userName} />}
+
+      {currentView === 'LOGIN' && (
+        <LoginView onNavigate={setCurrentView} setUserName={setUserName} setUser={setUser} />
+      )}
+
+      {currentView === 'AGE_CHECK' && <AgeCheckView onNavigate={setCurrentView} userName={userName} />}
+
+      {currentView === 'EXTRACTOR' && (
+        <ExtractorView onNavigate={setCurrentView} userName={userName} />
+      )}
+
       {currentView === 'PENDING' && <PendingView />}
-      {currentView === 'GAME' && user && <GameView user={user} setUser={setUser} onNavigate={setCurrentView} />}
-      {currentView === 'ADMIN' && <AdminView />}
+
+      {currentView === 'TOWER_OF_LIFE' && user && (
+        <TowerOfLifeView
+          user={user}
+          onExit={() => setCurrentView('GAME')}
+          showToast={(msg) => showToast(msg)}
+          fetchGlobalData={fetchGlobalData}
+        />
+      )}
+
+      {currentView === 'GAME' && user && (
+        <GameView
+          user={user}
+          onLogout={handleLogout}
+          showToast={(msg) => showToast(msg)}
+          fetchGlobalData={fetchGlobalData}
+        />
+      )}
+
+      {currentView === 'ADMIN' && <AdminView key={adminViewKey} />}
     </div>
   );
 }

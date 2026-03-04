@@ -26,7 +26,7 @@ export function PendingView() {
         </div>
         <h2 className="text-2xl font-serif text-gray-800 mb-3">资料审核中</h2>
         <p className="text-gray-500 max-w-sm mx-auto leading-relaxed">
-          您的身份档案已提交，请等待管理员审核。审核通过后将自动进入世界。
+          您的身份档案已提交，请等待管理员审核。审核通过后将自动进入世界，详情请前往审核群740196067咨询。
         </p>
       </motion.div>
     </div>
