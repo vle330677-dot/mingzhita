@@ -787,8 +787,26 @@ function isUndifferentiated(user: AnyRow | undefined) {
   return Number(user.age || 0) < 16 || role === '未分化';
 }
 
+const NEWCOMER_ROLE_WEIGHTS: Array<{ role: string; weight: number }> = [
+  { role: '哨兵', weight: 40 },
+  { role: '向导', weight: 40 },
+  { role: '普通人', weight: 10 },
+  { role: '鬼魂', weight: 10 }
+];
+
+function pickWeightedAdultRole(weights = NEWCOMER_ROLE_WEIGHTS) {
+  const total = weights.reduce((sum, item) => sum + item.weight, 0);
+  if (total <= 0) return '普通人';
+  let cursor = Math.random() * total;
+  for (const item of weights) {
+    cursor -= item.weight;
+    if (cursor <= 0) return item.role;
+  }
+  return weights[weights.length - 1]?.role || '普通人';
+}
+
 function randomAdultRole() {
-  return rand(['哨兵', '向导', '普通人', '鬼魂']);
+  return pickWeightedAdultRole();
 }
 
 function addItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
