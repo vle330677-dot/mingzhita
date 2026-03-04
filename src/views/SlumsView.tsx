@@ -438,8 +438,8 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData }: Props) {
 
       <AnimatePresence>
         {selectedEntrance && (
-          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100">
+          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4 mobile-portrait-safe-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100 mobile-portrait-safe-card mobile-contrast-surface-dark">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-black text-lg">{selectedEntrance.ownerName} 的房间</h3>
                 <button onClick={() => setSelectedEntrance(null)} className="p-1 rounded bg-slate-800"><X size={14} /></button>
@@ -462,9 +462,9 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData }: Props) {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md mobile-portrait-safe-overlay"
           >
-            <div className="bg-[#1c1917] w-full max-w-lg shadow-2xl relative border border-stone-700 p-8 rounded-2xl overflow-hidden">
+            <div className="bg-[#1c1917] w-full max-w-lg shadow-2xl relative border border-stone-700 p-8 rounded-2xl overflow-hidden mobile-portrait-safe-card mobile-contrast-surface-dark">
               <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                 <Factory size={120} className="text-white" />
               </div>

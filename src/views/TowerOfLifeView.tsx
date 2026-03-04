@@ -255,7 +255,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 330, damping: 32 }}
-              className="fixed inset-x-0 bottom-0 z-[110] max-h-[86vh] rounded-t-3xl border border-slate-700 bg-slate-900/95 shadow-2xl flex flex-col md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[520px] md:rounded-none md:rounded-l-3xl md:border-l md:border-t-0"
+              className="fixed inset-x-0 bottom-0 z-[110] max-h-[86vh] rounded-t-3xl border border-slate-700 bg-slate-900/95 shadow-2xl flex flex-col md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[520px] md:rounded-none md:rounded-l-3xl md:border-l md:border-t-0 mobile-portrait-safe-sheet mobile-contrast-surface-dark"
             >
               <div className="border-b border-slate-700/80 p-4 md:p-5 shrink-0">
                 <div className="flex items-start justify-between gap-3">
@@ -430,13 +430,13 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[300] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm mobile-portrait-safe-overlay"
           >
             <motion.div
               initial={{ opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
-              className="w-full max-w-xl rounded-3xl border border-amber-700/40 bg-slate-900 p-5 md:p-6 text-amber-50 shadow-2xl"
+              className="w-full max-w-xl rounded-3xl border border-amber-700/40 bg-slate-900 p-5 md:p-6 text-amber-50 shadow-2xl mobile-portrait-safe-card mobile-contrast-surface-dark"
             >
               <h3 className="mb-3 text-xl md:text-2xl font-black text-amber-300">{NEWCOMER_OPENING_NOTICE.title}</h3>
               <p className="text-sm leading-7 text-amber-100/90">{NEWCOMER_OPENING_NOTICE.intro}</p>

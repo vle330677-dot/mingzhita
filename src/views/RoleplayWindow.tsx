@@ -42,6 +42,7 @@ const EXPANDED_W = 420;
 const EXPANDED_H = 460;
 const MINI_W = 320;
 const MINI_H = 52;
+const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -94,6 +95,10 @@ export function RoleplayWindow({ sessionId, currentUser, onClose }: Props) {
   });
 
   const [unread, setUnread] = useState(0);
+  const [isPortraitMobile, setIsPortraitMobile] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(MOBILE_PORTRAIT_QUERY).matches;
+  });
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   // 拖拽位置
@@ -112,6 +117,19 @@ export function RoleplayWindow({ sessionId, currentUser, onClose }: Props) {
   const draggingRef = useRef(false);
   const dragOffsetRef = useRef({ dx: 0, dy: 0 });
   const prevMessagesRef = useRef<RPMessage[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_PORTRAIT_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setIsPortraitMobile(e.matches);
+    setIsPortraitMobile(media.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    }
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
 
   const title = useMemo(() => {
     if (!session) return '对戏频道';
@@ -233,6 +251,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose }: Props) {
   }, [panelW, panelH]);
 
   const startDrag = (e: React.MouseEvent) => {
+    if (isPortraitMobile) return;
     // 只允许鼠标左键拖动
     if (e.button !== 0) return;
     draggingRef.current = true;
@@ -338,7 +357,9 @@ export function RoleplayWindow({ sessionId, currentUser, onClose }: Props) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
-      className="fixed z-[260] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden"
+      className={`fixed z-[260] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden mobile-contrast-surface-dark mobile-portrait-safe-roleplay ${
+        minimized ? 'mobile-portrait-safe-roleplay-min' : ''
+      }`}
       style={{
         left: pos.x,
         top: pos.y,
@@ -349,7 +370,9 @@ export function RoleplayWindow({ sessionId, currentUser, onClose }: Props) {
       {/* 顶栏（可拖拽） */}
       <div
         onMouseDown={startDrag}
-        className="px-3 py-2 border-b border-slate-700 bg-slate-900/95 flex items-center justify-between cursor-grab active:cursor-grabbing"
+        className={`px-3 py-2 border-b border-slate-700 bg-slate-900/95 flex items-center justify-between ${
+          isPortraitMobile ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+        }`}
       >
         <div className="min-w-0">
           <div className="text-[12px] text-white font-black truncate">{title}</div>

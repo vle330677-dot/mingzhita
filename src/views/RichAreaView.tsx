@@ -436,8 +436,8 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData }: Props
       {/* 房间入口弹窗 */}
       <AnimatePresence>
         {selectedEntrance && (
-          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100">
+          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4 mobile-portrait-safe-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100 mobile-portrait-safe-card mobile-contrast-surface-dark">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-black text-lg">{selectedEntrance.ownerName} 的房间</h3>
                 <button onClick={() => setSelectedEntrance(null)} className="p-1 rounded bg-slate-800"><X size={14} /></button>
@@ -458,8 +458,8 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData }: Props
         {selectedBuilding && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedBuilding(null)} className="fixed inset-0 bg-emerald-900/20 backdrop-blur-md z-40" />
-            <motion.div initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 50, opacity: 0, scale: 0.95 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-              <div className="bg-white w-full max-w-lg shadow-2xl relative rounded-[32px] border-t-8 border-amber-400 p-8 flex flex-col max-h-[85vh] pointer-events-auto">
+            <motion.div initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 50, opacity: 0, scale: 0.95 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none mobile-portrait-safe-overlay">
+              <div className="bg-white w-full max-w-lg shadow-2xl relative rounded-[32px] border-t-8 border-amber-400 p-8 flex flex-col max-h-[85vh] pointer-events-auto mobile-portrait-safe-card mobile-contrast-surface-light">
                 <button onClick={() => setSelectedBuilding(null)} className="absolute top-6 right-6 p-2 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors z-20">
                   <X size={20} className="text-slate-500" />
                 </button>

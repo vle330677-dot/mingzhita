@@ -393,8 +393,8 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData }: Prop
       {/* 房间入口弹窗 */}
       <AnimatePresence>
         {selectedEntrance && (
-          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100">
+          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4 mobile-portrait-safe-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100 mobile-portrait-safe-card mobile-contrast-surface-dark">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-black text-lg">{selectedEntrance.ownerName} 的房间</h3>
                 <button onClick={() => setSelectedEntrance(null)} className="p-1 rounded bg-slate-800"><X size={14} /></button>
@@ -426,8 +426,8 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData }: Prop
       {/* 建筑详情弹窗 */}
       <AnimatePresence>
         {selectedBuilding && (
-          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-amber-900/30 backdrop-blur-sm">
-            <div className="bg-white rounded-[48px] p-8 w-full max-w-md shadow-2xl relative border-8 border-amber-100 flex flex-col max-h-[85vh]">
+          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-amber-900/30 backdrop-blur-sm mobile-portrait-safe-overlay">
+            <div className="bg-white rounded-[48px] p-8 w-full max-w-md shadow-2xl relative border-8 border-amber-100 flex flex-col max-h-[85vh] mobile-portrait-safe-card mobile-contrast-surface-light">
               <button onClick={() => setSelectedBuilding(null)} className="absolute top-6 right-6 p-2 bg-amber-50 rounded-full text-amber-400 hover:bg-amber-100 transition-colors z-20">
                 <X size={20} />
               </button>

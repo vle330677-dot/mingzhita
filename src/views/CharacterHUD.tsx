@@ -201,7 +201,7 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
               initial={{ opacity: 0, scale: 0.9, width: 60 }}
               animate={{ opacity: 1, scale: 1, width: 280 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+              className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] mobile-portrait-safe-hud mobile-contrast-surface-dark"
             >
               <div className="p-4 bg-slate-800/50 border-b border-slate-700 cursor-move flex items-center justify-between group">
                 <div className="flex items-center gap-3">
@@ -388,14 +388,14 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 mobile-portrait-safe-overlay"
             onClick={() => setShowProfileModal(false)}
           >
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 20, opacity: 0 }}
-              className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-5"
+              className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-5 mobile-portrait-safe-card mobile-contrast-surface-dark"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-white font-black text-lg mb-4">角色详细信息</h3>

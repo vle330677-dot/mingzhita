@@ -70,6 +70,22 @@ const LOCATIONS = [
   { id: 'paranormal_office', name: '灵异管理所', x: 88, y: 15, type: 'safe', description: '专门处理非自然精神波动的神秘机关。' }
 ];
 
+const MOBILE_MAP_COORDS: Record<string, { x: number; y: number }> = {
+  tower_of_life: { x: 50, y: 47 },
+  sanctuary: { x: 37, y: 44 },
+  london_tower: { x: 24, y: 58 },
+  rich_area: { x: 70, y: 46 },
+  slums: { x: 22, y: 44 },
+  demon_society: { x: 10, y: 11 },
+  guild: { x: 50, y: 66 },
+  army: { x: 50, y: 22 },
+  tower_guard: { x: 66, y: 33 },
+  observers: { x: 64, y: 22 },
+  paranormal_office: { x: 23, y: 56 }
+};
+
+const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';
+
 const SAFE_ZONES = ['tower_of_life', 'sanctuary', 'london_tower', 'tower_guard'];
 const TOWER_ADJACENT_LOCATIONS = new Set(['sanctuary', 'london_tower', 'slums', 'rich_area', 'guild', 'army']);
 
@@ -229,14 +245,38 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [guardPrisonState, setGuardPrisonState] = useState<GuardPrisonStateSummary | null>(null);
   const [guardArrestPendingCase, setGuardArrestPendingCase] = useState<GuardArrestCaseSummary | null>(null);
   const handledGuardArrestAlertsRef = useRef<Set<string>>(new Set());
+  const [isPortraitMobile, setIsPortraitMobile] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(MOBILE_PORTRAIT_QUERY).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_PORTRAIT_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setIsPortraitMobile(e.matches);
+    setIsPortraitMobile(media.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    }
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
 
   const customBackgroundImage = useMemo(() => String(bgImageInput || '').trim(), [bgImageInput]);
-  const globalMapBackground = customBackgroundImage || '/map_background.jpg';
+  const globalMapBackground = customBackgroundImage || (isPortraitMobile ? '/map_background-s.png' : '/map_background.jpg');
   const currentBackgroundImage = useMemo(() => {
     if (customBackgroundImage) return customBackgroundImage;
     if (activeView && LOCATION_BG_MAP[activeView]) return LOCATION_BG_MAP[activeView];
     return '/map_background.jpg';
   }, [activeView, customBackgroundImage]);
+  const mapLocations = useMemo(() => {
+    if (!isPortraitMobile) return LOCATIONS;
+    return LOCATIONS.map((loc) => {
+      const p = MOBILE_MAP_COORDS[String(loc.id)];
+      return p ? { ...loc, x: p.x, y: p.y } : loc;
+    });
+  }, [isPortraitMobile]);
 
   const [runtimeUser, setRuntimeUser] = useState(user);
   const actor = runtimeUser || user;
@@ -1609,10 +1649,14 @@ const closeAnnouncement = () => {
       <AnimatePresence mode="wait">
         {!activeView && (
           <motion.div className="relative w-full h-full flex items-center justify-center p-2 md:p-8 z-10">
-            <div className="relative aspect-[16/9] w-full max-w-[1200px] bg-slate-900/50 rounded-2xl md:rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
+            <div
+              className={`relative w-full bg-slate-900/50 rounded-2xl md:rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl ${
+                isPortraitMobile ? 'aspect-[9/16] max-w-[560px]' : 'aspect-[16/9] max-w-[1200px]'
+              }`}
+            >
               <img src={globalMapBackground} className="w-full h-full object-cover opacity-80" />
 
-              {LOCATIONS.map((loc) => (
+              {mapLocations.map((loc) => (
                 <div
                   key={loc.id}
                   className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer touch-manipulation"
@@ -2100,7 +2144,7 @@ const closeAnnouncement = () => {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[450px] bg-slate-900/95 backdrop-blur-xl p-6 rounded-t-3xl md:rounded-3xl border-t md:border border-white/20 z-50 shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[450px] bg-slate-900/95 backdrop-blur-xl p-6 rounded-t-3xl md:rounded-3xl border-t md:border border-white/20 z-50 shadow-2xl overflow-y-auto custom-scrollbar mobile-portrait-safe-sheet mobile-contrast-surface-dark"
           >
             <div className="absolute inset-0 rounded-[2rem] overflow-hidden -z-10 opacity-30">
               <img
@@ -2412,7 +2456,7 @@ const closeAnnouncement = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed bottom-24 right-4 md:right-6 w-[92vw] max-w-sm bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl p-4 shadow-2xl z-50 settings-scroll"
+            className="fixed bottom-24 right-4 md:right-6 w-[92vw] max-w-sm bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl p-4 shadow-2xl z-50 settings-scroll mobile-portrait-safe-card mobile-contrast-surface-dark"
           >
             <h4 className="text-xs font-black text-slate-400 uppercase mb-3 px-2">主题与命运设置</h4>
 

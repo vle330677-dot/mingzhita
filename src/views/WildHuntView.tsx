@@ -180,13 +180,13 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
   }, [user.id]);
 
   return (
-    <div className="fixed inset-0 z-[9998] text-slate-100">
+    <div className="fixed inset-0 z-[9998] text-slate-100 overflow-y-auto">
       <div className="absolute inset-0">
         <img src="/map_background.jpg" className="w-full h-full object-cover" alt="wild-bg" />
         <div className="absolute inset-0 bg-slate-950/80" />
       </div>
 
-      <div className="relative z-10 max-w-4xl mx-auto h-full p-4 md:p-8 flex flex-col">
+      <div className="relative z-10 max-w-4xl mx-auto min-h-full p-4 md:p-8 flex flex-col">
         <div className="flex items-center justify-between">
           <button
             onClick={onClose}
@@ -205,7 +205,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
           </button>
         </div>
 
-        <div className="mt-5 rounded-3xl border border-slate-700 bg-slate-900/70 p-5 md:p-8 shadow-2xl flex-1 flex flex-col">
+        <div className="mt-5 rounded-3xl border border-slate-700 bg-slate-900/70 p-5 md:p-8 shadow-2xl md:flex-1 flex flex-col max-h-[72vh] md:max-h-none overflow-y-auto custom-scrollbar mobile-portrait-safe-card mobile-contrast-surface-dark">
           <h2 className="text-2xl font-black flex items-center gap-2">
             <Skull size={24} className="text-rose-400" />
             界外区域 - 打怪系统

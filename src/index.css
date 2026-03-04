@@ -171,3 +171,58 @@ body {
     max-height: 58vh;
   }
 }
+
+:root {
+  --mobile-portrait-safe-gap: clamp(72px, 16dvh, 144px);
+}
+
+.mobile-contrast-surface-light {
+  color: #142032 !important;
+}
+
+.mobile-contrast-surface-dark {
+  color: #f8fafc !important;
+}
+
+@media (max-width: 767px) and (orientation: portrait) {
+  .mobile-portrait-safe-overlay {
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding-top: var(--mobile-portrait-safe-gap) !important;
+    padding-bottom: var(--mobile-portrait-safe-gap) !important;
+  }
+
+  .mobile-portrait-safe-card {
+    width: min(94vw, 560px) !important;
+    max-height: calc(100dvh - var(--mobile-portrait-safe-gap) * 2) !important;
+    overflow-y: auto !important;
+  }
+
+  .mobile-portrait-safe-sheet {
+    top: var(--mobile-portrait-safe-gap) !important;
+    bottom: var(--mobile-portrait-safe-gap) !important;
+    left: 0.75rem !important;
+    right: 0.75rem !important;
+    max-height: none !important;
+    border-radius: 1.25rem !important;
+  }
+
+  .mobile-portrait-safe-hud {
+    max-height: calc(100dvh - var(--mobile-portrait-safe-gap) * 2) !important;
+  }
+
+  .mobile-portrait-safe-roleplay {
+    left: 50% !important;
+    right: auto !important;
+    top: var(--mobile-portrait-safe-gap) !important;
+    width: min(94vw, 420px) !important;
+    height: calc(100dvh - var(--mobile-portrait-safe-gap) * 2) !important;
+    transform: translateX(-50%) !important;
+  }
+
+  .mobile-portrait-safe-roleplay-min {
+    width: min(94vw, 320px) !important;
+    height: 52px !important;
+  }
+
+}

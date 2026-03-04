@@ -429,12 +429,12 @@ useEffect(() => {
   // 普通人看鬼魂
   if (currentUser.role === '普通人' && effectiveTarget.role === '鬼魂') {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 mobile-portrait-safe-overlay">
         <motion.div
           onClick={(e) => e.stopPropagation()}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="relative bg-slate-900 border border-slate-700 p-8 rounded-3xl text-center max-w-sm"
+          className="relative bg-slate-900 border border-slate-700 p-8 rounded-3xl text-center max-w-sm mobile-portrait-safe-card mobile-contrast-surface-dark"
         >
           <button
             onClick={onClose}
@@ -452,13 +452,13 @@ useEffect(() => {
   const disableAll = actionLock || isStartingRP;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 mobile-portrait-safe-overlay">
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="relative flex items-center justify-center w-[500px] h-[500px]"
+        className="relative flex items-center justify-center w-[min(500px,92vw)] h-[min(500px,62vh)] md:w-[500px] md:h-[500px] mobile-contrast-surface-dark"
       >
         <button
           onClick={onClose}
@@ -584,7 +584,7 @@ useEffect(() => {
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              className="absolute bottom-4 z-50 bg-slate-900 border border-slate-700 p-4 rounded-2xl w-80 shadow-2xl pointer-events-auto"
+              className="absolute bottom-4 z-50 bg-slate-900 border border-slate-700 p-4 rounded-2xl w-[min(20rem,88vw)] shadow-2xl pointer-events-auto mobile-contrast-surface-dark"
             >
               <div className="flex justify-between items-center mb-2">
                 <span className="text-xs font-bold text-slate-300">关于 {effectiveTarget.name} 的情报笔记</span>
@@ -632,7 +632,7 @@ function ActionButton({
       <button
         onClick={onClick}
         disabled={disabled}
-        className={`w-14 h-14 rounded-full text-white flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-lg border-2 border-slate-900 ${color} disabled:opacity-50 disabled:cursor-not-allowed`}
+        className={`w-12 h-12 md:w-14 md:h-14 rounded-full text-white flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-lg border-2 border-slate-900 ${color} disabled:opacity-50 disabled:cursor-not-allowed`}
       >
         {icon}
       </button>
