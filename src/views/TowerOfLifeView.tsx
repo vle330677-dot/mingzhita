@@ -67,8 +67,10 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
   const [delegationStatus, setDelegationStatus] = useState('none');
   const [delegationMeta, setDelegationMeta] = useState<any>(null);
   const [delegationBusy, setDelegationBusy] = useState(false);
+  const [growthBusy, setGrowthBusy] = useState(false);
   const [selectedPoint, setSelectedPoint] = useState<TowerPointId | null>(null);
   const isTowerGovernor = ['圣子', '圣女'].includes(String(user.job || ''));
+  const isUndifferentiatedStage = Number(user.age || 0) < 16 || String(user.role || '') === '未分化';
 
   useEffect(() => {
     const uid = String((user as any)?.id || '');
@@ -186,6 +188,50 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
     setShowWelcomeModal(false);
     setSelectedPoint(null);
     onExit();
+  };
+
+  const handleTowerDifferentiation = async () => {
+    if (growthBusy) return;
+    if (!isUndifferentiatedStage) {
+      showToast('当前角色已完成分化。');
+      return;
+    }
+
+    const confirmStart = window.confirm('在命之塔进行属性分化？将进入 16-19 岁阶段并随机抽取身份。');
+    if (!confirmStart) return;
+
+    const enrollStudent = window.confirm(
+      '分化后是否直接前往伦敦塔就读？\n确定：分化并前往伦敦塔\n取消：仅完成分化，留在当前区域'
+    );
+
+    setGrowthBusy(true);
+    try {
+      const res = await fetch('/api/growth/advance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          action: 'minor_to_student',
+          enrollStudent
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '分化失败');
+        return;
+      }
+
+      const next = data.user || {};
+      const roleText = String(next.role || '');
+      const ageText = Number(next.age || 0);
+      const suffix = enrollStudent ? '，并已前往伦敦塔。' : '。';
+      showToast(`分化完成：${roleText || '身份已更新'}（${ageText || 16}岁）${suffix}`);
+      fetchGlobalData();
+    } catch {
+      showToast('网络异常，分化失败');
+    } finally {
+      setGrowthBusy(false);
+    }
   };
 
   const selectedPointMeta = TOWER_POINTS.find((p) => p.id === selectedPoint) || null;
@@ -378,6 +424,22 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
 
                 {selectedPoint === 'training_ground' && (
                   <div className="space-y-4">
+                    {isUndifferentiatedStage && (
+                      <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-4">
+                        <h4 className="text-sm font-black text-fuchsia-200">未分化属性分化</h4>
+                        <p className="mt-2 text-xs leading-6 text-fuchsia-100/90">
+                          在命之塔进行属性分化，可随机抽取身份并进入 16-19 岁阶段。
+                        </p>
+                        <button
+                          onClick={handleTowerDifferentiation}
+                          disabled={growthBusy}
+                          className="mt-3 w-full rounded-xl bg-fuchsia-600 px-3 py-2 text-xs font-black text-white hover:bg-fuchsia-500 disabled:opacity-60"
+                        >
+                          {growthBusy ? '分化处理中...' : '开始抽属性分化'}
+                        </button>
+                      </div>
+                    )}
+
                     <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4">
                       <h4 className="text-sm font-black text-indigo-200">精神力训练指引</h4>
                       <p className="mt-2 text-xs leading-6 text-indigo-100/90">

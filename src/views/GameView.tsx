@@ -57,31 +57,31 @@ const LOCATION_BG_MAP: Record<string, string> = {
 
 // ================== 地图坐标配置 ==================
 const LOCATIONS = [
-  { id: 'tower_of_life', name: '命之塔', x: 50, y: 48, type: 'safe', description: '世界的绝对中心，神明降下神谕的圣地。' },
-  { id: 'sanctuary', name: '圣所', x: 42, y: 42, type: 'safe', description: '未分化幼崽的摇篮，充满治愈与宁静的气息。' },
-  { id: 'london_tower', name: '伦敦塔', x: 67, y: 35, type: 'safe', description: '哨兵与向导的最高学府与管理机构。' },
-  { id: 'rich_area', name: '富人区', x: 70, y: 50, type: 'safe', description: '流光溢彩的销金窟，权贵们在此挥霍财富。' },
-  { id: 'slums', name: '贫民区', x: 25, y: 48, type: 'safe', description: '混乱、肮脏，但充满生机。' },
-  { id: 'demon_society', name: '恶魔会', x: 12, y: 20, type: 'safe', description: '混乱之王的狂欢所。(未知区域)' },
-  { id: 'guild', name: '工会', x: 48, y: 78, type: 'safe', description: '鱼龙混杂的地下交易网与冒险者聚集地。' },
-  { id: 'army', name: '军队', x: 50, y: 18, type: 'safe', description: '人类最坚实的物理防线。' },
-  { id: 'tower_guard', name: '守塔会', x: 30, y: 22, type: 'safe', description: '教堂秩序维护组织，可进行冥想与赎罪。' },
-  { id: 'observers', name: '观察者', x: 65, y: 15, type: 'safe', description: '记录世界历史与真相的隐秘结社。' },
-  { id: 'paranormal_office', name: '灵异管理所', x: 88, y: 15, type: 'safe', description: '专门处理非自然精神波动的神秘机关。' }
+  { id: 'tower_of_life', name: '命之塔', x: 50, y: 50, type: 'safe', description: '世界的绝对中心，神明降下神谕的圣地。' },
+  { id: 'sanctuary', name: '圣所', x: 43, y: 42, type: 'safe', description: '未分化幼崽的摇篮，充满治愈与宁静的气息。' },
+  { id: 'london_tower', name: '伦敦塔', x: 69, y: 56, type: 'safe', description: '哨兵与向导的最高学府与管理机构。' },
+  { id: 'rich_area', name: '富人区', x: 69, y: 69, type: 'safe', description: '流光溢彩的销金窟，权贵们在此挥霍财富。' },
+  { id: 'slums', name: '贫民区', x: 21, y: 49, type: 'safe', description: '混乱、肮脏，但充满生机。' },
+  { id: 'demon_society', name: '恶魔会', x: 9, y: 54, type: 'safe', description: '混乱之王的狂欢所。(未知区域)' },
+  { id: 'guild', name: '工会', x: 45, y: 79, type: 'safe', description: '鱼龙混杂的地下交易网与冒险者聚集地。' },
+  { id: 'army', name: '军队', x: 47, y: 17, type: 'safe', description: '人类最坚实的物理防线。' },
+  { id: 'tower_guard', name: '守塔会', x: 62, y: 35, type: 'safe', description: '教堂秩序维护组织，可进行冥想与赎罪。' },
+  { id: 'observers', name: '观察者', x: 63, y: 16, type: 'safe', description: '记录世界历史与真相的隐秘结社。' },
+  { id: 'paranormal_office', name: '灵异管理所', x: 30, y: 68, type: 'safe', description: '专门处理非自然精神波动的神秘机关。' }
 ];
 
 const MOBILE_MAP_COORDS: Record<string, { x: number; y: number }> = {
-  tower_of_life: { x: 50, y: 43 },
-  sanctuary: { x: 37, y: 41 },
-  london_tower: { x: 81, y: 31 },
-  rich_area: { x: 71, y: 42 },
-  slums: { x: 21, y: 41 },
-  demon_society: { x: 10, y: 11 },
-  guild: { x: 50, y: 66 },
-  army: { x: 50, y: 18 },
-  tower_guard: { x: 66, y: 38 },
-  observers: { x: 66, y: 16 },
-  paranormal_office: { x: 21, y: 56 }
+  tower_of_life: { x: 50, y: 55 },
+  sanctuary: { x: 39, y: 48 },
+  london_tower: { x: 80, y: 49 },
+  rich_area: { x: 67, y: 58 },
+  slums: { x: 16, y: 47 },
+  demon_society: { x: 8, y: 55 },
+  guild: { x: 46, y: 79 },
+  army: { x: 47, y: 20 },
+  tower_guard: { x: 58, y: 50 },
+  observers: { x: 62, y: 22 },
+  paranormal_office: { x: 18, y: 63 }
 };
 
 const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';
@@ -297,6 +297,7 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const towerPurifyRate = getTowerPurifyRate(actor.job);
   const canUseTowerPurify = towerPurifyRate > 0;
   const canUseGuardArrestSkill = isTowerGuardJob(actor.job);
+  const showWorldMapOverlayUi = !activeView && !selectedLocation;
 
 
 useEffect(() => { setRuntimeUser(user); }, [user]);
@@ -1656,28 +1657,37 @@ const closeAnnouncement = () => {
             >
               <img src={globalMapBackground} className="w-full h-full object-cover opacity-80" />
 
-              {mapLocations.map((loc) => (
-                <div
-                  key={loc.id}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer touch-manipulation"
-                  style={{ left: `${loc.x}%`, top: `${loc.y}%` }}
-                  onClick={() => setSelectedLocation(loc)}
-                >
+              {mapLocations.map((loc) => {
+                const labelAnchorClass =
+                  loc.x <= 14
+                    ? 'left-0 translate-x-0'
+                    : loc.x >= 86
+                      ? 'right-0 left-auto translate-x-0'
+                      : 'left-1/2 -translate-x-1/2';
+
+                return (
                   <div
-                    className={`w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center backdrop-blur-sm transition-all
-                    ${actor.currentLocation === loc.id ? 'bg-sky-500 border-white animate-pulse' : 'bg-slate-900/80 border-slate-400'}`}
+                    key={loc.id}
+                    className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer touch-manipulation"
+                    style={{ left: `${loc.x}%`, top: `${loc.y}%` }}
+                    onClick={() => setSelectedLocation(loc)}
                   >
-                    <MapPin size={14} />
+                    <div
+                      className={`w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center backdrop-blur-sm transition-all
+                      ${actor.currentLocation === loc.id ? 'bg-sky-500 border-white animate-pulse' : 'bg-slate-900/80 border-slate-400'}`}
+                    >
+                      <MapPin size={14} />
+                    </div>
+                    <div
+                      className={`absolute top-8 ${labelAnchorClass} whitespace-nowrap px-3 py-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 rounded-lg text-[10px] md:text-xs font-bold text-slate-200 transition-all duration-300 shadow-xl
+                      ${selectedLocation?.id === loc.id ? 'opacity-100 scale-110 z-20 border-sky-500/50 text-white' : 'opacity-0 hover:opacity-100 translate-y-2 hover:translate-y-0'}
+                    `}
+                    >
+                      {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(loc.id) ? '迷雾区域' : loc.name}
+                    </div>
                   </div>
-                  <div
-                    className={`absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 rounded-lg text-[10px] md:text-xs font-bold text-slate-200 transition-all duration-300 shadow-xl
-                    ${selectedLocation?.id === loc.id ? 'opacity-100 scale-110 z-20 border-sky-500/50 text-white' : 'opacity-0 hover:opacity-100 translate-y-2 hover:translate-y-0'}
-                  `}
-                  >
-                    {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(loc.id) ? '迷雾区域' : loc.name}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
             </div>
           </motion.div>
@@ -1803,7 +1813,7 @@ const closeAnnouncement = () => {
       </div>
 
       {/* 桌面端：当前地图 + 同地区信息面板 */}
-      <div className="hidden md:block fixed right-4 top-24 z-40">
+      <div className={`${showWorldMapOverlayUi ? 'hidden md:block' : 'hidden'} fixed right-4 top-24 z-40`}>
         <div className="bg-slate-900/88 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
           <button
             onClick={() => setShowAreaPanel((v) => !v)}
@@ -1953,7 +1963,7 @@ const closeAnnouncement = () => {
       </div>
 
       {/* 移动端：同地区信息面板（可折叠） */}
-      <div className="md:hidden fixed left-3 right-3 bottom-20 z-[165] pointer-events-none">
+      <div className={`${showWorldMapOverlayUi ? 'md:hidden' : 'hidden'} fixed left-3 right-3 bottom-20 z-[165] pointer-events-none`}>
         {!mobileContextCollapsed && (
           <div className="pointer-events-auto bg-slate-900/92 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
             <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
@@ -2144,7 +2154,7 @@ const closeAnnouncement = () => {
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[450px] bg-slate-900/95 backdrop-blur-xl p-6 rounded-t-3xl md:rounded-3xl border-t md:border border-white/20 z-50 shadow-2xl overflow-y-auto custom-scrollbar mobile-portrait-safe-sheet mobile-contrast-surface-dark"
+            className="fixed bottom-0 left-0 right-0 max-h-[86vh] md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:w-[450px] bg-slate-900/95 backdrop-blur-xl p-6 rounded-t-3xl md:rounded-3xl border-t md:border border-white/20 z-50 shadow-2xl overflow-y-auto custom-scrollbar mobile-portrait-safe-sheet mobile-contrast-surface-dark"
           >
             <div className="absolute inset-0 rounded-[2rem] overflow-hidden -z-10 opacity-30">
               <img
@@ -2358,7 +2368,7 @@ const closeAnnouncement = () => {
         </button>
       </div>
       {/* 左下交互功能区（移动端收起后横向一行） */}
-      <div className="fixed bottom-4 left-3 right-3 md:bottom-6 md:left-6 md:right-auto z-[160] flex items-center gap-2 md:flex-col md:items-stretch overflow-x-auto">
+      <div className={`${showWorldMapOverlayUi ? 'flex' : 'hidden'} fixed bottom-4 left-3 right-3 md:bottom-6 md:left-6 md:right-auto z-[160] items-center gap-2 md:flex-col md:items-stretch overflow-x-auto`}>
         <button
           onClick={() => {
             if (isAnyPrisonLocked) {
