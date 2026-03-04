@@ -71,17 +71,17 @@ const LOCATIONS = [
 ];
 
 const MOBILE_MAP_COORDS: Record<string, { x: number; y: number }> = {
-  tower_of_life: { x: 50, y: 47 },
-  sanctuary: { x: 37, y: 44 },
-  london_tower: { x: 24, y: 58 },
-  rich_area: { x: 70, y: 46 },
-  slums: { x: 22, y: 44 },
+  tower_of_life: { x: 50, y: 43 },
+  sanctuary: { x: 37, y: 41 },
+  london_tower: { x: 81, y: 31 },
+  rich_area: { x: 71, y: 42 },
+  slums: { x: 21, y: 41 },
   demon_society: { x: 10, y: 11 },
   guild: { x: 50, y: 66 },
-  army: { x: 50, y: 22 },
-  tower_guard: { x: 66, y: 33 },
-  observers: { x: 64, y: 22 },
-  paranormal_office: { x: 23, y: 56 }
+  army: { x: 50, y: 18 },
+  tower_guard: { x: 66, y: 38 },
+  observers: { x: 66, y: 16 },
+  paranormal_office: { x: 21, y: 56 }
 };
 
 const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';

@@ -211,6 +211,11 @@ body {
     max-height: calc(100dvh - var(--mobile-portrait-safe-gap) * 2) !important;
   }
 
+  .mobile-portrait-safe-center {
+    padding-top: var(--mobile-portrait-safe-gap) !important;
+    padding-bottom: var(--mobile-portrait-safe-gap) !important;
+  }
+
   .mobile-portrait-safe-roleplay {
     left: 50% !important;
     right: auto !important;

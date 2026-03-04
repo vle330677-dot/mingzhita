@@ -3,6 +3,7 @@ import { ArrowLeft, BedDouble, DoorOpen, Download, Save, ShieldCheck, Trash2 } f
 
 type HomeLocation = 'sanctuary' | 'slums' | 'rich_area';
 const NONE = '无';
+const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';
 
 interface ReplayItem {
   id: string;
@@ -107,6 +108,11 @@ export default function HomeRoomView({
   const [deletingReplayId, setDeletingReplayId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [growing, setGrowing] = useState(false);
+  const [mobileSection, setMobileSection] = useState<'info' | 'panel'>('info');
+  const [isPortraitMobile, setIsPortraitMobile] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia(MOBILE_PORTRAIT_QUERY).matches;
+  });
 
   const age = Number(currentUser.age || 0);
   const role = String(currentUser.role || '');
@@ -120,6 +126,19 @@ export default function HomeRoomView({
   }, [isOwner, room.visible]);
 
   const bg = editBg.trim() || room.bgImage || theme.defaultBg;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(MOBILE_PORTRAIT_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setIsPortraitMobile(e.matches);
+    setIsPortraitMobile(media.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', onChange);
+      return () => media.removeEventListener('change', onChange);
+    }
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, []);
 
   const fetchReplays = async () => {
     if (!isOwner) return;
@@ -338,8 +357,8 @@ export default function HomeRoomView({
 
   if (!canVisitorView) {
     return (
-      <div className="fixed inset-0 z-[220] bg-black text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center">
+      <div className="fixed inset-0 z-[220] bg-black text-white flex items-center justify-center p-6 mobile-portrait-safe-overlay">
+        <div className="max-w-md w-full rounded-2xl border border-slate-700 bg-slate-900 p-6 text-center mobile-portrait-safe-card mobile-contrast-surface-dark">
           <p className="text-lg font-black mb-2">该家园暂不开放访问</p>
           <p className="text-sm text-slate-400 mb-4">房主未公开该房间。</p>
           <button onClick={onBack} className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600">
@@ -358,164 +377,195 @@ export default function HomeRoomView({
       <div className={`absolute inset-0 ${theme.overlay}`} />
       <div className="absolute inset-0 bg-black/35" />
 
-      <div className="relative z-10 p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between">
-          <button
-            onClick={onBack}
-            className="px-4 py-2 rounded-xl bg-slate-900/80 border border-slate-600 font-bold flex items-center gap-2"
-          >
-            <ArrowLeft size={16} /> {theme.backText}
-          </button>
+      <div className="relative z-10 h-full w-full flex items-center justify-center p-4 md:p-6 mobile-portrait-safe-center">
+        <div className="w-full max-w-6xl rounded-3xl border border-white/15 bg-black/30 backdrop-blur-xl shadow-2xl p-4 md:p-6 flex flex-col max-h-[92vh] mobile-portrait-safe-card mobile-contrast-surface-dark">
+          <div className="flex items-center justify-between gap-3 shrink-0">
+            <button
+              onClick={onBack}
+              className="px-4 py-2 rounded-xl bg-slate-900/80 border border-slate-600 font-bold flex items-center gap-2"
+            >
+              <ArrowLeft size={16} /> {theme.backText}
+            </button>
 
-          <div className="text-sm font-bold flex items-center gap-2 text-slate-200">
-            <DoorOpen size={16} />
-            {room.ownerName} 的家园（{theme.name}）
-          </div>
-        </div>
-
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1">
-          <div className={`lg:col-span-2 rounded-2xl border p-5 backdrop-blur ${theme.panel}`}>
-            <h3 className="text-xl font-black mb-3">家园信息</h3>
-            <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">
-              {room.description || '房主还没有设置家园介绍。'}
-            </p>
+            <div className="text-sm font-bold flex items-center gap-2 text-slate-200">
+              <DoorOpen size={16} />
+              {room.ownerName} 的家园（{theme.name}）
+            </div>
           </div>
 
-          <div className={`rounded-2xl border p-4 backdrop-blur ${theme.panel}`}>
-            <h4 className="font-black mb-3">家园面板</h4>
-            <p className="text-xs text-slate-200 mb-1">职业：{room.job || NONE}</p>
-            <p className="text-xs text-slate-300 mb-3">身份：{room.role || '未知'}</p>
+          {isPortraitMobile && (
+            <div className="mt-3 grid grid-cols-2 gap-2 md:hidden shrink-0">
+              <button
+                onClick={() => setMobileSection('info')}
+                className={`px-3 py-2 rounded-xl text-xs font-black border transition-colors ${
+                  mobileSection === 'info'
+                    ? 'bg-sky-600 text-white border-sky-400'
+                    : 'bg-slate-900/70 text-slate-200 border-slate-600'
+                }`}
+              >
+                家园信息
+              </button>
+              <button
+                onClick={() => setMobileSection('panel')}
+                className={`px-3 py-2 rounded-xl text-xs font-black border transition-colors ${
+                  mobileSection === 'panel'
+                    ? 'bg-emerald-600 text-white border-emerald-400'
+                    : 'bg-slate-900/70 text-slate-200 border-slate-600'
+                }`}
+              >
+                {isOwner ? '家园设置' : '家园面板'}
+              </button>
+            </div>
+          )}
 
-            {isOwner ? (
-              <div className="space-y-2">
-                <textarea
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                  className="w-full h-24 p-2 rounded bg-slate-950 border border-slate-700 text-xs"
-                  placeholder="输入房间介绍..."
-                />
-                <input
-                  value={editBg}
-                  onChange={(e) => setEditBg(e.target.value)}
-                  className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
-                  placeholder={`背景图 URL（留空使用默认：${theme.defaultBg}）`}
-                />
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+            <div className={`lg:col-span-2 rounded-2xl border p-5 backdrop-blur ${theme.panel} overflow-y-auto custom-scrollbar min-h-0 ${
+              isPortraitMobile && mobileSection !== 'info' ? 'hidden md:block' : ''
+            }`}>
+              <h3 className="text-xl font-black mb-3">家园信息</h3>
+              <p className="text-slate-100 whitespace-pre-wrap leading-relaxed">
+                {room.description || '房主还没有设置家园介绍。'}
+              </p>
+            </div>
 
-                <label className="text-xs flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={editVisible}
-                    onChange={(e) => setEditVisible(e.target.checked)}
+            <div className={`rounded-2xl border p-4 backdrop-blur ${theme.panel} overflow-y-auto custom-scrollbar min-h-0 ${
+              isPortraitMobile && mobileSection !== 'panel' ? 'hidden md:block' : ''
+            }`}>
+              <h4 className="font-black mb-3">家园面板</h4>
+              <p className="text-xs text-slate-200 mb-1">职业：{room.job || NONE}</p>
+              <p className="text-xs text-slate-300 mb-3">身份：{room.role || '未知'}</p>
+
+              {isOwner ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    className="w-full h-24 p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                    placeholder="输入房间介绍..."
                   />
-                  房间公开可见
-                </label>
-                <label className="text-xs flex items-center gap-2">
                   <input
-                    type="checkbox"
-                    checked={editAllowVisit}
-                    onChange={(e) => setEditAllowVisit(e.target.checked)}
+                    value={editBg}
+                    onChange={(e) => setEditBg(e.target.value)}
+                    className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                    placeholder={`背景图 URL（留空使用默认：${theme.defaultBg}）`}
                   />
-                  允许访客进入
-                </label>
 
-                <input
-                  type="password"
-                  value={roomPassword}
-                  onChange={(e) => setRoomPassword(e.target.value)}
-                  className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
-                  placeholder="房间密码（留空表示不修改）"
-                />
-                <input
-                  type="password"
-                  value={roomPasswordAgain}
-                  onChange={(e) => setRoomPasswordAgain(e.target.value)}
-                  className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
-                  placeholder="重复输入新密码"
-                />
-                <label className="text-xs flex items-center gap-2">
+                  <label className="text-xs flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editVisible}
+                      onChange={(e) => setEditVisible(e.target.checked)}
+                    />
+                    房间公开可见
+                  </label>
+                  <label className="text-xs flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editAllowVisit}
+                      onChange={(e) => setEditAllowVisit(e.target.checked)}
+                    />
+                    允许访客进入
+                  </label>
+
                   <input
-                    type="checkbox"
-                    checked={clearRoomPassword}
-                    onChange={(e) => setClearRoomPassword(e.target.checked)}
+                    type="password"
+                    value={roomPassword}
+                    onChange={(e) => setRoomPassword(e.target.value)}
+                    className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                    placeholder="房间密码（留空表示不修改）"
                   />
-                  清空房间密码
-                </label>
+                  <input
+                    type="password"
+                    value={roomPasswordAgain}
+                    onChange={(e) => setRoomPasswordAgain(e.target.value)}
+                    className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                    placeholder="重复输入新密码"
+                  />
+                  <label className="text-xs flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={clearRoomPassword}
+                      onChange={(e) => setClearRoomPassword(e.target.checked)}
+                    />
+                    清空房间密码
+                  </label>
 
-                <button
-                  onClick={saveRoomSettings}
-                  disabled={saving}
-                  className="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-                >
-                  <Save size={14} /> {saving ? '保存中...' : '保存设置'}
-                </button>
-
-                <button
-                  onClick={handleRest}
-                  className="w-full py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-bold flex items-center justify-center gap-2"
-                >
-                  <BedDouble size={14} /> 休息（恢复状态）
-                </button>
-
-                {(isUndifferentiatedStage || isStudentStage) && (
                   <button
-                    onClick={handleGrowthAdvance}
-                    disabled={growing}
-                    className="w-full py-2 rounded bg-fuchsia-600 hover:bg-fuchsia-500 font-bold disabled:opacity-60"
+                    onClick={saveRoomSettings}
+                    disabled={saving}
+                    className="w-full py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-bold flex items-center justify-center gap-2 disabled:opacity-60"
                   >
-                    {isUndifferentiatedStage
-                      ? (growing ? '成长推进中...' : '成长推进（未分化→学生）')
-                      : (growing ? '毕业处理中...' : '成长推进（学生毕业→19+）')}
+                    <Save size={14} /> {saving ? '保存中...' : '保存设置'}
                   </button>
-                )}
 
-                <button
-                  onClick={exportReplayTxt}
-                  className="w-full py-2 rounded bg-slate-700 hover:bg-slate-600 font-bold flex items-center justify-center gap-2"
-                >
-                  <Download size={14} /> 回放导出 TXT
-                </button>
+                  <button
+                    onClick={handleRest}
+                    className="w-full py-2 rounded bg-indigo-600 hover:bg-indigo-500 font-bold flex items-center justify-center gap-2"
+                  >
+                    <BedDouble size={14} /> 休息（恢复状态）
+                  </button>
 
-                <button
-                  onClick={() => setShowReplays((v) => !v)}
-                  className="w-full py-2 rounded bg-slate-800 hover:bg-slate-700 font-bold"
-                >
-                  {showReplays ? '收起回顾列表' : '查看回顾列表'}
-                </button>
+                  {(isUndifferentiatedStage || isStudentStage) && (
+                    <button
+                      onClick={handleGrowthAdvance}
+                      disabled={growing}
+                      className="w-full py-2 rounded bg-fuchsia-600 hover:bg-fuchsia-500 font-bold disabled:opacity-60"
+                    >
+                      {isUndifferentiatedStage
+                        ? (growing ? '成长推进中...' : '成长推进（未分化→学生）')
+                        : (growing ? '毕业处理中...' : '成长推进（学生毕业→19+）')}
+                    </button>
+                  )}
 
-                {showReplays && (
-                  <div className="mt-2 max-h-56 overflow-y-auto rounded border border-slate-700 bg-black/20 p-2 space-y-2">
-                    {replayLoading ? (
-                      <p className="text-[11px] text-slate-400">回顾加载中...</p>
-                    ) : replays.length === 0 ? (
-                      <p className="text-[11px] text-slate-400">暂无回顾记录</p>
-                    ) : (
-                      replays.map((arc) => (
-                        <div key={arc.id} className="rounded border border-slate-700 bg-slate-900/60 p-2">
-                          <p className="text-xs font-bold text-slate-100 truncate">{arc.title || arc.id}</p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {arc.locationName || '未知地点'} · {arc.messageCount} 条
-                          </p>
-                          <p className="text-[10px] text-slate-500">{new Date(arc.createdAt).toLocaleString()}</p>
-                          <button
-                            onClick={() => deleteReplay(arc.id)}
-                            disabled={deletingReplayId === arc.id}
-                            className="mt-2 w-full py-1 rounded bg-rose-700 hover:bg-rose-600 text-[11px] font-bold flex items-center justify-center gap-1 disabled:opacity-60"
-                          >
-                            <Trash2 size={12} />
-                            {deletingReplayId === arc.id ? '删除中...' : '删除'}
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-xs text-slate-300 flex items-center gap-2">
-                <ShieldCheck size={14} />
-                访客模式：仅可查看房间展示信息
-              </div>
-            )}
+                  <button
+                    onClick={exportReplayTxt}
+                    className="w-full py-2 rounded bg-slate-700 hover:bg-slate-600 font-bold flex items-center justify-center gap-2"
+                  >
+                    <Download size={14} /> 回放导出 TXT
+                  </button>
+
+                  <button
+                    onClick={() => setShowReplays((v) => !v)}
+                    className="w-full py-2 rounded bg-slate-800 hover:bg-slate-700 font-bold"
+                  >
+                    {showReplays ? '收起回顾列表' : '查看回顾列表'}
+                  </button>
+
+                  {showReplays && (
+                    <div className="mt-2 max-h-56 overflow-y-auto rounded border border-slate-700 bg-black/20 p-2 space-y-2">
+                      {replayLoading ? (
+                        <p className="text-[11px] text-slate-400">回顾加载中...</p>
+                      ) : replays.length === 0 ? (
+                        <p className="text-[11px] text-slate-400">暂无回顾记录</p>
+                      ) : (
+                        replays.map((arc) => (
+                          <div key={arc.id} className="rounded border border-slate-700 bg-slate-900/60 p-2">
+                            <p className="text-xs font-bold text-slate-100 truncate">{arc.title || arc.id}</p>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {arc.locationName || '未知地点'} · {arc.messageCount} 条
+                            </p>
+                            <p className="text-[10px] text-slate-500">{new Date(arc.createdAt).toLocaleString()}</p>
+                            <button
+                              onClick={() => deleteReplay(arc.id)}
+                              disabled={deletingReplayId === arc.id}
+                              className="mt-2 w-full py-1 rounded bg-rose-700 hover:bg-rose-600 text-[11px] font-bold flex items-center justify-center gap-1 disabled:opacity-60"
+                            >
+                              <Trash2 size={12} />
+                              {deletingReplayId === arc.id ? '删除中...' : '删除'}
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-300 flex items-center gap-2">
+                  <ShieldCheck size={14} />
+                  访客模式：仅可查看房间展示信息
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
