@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BedDouble, DoorOpen, Download, Save, ShieldCheck, Trash2 } from 'lucide-react';
+import { ArrowLeft, BedDouble, DoorOpen, Download, MessageSquarePlus, Save, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 
 type HomeLocation = 'sanctuary' | 'slums' | 'rich_area';
 const NONE = '无';
@@ -13,6 +13,36 @@ interface ReplayItem {
   createdAt: string;
   messageCount: number;
 }
+
+interface CustomGameMineRow {
+  id: number;
+  title: string;
+  status: string;
+  voteStatus: string;
+  createdAt: string;
+}
+
+interface SpiritStatus {
+  name: string;
+  intimacy: number;
+  level: number;
+  imageUrl: string;
+  appearance: string;
+  daily: {
+    feed: number;
+    pet: number;
+    train: number;
+  };
+}
+
+const EMPTY_SPIRIT_STATUS: SpiritStatus = {
+  name: '',
+  intimacy: 0,
+  level: 1,
+  imageUrl: '',
+  appearance: '',
+  daily: { feed: 0, pet: 0, train: 0 }
+};
 
 interface UserLite {
   id: number;
@@ -108,6 +138,20 @@ export default function HomeRoomView({
   const [deletingReplayId, setDeletingReplayId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [growing, setGrowing] = useState(false);
+  const [showCustomGameApply, setShowCustomGameApply] = useState(false);
+  const [customGameLoading, setCustomGameLoading] = useState(false);
+  const [customGameBusy, setCustomGameBusy] = useState(false);
+  const [customGameTitle, setCustomGameTitle] = useState('');
+  const [customGameIdea, setCustomGameIdea] = useState('');
+  const [customGameRows, setCustomGameRows] = useState<CustomGameMineRow[]>([]);
+  const [showSpiritPanel, setShowSpiritPanel] = useState(false);
+  const [spiritLoading, setSpiritLoading] = useState(false);
+  const [spiritBusy, setSpiritBusy] = useState(false);
+  const [spiritAvailable, setSpiritAvailable] = useState(false);
+  const [spiritStatus, setSpiritStatus] = useState<SpiritStatus>(EMPTY_SPIRIT_STATUS);
+  const [spiritNameDraft, setSpiritNameDraft] = useState('');
+  const [spiritImageDraft, setSpiritImageDraft] = useState('');
+  const [spiritAppearanceDraft, setSpiritAppearanceDraft] = useState('');
   const [mobileSection, setMobileSection] = useState<'info' | 'panel'>('info');
   const [isPortraitMobile, setIsPortraitMobile] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -333,6 +377,182 @@ export default function HomeRoomView({
     }
   };
 
+  const loadMyCustomGames = async (silent = false) => {
+    try {
+      setCustomGameLoading(true);
+      const res = await fetch('/api/custom-games/mine', {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}`
+        }
+      });
+      const data = await res.json().catch(() => ([] as any[]));
+      if (!res.ok) {
+        if (!silent) showToast('读取灾厄申请列表失败');
+        return;
+      }
+      const rows = (Array.isArray(data) ? data : []).map((x: any) => ({
+        id: Number(x.id || 0),
+        title: String(x.title || `灾厄游戏#${x.id || 0}`),
+        status: String(x.status || 'unknown'),
+        voteStatus: String(x.vote_status || 'none'),
+        createdAt: String(x.created_at || '')
+      }));
+      setCustomGameRows(rows);
+    } catch {
+      if (!silent) showToast('网络错误，读取灾厄申请列表失败');
+    } finally {
+      setCustomGameLoading(false);
+    }
+  };
+
+  const openCustomGameApply = async () => {
+    setShowCustomGameApply(true);
+    await loadMyCustomGames(true);
+  };
+
+  const submitCustomGameApply = async () => {
+    const title = customGameTitle.trim();
+    const ideaText = customGameIdea.trim();
+    if (!title) {
+      showToast('请填写灾厄游戏标题');
+      return;
+    }
+    if (!ideaText) {
+      showToast('请填写游戏大纲');
+      return;
+    }
+    if (customGameBusy) return;
+
+    try {
+      setCustomGameBusy(true);
+      const res = await fetch('/api/custom-games', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}`
+        },
+        body: JSON.stringify({ title, ideaText })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        showToast(data.message || '提交灾厄申请失败');
+        return;
+      }
+      setCustomGameTitle('');
+      setCustomGameIdea('');
+      showToast('灾厄申请已提交，等待管理员审核');
+      await loadMyCustomGames(true);
+    } catch {
+      showToast('网络错误，提交灾厄申请失败');
+    } finally {
+      setCustomGameBusy(false);
+    }
+  };
+
+  const loadSpiritStatus = async (silent = false) => {
+    if (!isOwner) return;
+    try {
+      setSpiritLoading(true);
+      const res = await fetch(`/api/users/${currentUser.id}/spirit-status`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}` }
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        if (!silent) showToast(data.message || '读取精神体状态失败');
+        return;
+      }
+
+      const raw = data.spiritStatus || {};
+      setSpiritStatus({
+        name: String(raw.name || ''),
+        intimacy: Number(raw.intimacy || 0),
+        level: Math.max(1, Number(raw.level || 1)),
+        imageUrl: String(raw.imageUrl || ''),
+        appearance: String(raw.appearance || ''),
+        daily: {
+          feed: Number(raw.daily?.feed || 0),
+          pet: Number(raw.daily?.pet || 0),
+          train: Number(raw.daily?.train || 0)
+        }
+      });
+      setSpiritAvailable(Boolean(data.available));
+      if (!Boolean(data.available) && !silent) {
+        showToast('当前身份暂未开放精神体培养功能');
+      }
+    } catch {
+      if (!silent) showToast('网络错误，读取精神体状态失败');
+    } finally {
+      setSpiritLoading(false);
+    }
+  };
+
+  const openSpiritPanel = async () => {
+    setShowSpiritPanel(true);
+    setSpiritNameDraft('');
+    setSpiritImageDraft('');
+    setSpiritAppearanceDraft('');
+    await loadSpiritStatus();
+  };
+
+  const saveSpiritProfile = async () => {
+    if (!isOwner || spiritBusy) return;
+    const name = spiritNameDraft.trim();
+    const imageUrl = spiritImageDraft.trim();
+    const appearance = spiritAppearanceDraft.trim();
+    if (!name && !imageUrl && !appearance) {
+      showToast('请至少填写一个精神体资料项');
+      return;
+    }
+    try {
+      setSpiritBusy(true);
+      const res = await fetch('/api/tower/interact-spirit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, name, imageUrl, appearance })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '保存精神体资料失败');
+        return;
+      }
+      showToast(data.message || '精神体资料已更新');
+      setSpiritNameDraft('');
+      setSpiritImageDraft('');
+      setSpiritAppearanceDraft('');
+      await loadSpiritStatus(true);
+      refreshGlobalData?.();
+    } catch {
+      showToast('网络错误，保存精神体资料失败');
+    } finally {
+      setSpiritBusy(false);
+    }
+  };
+
+  const interactSpirit = async (action: 'feed' | 'pet' | 'train') => {
+    if (!isOwner || spiritBusy || !spiritAvailable) return;
+    try {
+      setSpiritBusy(true);
+      const res = await fetch('/api/tower/interact-spirit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, action })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '精神体互动失败');
+        return;
+      }
+      showToast(data.message || '精神体互动完成');
+      await loadSpiritStatus(true);
+      refreshGlobalData?.();
+    } catch {
+      showToast('网络错误，精神体互动失败');
+    } finally {
+      setSpiritBusy(false);
+    }
+  };
+
   const exportReplayTxt = async () => {
     try {
       const res = await fetch(`/api/rooms/${room.ownerId}/replays/export?format=txt`, {
@@ -518,6 +738,20 @@ export default function HomeRoomView({
                   )}
 
                   <button
+                    onClick={openCustomGameApply}
+                    className="w-full py-2 rounded bg-rose-700 hover:bg-rose-600 font-bold flex items-center justify-center gap-2"
+                  >
+                    <MessageSquarePlus size={14} /> 灾厄开戏申请（提交大纲）
+                  </button>
+
+                  <button
+                    onClick={openSpiritPanel}
+                    className="w-full py-2 rounded bg-violet-600 hover:bg-violet-500 font-bold flex items-center justify-center gap-2"
+                  >
+                    <Sparkles size={14} /> 精神体入口
+                  </button>
+
+                  <button
                     onClick={exportReplayTxt}
                     className="w-full py-2 rounded bg-slate-700 hover:bg-slate-600 font-bold flex items-center justify-center gap-2"
                   >
@@ -560,15 +794,209 @@ export default function HomeRoomView({
                   )}
                 </div>
               ) : (
-                <div className="text-xs text-slate-300 flex items-center gap-2">
-                  <ShieldCheck size={14} />
-                  访客模式：仅可查看房间展示信息
+                <div className="space-y-2">
+                  <div className="text-xs text-slate-300 flex items-center gap-2">
+                    <ShieldCheck size={14} />
+                    访客模式：仅可查看房间展示信息
+                  </div>
+                  <button
+                    onClick={openCustomGameApply}
+                    className="w-full py-2 rounded bg-rose-700 hover:bg-rose-600 font-bold flex items-center justify-center gap-2"
+                  >
+                    <MessageSquarePlus size={14} />
+                    灾厄开戏申请（提交大纲）
+                  </button>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {showCustomGameApply && (
+        <div className="fixed inset-0 z-[255] bg-black/70 flex items-center justify-center p-4 mobile-portrait-safe-overlay">
+          <div className="w-full max-w-2xl rounded-3xl border border-rose-700/40 bg-slate-900/95 p-5 md:p-6 shadow-2xl mobile-portrait-safe-card mobile-contrast-surface-dark">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-lg font-black text-rose-200 flex items-center gap-2">
+                <MessageSquarePlus size={16} />
+                灾厄开戏申请
+              </h4>
+              <button
+                onClick={() => setShowCustomGameApply(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold hover:bg-slate-700"
+              >
+                关闭
+              </button>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-300">
+              向管理员提交“开启灾厄游戏”申请。请填写标题与游戏大纲，提交后进入后台审核流程。
+            </p>
+
+            <div className="mt-4 space-y-2">
+              <input
+                value={customGameTitle}
+                onChange={(e) => setCustomGameTitle(e.target.value)}
+                placeholder="灾厄游戏标题"
+                className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+              />
+              <textarea
+                value={customGameIdea}
+                onChange={(e) => setCustomGameIdea(e.target.value)}
+                placeholder="填写游戏大纲（背景、规则、目标、阶段设计等）"
+                className="w-full h-32 p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={submitCustomGameApply}
+                  disabled={customGameBusy}
+                  className="py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-xs font-black disabled:opacity-60"
+                >
+                  {customGameBusy ? '提交中...' : '提交管理员审核'}
+                </button>
+                <button
+                  onClick={() => loadMyCustomGames()}
+                  disabled={customGameLoading}
+                  className="py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-black disabled:opacity-60"
+                >
+                  {customGameLoading ? '刷新中...' : '刷新我的申请'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-800/60 p-3">
+              <div className="text-xs font-black text-slate-200 mb-2">我的灾厄申请记录</div>
+              {customGameLoading ? (
+                <div className="text-xs text-slate-400">加载中...</div>
+              ) : customGameRows.length === 0 ? (
+                <div className="text-xs text-slate-500">暂无申请记录</div>
+              ) : (
+                <div className="space-y-2 max-h-44 overflow-y-auto custom-scrollbar">
+                  {customGameRows.map((g) => (
+                    <div key={`cg-home-${g.id}`} className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2">
+                      <div className="text-xs font-black text-white truncate">{g.title}</div>
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        状态：{g.status} {g.voteStatus ? `| 投票：${g.voteStatus}` : ''}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1">
+                        {g.createdAt ? new Date(g.createdAt).toLocaleString() : '-'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSpiritPanel && (
+        <div className="fixed inset-0 z-[260] bg-black/70 flex items-center justify-center p-4 mobile-portrait-safe-overlay">
+          <div className="w-full max-w-lg rounded-3xl border border-violet-700/40 bg-slate-900/95 p-5 md:p-6 shadow-2xl mobile-portrait-safe-card mobile-contrast-surface-dark">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-lg font-black text-violet-200 flex items-center gap-2">
+                <Sparkles size={16} />
+                精神体培养入口
+              </h4>
+              <button
+                onClick={() => setShowSpiritPanel(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold hover:bg-slate-700"
+              >
+                关闭
+              </button>
+            </div>
+
+            {spiritLoading ? (
+              <div className="mt-4 text-sm text-slate-300">读取精神体状态中...</div>
+            ) : (
+              <>
+                <div className="mt-4 rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-14 h-14 rounded-xl border border-slate-700 bg-slate-900 overflow-hidden shrink-0">
+                      {spiritStatus.imageUrl ? (
+                        <img src={spiritStatus.imageUrl} alt="spirit-avatar" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-violet-300 text-xl font-black">灵</div>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-white truncate">{spiritStatus.name || '未命名精神体'}</p>
+                      <p className="text-xs text-slate-400 mt-1">等级 Lv.{Math.max(1, Number(spiritStatus.level || 1))}</p>
+                      <p className="text-xs text-slate-400">亲密度 {Math.max(0, Number(spiritStatus.intimacy || 0))}</p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        今日互动：喂食 {Math.max(0, Number(spiritStatus.daily?.feed || 0))}/3 ·
+                        摸摸 {Math.max(0, Number(spiritStatus.daily?.pet || 0))}/3 ·
+                        训练 {Math.max(0, Number(spiritStatus.daily?.train || 0))}/3
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-3">
+                    外貌：{spiritStatus.appearance || '尚未记录'}
+                  </p>
+                </div>
+
+                {!spiritAvailable && (
+                  <div className="mt-3 rounded-xl border border-amber-600/40 bg-amber-600/10 px-3 py-2 text-xs text-amber-200">
+                    当前身份暂未开放精神体培养功能（仅哨兵/向导可用）。
+                  </div>
+                )}
+
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => interactSpirit('feed')}
+                    disabled={!spiritAvailable || spiritBusy}
+                    className="py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-xs font-black disabled:opacity-50"
+                  >
+                    喂食 +5
+                  </button>
+                  <button
+                    onClick={() => interactSpirit('pet')}
+                    disabled={!spiritAvailable || spiritBusy}
+                    className="py-2 rounded-xl bg-sky-700 hover:bg-sky-600 text-xs font-black disabled:opacity-50"
+                  >
+                    摸摸 +8
+                  </button>
+                  <button
+                    onClick={() => interactSpirit('train')}
+                    disabled={!spiritAvailable || spiritBusy}
+                    className="py-2 rounded-xl bg-fuchsia-700 hover:bg-fuchsia-600 text-xs font-black disabled:opacity-50"
+                  >
+                    训练 +3
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <input
+                    value={spiritNameDraft}
+                    onChange={(e) => setSpiritNameDraft(e.target.value)}
+                    placeholder="精神体名称（仅首次可锁定）"
+                    className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  />
+                  <input
+                    value={spiritImageDraft}
+                    onChange={(e) => setSpiritImageDraft(e.target.value)}
+                    placeholder="精神体头像 URL（仅首次可锁定）"
+                    className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  />
+                  <textarea
+                    value={spiritAppearanceDraft}
+                    onChange={(e) => setSpiritAppearanceDraft(e.target.value)}
+                    placeholder="精神体外貌描述（仅首次可锁定）"
+                    className="w-full h-20 p-2 rounded bg-slate-950 border border-slate-700 text-xs"
+                  />
+                  <button
+                    onClick={saveSpiritProfile}
+                    disabled={spiritBusy}
+                    className="w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-black disabled:opacity-60"
+                  >
+                    {spiritBusy ? '处理中...' : '保存精神体资料'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

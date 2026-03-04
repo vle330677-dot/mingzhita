@@ -297,7 +297,7 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const towerPurifyRate = getTowerPurifyRate(actor.job);
   const canUseTowerPurify = towerPurifyRate > 0;
   const canUseGuardArrestSkill = isTowerGuardJob(actor.job);
-  const showWorldMapOverlayUi = !activeView && !selectedLocation;
+  const showWorldMapOverlayUi = !selectedLocation;
 
 
 useEffect(() => { setRuntimeUser(user); }, [user]);
