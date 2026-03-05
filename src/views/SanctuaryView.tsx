@@ -49,7 +49,7 @@ const buildings = [
   { id: 'library', name: '内部绘本馆', x: 68, y: 28, icon: <BookOpen />, desc: '【内部专属】每日3次随机获取低阶技能书。' },
   { id: 'playground', name: '中心游乐场', x: 50, y: 55, icon: <Castle />, desc: '玩耍是幼崽的天性，职工的噩梦。' },
   { id: 'canteen', name: '阳光食堂', x: 78, y: 78, icon: <Utensils />, desc: '按时吃饭才能长得高。' },
-  { id: 'dorm', name: '幼年宿舍楼', x: 28, y: 35, icon: <Coffee />, desc: '午睡时间！(HP/MP全满恢复)' },
+  { id: 'dorm', name: '幼年宿舍楼', x: 28, y: 35, icon: <Coffee />, desc: '午睡时间！（生命/精神全满恢复）' },
 ];
 
 const ROLES = {
@@ -65,7 +65,7 @@ const RANK_SCORES: Record<string, number> = {
 
 const GENTLE_CLINIC_NPC = {
   name: '白棠',
-  role: '温柔系NPC·诊疗护士',
+  role: '温柔系角色·诊疗护士',
   quote: '别怕，慢慢呼吸。你会好起来的。'
 };
 
@@ -422,7 +422,7 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
           <motion.div initial={{ opacity: 0, scale: 0.5, y: 20 }} animate={{ opacity: 1, scale: 1.2, y: 0 }} exit={{ opacity: 0 }} className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
             <div className="text-amber-500 font-black text-6xl drop-shadow-[0_5px_15px_rgba(245,158,11,0.5)] flex flex-col items-center gap-4">
               <Sparkles size={80} className="animate-spin-slow" />
-              <span className="tracking-widest">Happy!</span>
+              <span className="tracking-widest">开心！</span>
             </div>
           </motion.div>
         )}
@@ -472,7 +472,7 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
                     ) : (
                       <div className="space-y-3">
                         <div className="p-6 bg-amber-50 rounded-2xl text-center border border-amber-100 shadow-sm">
-                          <p className="text-xs font-bold text-amber-600 mb-2 tracking-widest uppercase">ID Card</p>
+                          <p className="text-xs font-bold text-amber-600 mb-2 tracking-widest uppercase">身份卡</p>
                           <p className="text-2xl font-black text-amber-900">{user.job}</p>
                         </div>
 
@@ -531,7 +531,7 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
 
                     <div className="p-4 bg-white border border-rose-100 rounded-2xl shadow-sm">
                       <div className="flex items-start gap-3">
-                        <div className="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-black">NPC</div>
+                        <div className="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-black">医护</div>
                         <div className="flex-1">
                           <p className="text-xs text-rose-700 font-black">{GENTLE_CLINIC_NPC.role}</p>
                           <h4 className="text-lg font-black text-slate-800">{GENTLE_CLINIC_NPC.name}</h4>

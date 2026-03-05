@@ -177,7 +177,7 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
   };
 
   const importJson = () => {
-    const raw = prompt('粘贴地图JSON（格式：{ mapJson, dropPointJson }）');
+    const raw = prompt('粘贴地图配置文本（需包含地图与降落点字段）');
     if (!raw) return;
     try {
       const obj = JSON.parse(raw);
@@ -186,20 +186,20 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
       emit(nextMap, nextDrop);
       alert('导入成功');
     } catch {
-      alert('JSON 格式不正确');
+      alert('配置文本格式不正确');
     }
   };
 
   const exportJson = () => {
     const text = JSON.stringify({ mapJson: map, dropPointJson: drop }, null, 2);
     navigator.clipboard.writeText(text);
-    alert('地图 JSON 已复制');
+    alert('地图配置文本已复制');
   };
 
   const confirmGenerate = () => {
     if (!map.points.length) return alert('请先绘制至少一个坐标点');
     setGenerated(true);
-    alert('地图已生成！现在可点击点位进行NPC/物品/降落点绑定');
+    alert('地图已生成！现在可点击点位进行角色/物品/降落点绑定');
   };
 
   const backToDraw = () => {
@@ -212,13 +212,13 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
     const b = upsertBinding(selectedPoint.id);
     const nextBindings = map.bindings.map((x) =>
       x.pointId === b.pointId
-        ? { ...x, npcs: [...x.npcs, { id: uid('NPC'), name: '新NPC', dialogue: '你好，冒险者。' }] }
+        ? { ...x, npcs: [...x.npcs, { id: uid('NPC'), name: '新角色', dialogue: '你好，冒险者。' }] }
         : x
     );
     // 如果是刚创建 binding 还没进 bindings，则兼容处理
     const merged = map.bindings.some((x) => x.pointId === b.pointId)
       ? nextBindings
-      : [...map.bindings, { ...b, npcs: [...b.npcs, { id: uid('NPC'), name: '新NPC', dialogue: '你好，冒险者。' }] }];
+      : [...map.bindings, { ...b, npcs: [...b.npcs, { id: uid('NPC'), name: '新角色', dialogue: '你好，冒险者。' }] }];
     emit({ ...map, bindings: merged }, drop);
   };
 
@@ -314,8 +314,8 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
         />
 
         <div className="flex flex-wrap gap-2">
-          <button className="px-3 py-2 rounded bg-slate-700 text-white text-sm font-bold" onClick={importJson}>导入JSON</button>
-          <button className="px-3 py-2 rounded bg-slate-700 text-white text-sm font-bold" onClick={exportJson}>导出JSON</button>
+          <button className="px-3 py-2 rounded bg-slate-700 text-white text-sm font-bold" onClick={importJson}>导入配置</button>
+          <button className="px-3 py-2 rounded bg-slate-700 text-white text-sm font-bold" onClick={exportJson}>导出配置</button>
           {!generated ? (
             <button className="px-3 py-2 rounded bg-emerald-600 text-white text-sm font-bold" onClick={confirmGenerate}>确认生成地图</button>
           ) : (
@@ -434,7 +434,7 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
               {generated && (
                 <>
                   <div className="border-t border-slate-700 pt-3 space-y-2">
-                    <button className="w-full py-2 rounded bg-indigo-600 text-white font-bold" onClick={addNpc}>+ 绑定NPC</button>
+                    <button className="w-full py-2 rounded bg-indigo-600 text-white font-bold" onClick={addNpc}>+ 绑定角色</button>
                     <button className="w-full py-2 rounded bg-violet-600 text-white font-bold" onClick={addItem}>+ 绑定物品</button>
                     <button className="w-full py-2 rounded bg-emerald-600 text-white font-bold" onClick={toggleDropPoint}>
                       {binding?.isDropPoint ? '取消降落点' : '设为降落点'}
@@ -455,7 +455,7 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
       {/* 绑定列表（仅生成后） */}
       {generated && selectedPoint && binding && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <BindingCard title={`NPC绑定 (${binding.npcs.length})`}>
+          <BindingCard title={`角色绑定 (${binding.npcs.length})`}>
             {binding.npcs.map((n) => (
               <div key={n.id} className="space-y-1 border border-slate-700 rounded p-2">
                 <input
@@ -502,7 +502,7 @@ export function CreatorMapBuilder({ initialMap, initialDrop, onChange }: Props) 
                     emit(next, drop);
                   }}
                 >
-                  删除NPC
+                  删除角色
                 </button>
               </div>
             ))}

@@ -686,7 +686,7 @@ const handleDeleteArchive = async (arc: RPArchive) => {
   const updateAdminAvatar = async () => {
     const next = avatarUrl.trim();
     if (next && !isLikelyHttpUrl(next)) {
-      alert('头像 URL 需以 http:// 或 https:// 开头');
+      alert('头像链接需以 http:// 或 https:// 开头');
       return;
     }
     try {
@@ -865,7 +865,7 @@ const handleDeleteArchive = async (arc: RPArchive) => {
 
   const addItem = async () => {
     if (!newItem.name.trim() || !newItem.locationTag.trim()) {
-      alert('请填写物品名称和地点Tag');
+      alert('请填写物品名称和地点标签');
       return;
     }
     try {
@@ -1187,7 +1187,7 @@ const reviewStats = useMemo(() => {
       <div className="max-w-[1450px] mx-auto">
         <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
           <h1 className="text-3xl font-black tracking-tighter flex items-center gap-3">
-            命之塔 <span className="text-sky-600 bg-sky-50 px-3 py-1 rounded-xl text-xl">ADMIN</span>
+            命之塔 <span className="text-sky-600 bg-sky-50 px-3 py-1 rounded-xl text-xl">管理后台</span>
           </h1>
           <div className="flex items-center gap-2">
             <span className="text-xs px-3 py-2 rounded-xl bg-white border border-slate-200 font-bold text-slate-600">
@@ -1597,7 +1597,7 @@ const reviewStats = useMemo(() => {
                 <div className="space-y-4">
                   <Input label="物品名称" value={newItem.name} onChange={(v: string) => setNewItem({ ...newItem, name: v })} />
                   <Input
-                    label="所属地点Tag（决定闲逛掉落地点，如 slums / rich_area / all）"
+                    label="所属地点标签（决定闲逛掉落地点，如 西市 / 东市 / 全图）"
                     value={newItem.locationTag}
                     onChange={(v: string) => setNewItem({ ...newItem, locationTag: v.trim(), faction: v.trim() || '通用' })}
                   />
@@ -1606,7 +1606,7 @@ const reviewStats = useMemo(() => {
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase ml-1">地点快捷选择</label>
                       <select className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm font-bold" value={ITEM_ORIGIN_OPTIONS.some((x) => x.value === newItem.locationTag) ? newItem.locationTag : ''} onChange={(e) => applyItemOriginPreset(e.target.value)}>
-                        <option value="">自定义Tag（手填）</option>
+                        <option value="">自定义标签（手填）</option>
                         {ITEM_ORIGIN_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                       </select>
                     </div>
@@ -1682,7 +1682,9 @@ const reviewStats = useMemo(() => {
                           <div className="font-bold text-slate-900">{i.name}</div>
                           <div className="text-xs text-slate-400 mt-1 max-w-xs truncate">{i.description || '无描述'}</div>
                           <div className="text-[10px] font-mono text-amber-600 mt-1">价值: {i.price || 0} G</div>
-                          <div className="text-[10px] text-slate-500 mt-1">地点Tag: {i.locationTag || 'all'} · 产地: {i.faction || '通用'}</div>
+                          <div className="text-[10px] text-slate-500 mt-1">
+                            地点标签: {ITEM_ORIGIN_OPTIONS.find((x) => x.value === i.locationTag)?.label || i.locationTag || '全地图掉落'} · 产地: {i.faction || '通用'}
+                          </div>
                         </td>
                         <td className="p-6">
                           <div className="flex gap-1 mb-1">
@@ -1750,7 +1752,7 @@ const reviewStats = useMemo(() => {
                             <div className="text-xs text-slate-400 mt-1">{m.description || '无描述'}</div>
                           </td>
                           <td className="p-4 text-xs text-slate-600">
-                            Lv.{m.minLevel || 1} - Lv.{m.maxLevel || 1}
+                            等级 {m.minLevel || 1} - 等级 {m.maxLevel || 1}
                             <div className="mt-1">战力 {m.basePower || 0} | 生命 {m.baseHp || 0}</div>
                           </td>
                           <td className="p-4 text-xs text-slate-600">
@@ -1834,7 +1836,7 @@ const reviewStats = useMemo(() => {
                       </select>
                     </div>
                   </div>
-                  <Input label="NPC ID (可选)" value={newSkill.npcId} onChange={(v: string) => setNewSkill({ ...newSkill, npcId: v })} />
+                  <Input label="角色ID（可选）" value={newSkill.npcId} onChange={(v: string) => setNewSkill({ ...newSkill, npcId: v })} />
                   <textarea
                     placeholder="技能效果详细描述..."
                     className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-sky-500/20 text-sm h-32"
@@ -1856,7 +1858,7 @@ const reviewStats = useMemo(() => {
                     onChange={e => setSkillFactionFilter(e.target.value)}
                     className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-sky-500/20"
                   >
-                    <option value="ALL">全部派系 (ALL)</option>
+                    <option value="ALL">全部派系</option>
                     {FACTIONS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
@@ -2095,20 +2097,20 @@ const reviewStats = useMemo(() => {
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-slate-700 truncate">头像预览</div>
                     <div className="text-[11px] text-slate-400 truncate">
-                      {activeAvatarPreview && !avatarPreviewFailed ? activeAvatarPreview : '未设置可用头像 URL'}
+                      {activeAvatarPreview && !avatarPreviewFailed ? activeAvatarPreview : '未设置可用头像链接'}
                     </div>
                   </div>
                 </div>
                 <div className="mt-3">
                   <Input
-                    label="头像 URL"
+                    label="头像链接"
                     value={avatarUrl}
                     onChange={(v) => {
                       setAvatarUrl(v);
                       setAvatarPreviewFailed(false);
                     }}
                   />
-                  {!avatarInputValid && <p className="text-xs text-rose-500 mt-1">URL 格式无效，请使用 http:// 或 https://</p>}
+                  {!avatarInputValid && <p className="text-xs text-rose-500 mt-1">链接格式无效，请填写完整网页链接</p>}
                 </div>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -2139,7 +2141,7 @@ const reviewStats = useMemo(() => {
                   <input
                     value={securityLogSearch}
                     onChange={(e) => setSecurityLogSearch(e.target.value)}
-                    placeholder="搜索日志关键字/目标ID/动作..."
+                    placeholder="搜索日志关键字/目标编号/动作..."
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs outline-none focus:ring-2 focus:ring-sky-500/20 mb-2"
                   />
                   {selectedSecurityAdmin && (
@@ -2202,7 +2204,7 @@ const reviewStats = useMemo(() => {
                 <Skull size={18} className="text-rose-500" />
                 编辑界外怪物
               </h3>
-              <p className="text-xs text-slate-500 mb-5">ID: {editingMonster.id}</p>
+              <p className="text-xs text-slate-500 mb-5">编号：{editingMonster.id}</p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
@@ -2350,7 +2352,7 @@ const reviewStats = useMemo(() => {
                       <div key={skill.id} className="flex justify-between items-center p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
                         <div>
                           <div className="font-bold text-sm text-indigo-900">{skill.name}</div>
-                          <div className="text-[10px] font-black text-amber-500 uppercase">Lv.{skill.level}</div>
+                          <div className="text-[10px] font-black text-amber-500 uppercase">等级 {skill.level}</div>
                         </div>
                         <button
                           onClick={() => handleDeleteUserSkill(skill.id)}

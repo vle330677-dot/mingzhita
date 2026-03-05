@@ -200,13 +200,13 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.success === false) {
-        showToast(data?.message || 'Learn failed');
+        showToast(data?.message || '学习失败');
         return;
       }
-      showToast(`Learned: ${name}`);
+      showToast(`学习成功：${name}`);
       fetchGlobalData();
     } catch {
-      showToast('Learn failed');
+      showToast('学习失败');
     }
   };
 
@@ -335,7 +335,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
     }
     const next: DifferentiationData = {
       ...finalDraw,
-      spirit: { name: spiritName, type: 'Custom' }
+      spirit: { name: spiritName, type: '自定义' }
     };
     setFinalDraw(next);
     setShowSpiritModal(false);
@@ -511,7 +511,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="text-sm font-bold text-slate-100 truncate">{s.name}</div>
-                            <div className="text-xs text-slate-400 mt-1 leading-5">{s.description || 'No description'}</div>
+                            <div className="text-xs text-slate-400 mt-1 leading-5">{s.description || '暂无描述'}</div>
                           </div>
                           <button
                             onClick={() => learnSkill(String(s.name || ''))}
@@ -536,7 +536,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
                       <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-4">
                         <h4 className="text-sm font-black text-fuchsia-200">未分化属性分化（抽10选1）</h4>
                         <p className="mt-2 text-xs leading-6 text-fuchsia-100/90">
-                          分化规则与 Extractor 一致：抽取 10 次后由你亲自锁定 1 次结果，写入角色档案并同步角色状态栏。
+                          分化规则与抽取器一致：抽取 10 次后由你亲自锁定 1 次结果，写入角色档案并同步角色状态栏。
                         </p>
                         <label className="mt-3 flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-900/15 px-3 py-2 text-[11px] text-fuchsia-100">
                           <input
@@ -637,7 +637,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
                     {leaderRows.map((r) => (
                       <div key={r.label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-800/70 px-3 py-2.5">
                         <span className="text-xs text-amber-300">{r.label}</span>
-                        <span className="text-sm font-black text-white truncate">{r.leader || 'vacant'}</span>
+                        <span className="text-sm font-black text-white truncate">{r.leader || '空缺'}</span>
                       </div>
                     ))}
                     <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-3 text-[11px] text-slate-400">

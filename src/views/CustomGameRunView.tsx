@@ -105,9 +105,17 @@ function safeJsonParse(input: string): { ok: true; value: any } | { ok: false; e
   try {
     return { ok: true, value: JSON.parse(input) };
   } catch (e: any) {
-    return { ok: false, err: e?.message || "JSON parse failed" };
+    return { ok: false, err: e?.message || "配置文本解析失败" };
   }
 }
+
+const RUN_STATUS_LABEL: Record<string, string> = {
+  running: '进行中',
+  ended: '已结束',
+  pending: '待开始'
+};
+
+const toRunStatusLabel = (status: string) => RUN_STATUS_LABEL[status] || status;
 
 const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, className }) => {
   const [loading, setLoading] = useState(true);
@@ -248,7 +256,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
     if (!canControl) return;
     const parsed = safeJsonParse(mapPatchText);
     if (!parsed.ok) {
-      setErr(`地图补丁 JSON 错误: ${parsed.err}`);
+      setErr(`地图补丁配置错误: ${parsed.err}`);
       return;
     }
     setBusy(true);
@@ -269,7 +277,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
   const grantScore = useCallback(async () => {
     if (!canControl) return;
     if (!grantUserId || !grantPoints) {
-      setErr("请填写 userId 和分值");
+      setErr("请填写玩家编号和分值");
       return;
     }
     setBusy(true);
@@ -383,7 +391,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
         </h3>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-          <span>状态：{runState.status}</span>
+          <span>状态：{toRunStatusLabel(runState.status)}</span>
           <span>
             阶段：{runState.currentStage}/{runState.totalStages}
           </span>
@@ -408,11 +416,11 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
             }}
           >
             {(runState.mapConfig as any)?.backgroundImage ? (
-              <img
-                src={String((runState.mapConfig as any).backgroundImage)}
-                alt="disaster-map"
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.7 }}
-              />
+                <img
+                  src={String((runState.mapConfig as any).backgroundImage)}
+                  alt="灾厄地图"
+                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.7 }}
+                />
             ) : null}
             {(Array.isArray((runState.mapConfig as any)?.points) ? (runState.mapConfig as any).points : []).map((p: any, idx: number) => (
               <div
@@ -456,7 +464,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
               </button>
               <input
                 style={{ minWidth: 200 }}
-                placeholder="自定义动作，如 use_skill"
+                placeholder="自定义动作，如 技能释放"
                 value={customAction}
                 onChange={(e) => setCustomAction(e.target.value)}
               />
@@ -618,7 +626,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
               style={{ width: "100%", fontFamily: "monospace" }}
               value={mapPatchText}
               onChange={(e) => setMapPatchText(e.target.value)}
-              placeholder='{"points":[...],"rules":{...}}'
+              placeholder="粘贴地图补丁配置文本"
             />
             <button disabled={busy || runState.status !== "running"} onClick={updateMapInRun}>
               应用地图补丁
@@ -630,20 +638,20 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
               <input
                 type="number"
-                placeholder="userId"
+                placeholder="玩家编号"
                 value={grantUserId || ""}
                 onChange={(e) => setGrantUserId(Number(e.target.value) || 0)}
               />
               <input
                 type="number"
-                placeholder="points"
+                placeholder="分值"
                 value={grantPoints}
                 onChange={(e) => setGrantPoints(Number(e.target.value) || 0)}
               />
             </div>
             <input
               style={{ marginTop: 6, width: "100%" }}
-              placeholder="reason"
+              placeholder="发分理由"
               value={grantReason}
               onChange={(e) => setGrantReason(e.target.value)}
             />

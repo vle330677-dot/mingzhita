@@ -8,6 +8,7 @@ import { PlayerInteractionUI } from './PlayerInteractionUI';
 import { NpcInteractionUI } from './NpcInteractionUI';
 import { CharacterHUD } from './CharacterHUD';
 import { RoleplayWindow } from './RoleplayWindow';
+import { GroupRoleplayWindow } from './GroupRoleplayWindow';
 
 import { TowerOfLifeView } from './TowerOfLifeView';
 import { LondonTowerView } from './LondonTowerView';
@@ -202,6 +203,7 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [interactNpc, setInteractNpc] = useState<any>(null);
   const [showNpcPanel, setShowNpcPanel] = useState(true);
   const [showAreaPanel, setShowAreaPanel] = useState(true);
+  const [desktopContextCollapsed, setDesktopContextCollapsed] = useState(true);
   const [mobileContextCollapsed, setMobileContextCollapsed] = useState(true);
 
 
@@ -212,6 +214,9 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [rpNearbyHint, setRPNearbyHint] = useState('');
   const [rpPing, setRPPing] = useState(false);
   const [isCreatingRP, setIsCreatingRP] = useState(false);
+  const [groupRPWindowOpen, setGroupRPWindowOpen] = useState(false);
+  const [groupRPJoinedLocationId, setGroupRPJoinedLocationId] = useState<string | null>(null);
+  const [groupRPJoinedLocationName, setGroupRPJoinedLocationName] = useState('');
 
   // ===== 灾厄游戏状态（新增）=====
   const [showCustomGamePanel, setShowCustomGamePanel] = useState(false);
@@ -302,6 +307,10 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const canUseTowerPurify = towerPurifyRate > 0;
   const canUseGuardArrestSkill = isTowerGuardJob(actor.job);
   const showWorldMapOverlayUi = !selectedLocation;
+  const resolveLocationName = (locationId: string) =>
+    LOCATIONS.find((l) => String(l.id) === String(locationId || ''))?.name || '未知区域';
+  const isGroupRPInCurrentLocation =
+    !!groupRPJoinedLocationId && String(groupRPJoinedLocationId) === String(effectiveLocationId || '');
 
 
 useEffect(() => { setRuntimeUser(user); }, [user]);
@@ -1000,6 +1009,52 @@ useEffect(() => {
     setRPNearbyHint(nearby ? `${rpPeerName} 玩家在你身边` : '');
   }, [rpSessionId, rpPeerName, localPlayers, effectiveLocationId]);
 
+  // 群戏与地图强绑定：离开当前地图即自动退出
+  useEffect(() => {
+    if (!groupRPJoinedLocationId) return;
+    const currentLoc = String(effectiveLocationId || '').trim();
+    if (currentLoc && currentLoc === String(groupRPJoinedLocationId)) return;
+
+    const leavingLoc = String(groupRPJoinedLocationId);
+    (async () => {
+      try {
+        await fetch('/api/rp/group/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: actor.id,
+            userName: actor.name,
+            locationId: leavingLoc
+          })
+        });
+      } catch {
+        // ignore
+      } finally {
+        setGroupRPJoinedLocationId(null);
+        setGroupRPJoinedLocationName('');
+        setGroupRPWindowOpen(false);
+        showToast('你已离开原地图，自动退出群戏');
+      }
+    })();
+  }, [effectiveLocationId, groupRPJoinedLocationId, actor.id, actor.name, showToast]);
+
+  useEffect(() => {
+    return () => {
+      const leavingLoc = String(groupRPJoinedLocationId || '').trim();
+      if (!leavingLoc) return;
+      fetch('/api/rp/group/leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: actor.id,
+          userName: actor.name,
+          locationId: leavingLoc
+        }),
+        keepalive: true
+      }).catch(() => {});
+    };
+  }, [groupRPJoinedLocationId, actor.id, actor.name]);
+
   const userAge = actor?.age || 0;
   const isUndifferentiated = userAge < 16;
   const isStudentAge = userAge >= 16 && userAge <= 19;
@@ -1077,6 +1132,94 @@ useEffect(() => {
       if (timer !== null) window.clearTimeout(timer);
       setIsCreatingRP(false);
     }
+  };
+
+  const leaveGroupRoleplay = async (locationIdArg?: string, silent = false) => {
+    const locId = String(locationIdArg || groupRPJoinedLocationId || '').trim();
+    if (!locId) return;
+    try {
+      const res = await fetch('/api/rp/group/leave', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: actor.id,
+          userName: actor.name,
+          locationId: locId
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        if (!silent) showToast(data.message || '退出群戏失败');
+      } else if (!silent) {
+        showToast('已退出群戏');
+      }
+    } catch {
+      if (!silent) showToast('网络异常，退出群戏失败');
+    } finally {
+      if (String(groupRPJoinedLocationId || '') === locId) {
+        setGroupRPJoinedLocationId(null);
+        setGroupRPJoinedLocationName('');
+        setGroupRPWindowOpen(false);
+      }
+    }
+  };
+
+  const joinGroupRoleplayAtCurrentLocation = async (): Promise<boolean> => {
+    const locationId = String(effectiveLocationId || '').trim();
+    if (!locationId) {
+      showToast('请先进入一个地图区域后再加入群戏');
+      return false;
+    }
+    const locationName = resolveLocationName(locationId);
+    try {
+      const res = await fetch('/api/rp/group/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: actor.id,
+          userName: actor.name,
+          locationId,
+          locationName
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '加入群戏失败');
+        return false;
+      }
+      setGroupRPJoinedLocationId(String(data.locationId || locationId));
+      setGroupRPJoinedLocationName(String(data.locationName || locationName));
+      setGroupRPWindowOpen(true);
+      showToast(`已加入 ${String(data.locationName || locationName)} 群戏`);
+      return true;
+    } catch {
+      showToast('网络异常，加入群戏失败');
+      return false;
+    }
+  };
+
+  const handleGroupRoleplayButtonClick = async (): Promise<boolean> => {
+    if (!effectiveLocationId) {
+      showToast('请先进入地图后再使用群戏');
+      return false;
+    }
+    if (isGroupRPInCurrentLocation) {
+      setGroupRPWindowOpen((v) => !v);
+      return true;
+    }
+    return await joinGroupRoleplayAtCurrentLocation();
+  };
+
+  const openGroupRoleplayFromInteraction = async (): Promise<boolean> => {
+    if (!effectiveLocationId) {
+      showToast('请先进入地图后再使用群戏');
+      return false;
+    }
+    if (isGroupRPInCurrentLocation) {
+      setGroupRPWindowOpen(true);
+      return true;
+    }
+    return await joinGroupRoleplayAtCurrentLocation();
   };
 
   const handleLocationAction = async (action: 'enter' | 'stay') => {
@@ -1165,7 +1308,7 @@ useEffect(() => {
       if (isUndifferentiated && targetUnsafe && !hasGuideEscort) {
         setActiveView(null);
         setSelectedLocation(null);
-        showToast('迷雾笼罩了前方，NPC会驱离你；你仍可在此区域探索掉落。');
+        showToast('迷雾笼罩了前方，非玩家角色会驱离你；你仍可在此区域探索掉落。');
         fetchGlobalData();
         return;
       }
@@ -1419,21 +1562,21 @@ useEffect(() => {
       const text = await file.text();
       setUiCustomCss(text);
       setCustomCssTextState(text);
-      showToast(`已导入自定义 CSS：${file.name}`);
+      showToast(`已导入自定义样式：${file.name}`);
     } catch {
-      showToast('读取 CSS 文件失败');
+      showToast('读取样式文件失败');
     }
   };
 
   const handleCustomCssApply = () => {
     setUiCustomCss(customCssText);
-    showToast(customCssText.trim() ? '自定义 CSS 已应用' : '已清空自定义 CSS');
+    showToast(customCssText.trim() ? '自定义样式已应用' : '已清空自定义样式');
   };
 
   const handleCustomCssReset = () => {
     clearUiCustomCss();
     setCustomCssTextState('');
-    showToast('已清除自定义 CSS');
+    showToast('已清除自定义样式');
   };
 
   const handleTextColorApply = () => {
@@ -1746,7 +1889,7 @@ const closeAnnouncement = () => {
 
       {isMinorFogMode && (
         <div className="absolute left-1/2 top-16 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-slate-900/90 border border-slate-600 text-slate-100 text-xs font-black shadow-lg">
-          迷雾状态：NPC将驱离你，仅可探索掉落
+          迷雾状态：非玩家角色将驱离你，仅可探索掉落
         </div>
       )}
       {isTowerGuardPrisonLocked && (
@@ -1845,152 +1988,176 @@ const closeAnnouncement = () => {
 
       {/* 桌面端：当前地图 + 同地区信息面板 */}
       <div className={`${showWorldMapOverlayUi ? 'hidden md:block' : 'hidden'} fixed right-4 top-24 z-40`}>
-        <div className="bg-slate-900/88 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+        <div className="flex justify-end mb-2">
           <button
-            onClick={() => setShowAreaPanel((v) => !v)}
-            className="w-full px-4 py-3 text-xs font-black text-slate-100 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+            onClick={() => setDesktopContextCollapsed((v) => !v)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-black bg-slate-900/88 border border-slate-700 text-slate-100 hover:bg-slate-800"
           >
-            <span className="flex items-center gap-2">
-              <MapPin size={14} /> 当前地图面板
-            </span>
-            <span className="inline-flex items-center gap-2 text-[11px] text-sky-300">
-              {currentLocationName}
-              {showAreaPanel ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-            </span>
+            {desktopContextCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
+            {desktopContextCollapsed ? '展开地区信息' : '收起地区信息'}
           </button>
-
-          {showAreaPanel && (
-            <div className="p-4 space-y-3">
-              <div>
-                <div className="text-lg font-black text-white">{currentLocationName}</div>
-                <div className="text-[11px] text-slate-300 mt-1 leading-relaxed">{currentLocationDesc}</div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
-                    (currentLocationMeta?.type || 'safe') === 'safe'
-                      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-                      : 'text-rose-300 border-rose-500/40 bg-rose-500/10'
-                  }`}
-                >
-                  {(currentLocationMeta?.type || 'safe') === 'safe' ? '安全区' : '危险区'}
-                </span>
-                <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-sky-500/40 bg-sky-500/10 text-sky-200">
-                  同地区玩家 {localPlayers.length}
-                </span>
-                <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
-                  同地区 NPC {locationNpcs.length}
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
-        <div className="mt-3 bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
-          <button
-            onClick={() => setShowPlayersPanel((v) => !v)}
-            className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
-          >
-            <span className="flex items-center gap-2">
-              <Users size={14} /> 同地区玩家
-            </span>
-            <span className="text-sky-400">{localPlayers.length}</span>
-          </button>
+        {!desktopContextCollapsed && (
+          <>
+            <div className="bg-slate-900/88 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+              <button
+                onClick={() => setShowAreaPanel((v) => !v)}
+                className="w-full px-4 py-3 text-xs font-black text-slate-100 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+              >
+                <span className="flex items-center gap-2">
+                  <MapPin size={14} /> 当前地图面板
+                </span>
+                <span className="inline-flex items-center gap-2 text-[11px] text-sky-300">
+                  {currentLocationName}
+                  {showAreaPanel ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                </span>
+              </button>
 
-          {showPlayersPanel && (
-            <div className="max-h-64 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-              {localPlayers.length === 0 ? (
-                <div className="text-[11px] text-slate-500 text-center py-3">当前区域暂无其他玩家</div>
-              ) : (
-                localPlayers.map((p: any) => {
-                  const avatarSrc = resolveAvatarSrc(p.avatarUrl, p.avatarUpdatedAt);
-                  const targetInPrison = isPlayerImprisoned(p);
-                  const secondaryLabel = targetInPrison
-                    ? (Number(p.towerGuardImprisoned || 0) === 1 ? '守塔会地下监牢在押' : '灵异监牢收容中')
-                    : (p.job || p.role || '自由人');
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={async () => {
-                        if (isAnyPrisonLocked || targetInPrison) {
-                          const result = await startRoleplaySession(p as any);
-                          if (!result?.ok) {
-                            showToast(result?.message || '当前无法发起对戏');
-                          }
-                          return;
-                        }
-                        setInteractTarget(p);
-                      }}
-                      className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700 hover:border-sky-500 hover:bg-slate-800 transition-all text-left"
+              {showAreaPanel && (
+                <div className="p-4 space-y-3">
+                  <div>
+                    <div className="text-lg font-black text-white">{currentLocationName}</div>
+                    <div className="text-[11px] text-slate-300 mt-1 leading-relaxed">{currentLocationDesc}</div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
+                        (currentLocationMeta?.type || 'safe') === 'safe'
+                          ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                          : 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                      }`}
                     >
-                      <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-600 bg-slate-700 shrink-0">
-                        {avatarSrc ? (
-                          <img src={avatarSrc} className="w-full h-full object-cover" alt={p.name || 'avatar'} />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-white text-xs font-black">
-                            {(p.name || '?')[0]}
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-black text-white truncate">{p.name}</div>
-                        <div className={`text-[10px] truncate ${targetInPrison ? 'text-rose-300' : 'text-slate-400'}`}>
-                          {secondaryLabel}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-3 bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
-          <button
-            onClick={() => setShowNpcPanel((v) => !v)}
-            className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
-          >
-            <span className="flex items-center gap-2">
-              <UserRound size={14} /> 同区域 NPC
-            </span>
-            <span className="text-emerald-300">{locationNpcs.length}</span>
-          </button>
-
-          {showNpcPanel && (
-            <div className="max-h-56 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-              {locationNpcs.length === 0 ? (
-                <div className="text-[11px] text-slate-500 text-center py-3">
-                  {activeView ? '当前区域暂无可见 NPC' : '进入地区后显示当前小地图 NPC'}
+                      {(currentLocationMeta?.type || 'safe') === 'safe' ? '安全区' : '危险区'}
+                    </span>
+                    <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-sky-500/40 bg-sky-500/10 text-sky-200">
+                      同地区玩家 {localPlayers.length}
+                    </span>
+                    <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
+                      同地区非玩家角色 {locationNpcs.length}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleGroupRoleplayButtonClick}
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-black border transition-colors ${
+                      isGroupRPInCurrentLocation
+                        ? 'bg-sky-600/25 border-sky-500/60 text-sky-100 hover:bg-sky-600/35'
+                        : 'bg-slate-800 border-slate-600 text-slate-100 hover:bg-slate-700'
+                    }`}
+                  >
+                    {isGroupRPInCurrentLocation ? '打开当前地图群戏' : '加入当前地图群戏'}
+                  </button>
                 </div>
-              ) : (
-                locationNpcs.map((npc: any) => {
-                  const affinity = Number(npc?.affinity || 0);
-                  const affinityColor =
-                    affinity >= 80 ? 'text-emerald-300' : affinity >= 60 ? 'text-sky-300' : affinity <= 30 ? 'text-rose-300' : 'text-amber-300';
-                  return (
-                    <button
-                      key={String(npc.id || '')}
-                      onClick={() => setInteractNpc(npc)}
-                      className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700 hover:border-emerald-500 hover:bg-slate-800 transition-all text-left"
-                    >
-                      <div className="w-9 h-9 rounded-full border border-slate-600 bg-slate-700 shrink-0 flex items-center justify-center text-slate-100">
-                        <UserRound size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-black text-white truncate">{String(npc.name || '未知NPC')}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{String(npc.skillFaction || '通用')} · {String(npc.personality || '神秘')}</div>
-                        <div className={`text-[10px] font-bold ${affinityColor}`}>
-                          好感 {affinity} · {String(npc.affinityStage || '中立')}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })
               )}
             </div>
-          )}
-        </div>
+
+            <div className="mt-3 bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+              <button
+                onClick={() => setShowPlayersPanel((v) => !v)}
+                className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+              >
+                <span className="flex items-center gap-2">
+                  <Users size={14} /> 同地区玩家
+                </span>
+                <span className="text-sky-400">{localPlayers.length}</span>
+              </button>
+
+              {showPlayersPanel && (
+                <div className="max-h-64 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                  {localPlayers.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 text-center py-3">当前区域暂无其他玩家</div>
+                  ) : (
+                    localPlayers.map((p: any) => {
+                      const avatarSrc = resolveAvatarSrc(p.avatarUrl, p.avatarUpdatedAt);
+                      const targetInPrison = isPlayerImprisoned(p);
+                      const secondaryLabel = targetInPrison
+                        ? (Number(p.towerGuardImprisoned || 0) === 1 ? '守塔会地下监牢在押' : '灵异监牢收容中')
+                        : (p.job || p.role || '自由人');
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={async () => {
+                            if (isAnyPrisonLocked || targetInPrison) {
+                              const result = await startRoleplaySession(p as any);
+                              if (!result?.ok) {
+                                showToast(result?.message || '当前无法发起对戏');
+                              }
+                              return;
+                            }
+                            setInteractTarget(p);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700 hover:border-sky-500 hover:bg-slate-800 transition-all text-left"
+                        >
+                          <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-600 bg-slate-700 shrink-0">
+                            {avatarSrc ? (
+                              <img src={avatarSrc} className="w-full h-full object-cover" alt={p.name || 'avatar'} />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-white text-xs font-black">
+                                {(p.name || '?')[0]}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-black text-white truncate">{p.name}</div>
+                            <div className={`text-[10px] truncate ${targetInPrison ? 'text-rose-300' : 'text-slate-400'}`}>
+                              {secondaryLabel}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 bg-slate-900/85 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl w-[320px] overflow-hidden">
+              <button
+                onClick={() => setShowNpcPanel((v) => !v)}
+                className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700 flex items-center justify-between hover:bg-slate-800/80"
+              >
+                <span className="flex items-center gap-2">
+                  <UserRound size={14} /> 同区域非玩家角色
+                </span>
+                <span className="text-emerald-300">{locationNpcs.length}</span>
+              </button>
+
+              {showNpcPanel && (
+                <div className="max-h-56 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                  {locationNpcs.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 text-center py-3">
+                      {activeView ? '当前区域暂无可见角色' : '进入地区后显示当前小地图角色'}
+                    </div>
+                  ) : (
+                    locationNpcs.map((npc: any) => {
+                      const affinity = Number(npc?.affinity || 0);
+                      const affinityColor =
+                        affinity >= 80 ? 'text-emerald-300' : affinity >= 60 ? 'text-sky-300' : affinity <= 30 ? 'text-rose-300' : 'text-amber-300';
+                      return (
+                        <button
+                          key={String(npc.id || '')}
+                          onClick={() => setInteractNpc(npc)}
+                          className="w-full flex items-center gap-2 p-2 rounded-xl bg-slate-800/70 border border-slate-700 hover:border-emerald-500 hover:bg-slate-800 transition-all text-left"
+                        >
+                          <div className="w-9 h-9 rounded-full border border-slate-600 bg-slate-700 shrink-0 flex items-center justify-center text-slate-100">
+                            <UserRound size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-black text-white truncate">{String(npc.name || '未知角色')}</div>
+                            <div className="text-[10px] text-slate-400 truncate">{String(npc.skillFaction || '通用')} · {String(npc.personality || '神秘')}</div>
+                            <div className={`text-[10px] font-bold ${affinityColor}`}>
+                              好感 {affinity} · {String(npc.affinityStage || '中立')}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* 移动端：同地区信息面板（可折叠） */}
@@ -2039,9 +2206,19 @@ const closeAnnouncement = () => {
                         玩家 {localPlayers.length}
                       </span>
                       <span className="px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-200">
-                        NPC {locationNpcs.length}
+                        非玩家角色 {locationNpcs.length}
                       </span>
                     </div>
+                    <button
+                      onClick={handleGroupRoleplayButtonClick}
+                      className={`w-full mt-2 px-3 py-2 rounded-xl text-xs font-black border transition-colors ${
+                        isGroupRPInCurrentLocation
+                          ? 'bg-sky-600/25 border-sky-500/60 text-sky-100'
+                          : 'bg-slate-800 border-slate-600 text-slate-100'
+                      }`}
+                    >
+                      {isGroupRPInCurrentLocation ? '打开当前地图群戏' : '加入当前地图群戏'}
+                    </button>
                   </div>
                 )}
               </div>
@@ -2111,7 +2288,7 @@ const closeAnnouncement = () => {
                   className="w-full px-3 py-2 text-xs font-black text-slate-200 border-b border-slate-700/80 flex items-center justify-between hover:bg-slate-800"
                 >
                   <span className="flex items-center gap-2">
-                    <UserRound size={14} /> 同区域 NPC
+                    <UserRound size={14} /> 同区域非玩家角色
                   </span>
                   <span className="text-emerald-300">{locationNpcs.length}</span>
                 </button>
@@ -2119,7 +2296,7 @@ const closeAnnouncement = () => {
                   <div className="max-h-40 overflow-y-auto p-2 space-y-2 custom-scrollbar">
                     {locationNpcs.length === 0 ? (
                       <div className="text-[11px] text-slate-500 text-center py-3">
-                        {activeView ? '当前区域暂无可见 NPC' : '进入地区后显示当前小地图 NPC'}
+                        {activeView ? '当前区域暂无可见角色' : '进入地区后显示当前小地图角色'}
                       </div>
                     ) : (
                       locationNpcs.map((npc: any) => {
@@ -2136,7 +2313,7 @@ const closeAnnouncement = () => {
                               <UserRound size={14} />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-xs font-black text-white truncate">{String(npc.name || '未知NPC')}</div>
+                              <div className="text-xs font-black text-white truncate">{String(npc.name || '未知角色')}</div>
                               <div className="text-[10px] text-slate-400 truncate">{String(npc.skillFaction || '通用')} · {String(npc.personality || '神秘')}</div>
                               <div className={`text-[10px] font-bold ${affinityColor}`}>
                                 好感 {affinity} · {String(npc.affinityStage || '中立')}
@@ -2229,6 +2406,23 @@ const closeAnnouncement = () => {
                   </button>
                 </div>
 
+                <button
+                  onClick={async () => {
+                    if (String(effectiveLocationId || '') !== String(selectedLocation.id || '')) {
+                      showToast('请先进入该区域后再加入群戏');
+                      return;
+                    }
+                    await handleGroupRoleplayButtonClick();
+                  }}
+                  className={`w-full mt-2 px-4 py-3 rounded-xl text-xs font-black border transition-all ${
+                    isGroupRPInCurrentLocation
+                      ? 'bg-sky-600/20 text-sky-200 border-sky-500/40 hover:bg-sky-600/30'
+                      : 'bg-slate-800/80 text-slate-100 border-slate-600 hover:bg-slate-700'
+                  }`}
+                >
+                  {isGroupRPInCurrentLocation ? '打开当前地图群戏' : '加入该地图群戏'}
+                </button>
+
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <button
                     onClick={handleExploreSkill}
@@ -2282,6 +2476,9 @@ const closeAnnouncement = () => {
             showToast={showToast}
             onStartRP={async (target) => {
               return await startRoleplaySession(target);
+            }}
+            onOpenGroupRoleplay={async () => {
+              return await openGroupRoleplayFromInteraction();
             }}
           />
         )}
@@ -2470,6 +2667,17 @@ const closeAnnouncement = () => {
           </button>
         )}
         <button
+          onClick={handleGroupRoleplayButtonClick}
+          className={`shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl transition-all ${
+            isGroupRPInCurrentLocation ? 'bg-cyan-600 text-white hover:bg-cyan-500' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+          }`}
+        >
+          <span className="md:hidden">群戏</span>
+          <span className="hidden md:inline">
+            群戏聊天{groupRPJoinedLocationName ? ` · ${groupRPJoinedLocationName}` : ''}
+          </span>
+        </button>
+        <button
           onClick={() => {
             if (!rpSessionId) {
               showToast('当前没有活跃对戏会话');
@@ -2518,13 +2726,13 @@ const closeAnnouncement = () => {
               </select>
 
               <div className="flex items-center gap-2 text-xs font-black text-slate-300">
-                <ImagePlus size={14} /> 背景图 URL
+                <ImagePlus size={14} /> 背景图链接
               </div>
               <input
                 type="text"
                 value={bgImageInput}
                 onChange={(e) => setBgImageInput(e.target.value)}
-                placeholder="https://... 或 /your-bg.jpg"
+                placeholder="粘贴背景图地址（支持网页链接或站内图片路径）"
                 className="w-full px-3 py-2 text-xs bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500"
               />
               <input
@@ -2593,7 +2801,7 @@ const closeAnnouncement = () => {
               </div>
 
               <div className="flex items-center gap-2 text-xs font-black text-slate-300">
-                <Upload size={14} /> 自定义全局 CSS
+                <Upload size={14} /> 自定义全局样式
               </div>
               <input
                 ref={customCssFileRef}
@@ -2611,19 +2819,19 @@ const closeAnnouncement = () => {
                   onClick={() => customCssFileRef.current?.click()}
                   className="px-3 py-2 rounded-xl text-xs font-black bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
                 >
-                  导入 CSS
+                  导入样式
                 </button>
                 <button
                   onClick={handleCustomCssReset}
                   className="px-3 py-2 rounded-xl text-xs font-black bg-slate-700 text-slate-100 hover:bg-slate-600 transition-colors"
                 >
-                  清空 CSS
+                  清空样式
                 </button>
               </div>
               <textarea
                 value={customCssText}
                 onChange={(e) => setCustomCssTextState(e.target.value)}
-                placeholder="可直接粘贴自定义 CSS..."
+                placeholder="可直接粘贴自定义样式代码..."
                 className="w-full h-24 px-3 py-2 text-[11px] bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500 resize-none"
               />
               <div className="grid grid-cols-2 gap-2">
@@ -2631,7 +2839,7 @@ const closeAnnouncement = () => {
                   onClick={handleCustomCssApply}
                   className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
                 >
-                  应用 CSS
+                  应用样式
                 </button>
                 <button
                   onClick={handleThemeResetAll}
@@ -2772,6 +2980,20 @@ const closeAnnouncement = () => {
             sessionId={rpSessionId}
             currentUser={actor}
             onClose={() => setRPWindowOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {groupRPJoinedLocationId && groupRPWindowOpen && (
+          <GroupRoleplayWindow
+            currentUser={actor}
+            locationId={groupRPJoinedLocationId}
+            locationName={groupRPJoinedLocationName || resolveLocationName(groupRPJoinedLocationId)}
+            onClose={() => setGroupRPWindowOpen(false)}
+            onLeave={async (locationId) => {
+              await leaveGroupRoleplay(locationId, false);
+            }}
           />
         )}
       </AnimatePresence>

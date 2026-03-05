@@ -266,7 +266,7 @@ export function LondonTowerView({ user, onExit, showToast, fetchGlobalData }: Pr
                         <div className="text-center p-8 bg-white border border-sky-100 rounded-3xl shadow-sm">
                           <GraduationCap size={56} className="mx-auto text-sky-500 mb-4" />
                           <p className="text-xs text-slate-400 font-bold tracking-widest mb-2 uppercase">
-                            {isTowerMember ? 'Official ID Card' : 'School Governance Access'}
+                            {isTowerMember ? '官方身份卡' : '三塔监管通行'}
                           </p>
                           <h3 className="text-2xl font-black text-slate-800 mb-8">{user.job}</h3>
                           {isTowerMember ? (
@@ -443,7 +443,7 @@ export function LondonTowerView({ user, onExit, showToast, fetchGlobalData }: Pr
                               compatibility >= 70 ? 'bg-emerald-50 border-emerald-100' : compatibility >= 30 ? 'bg-amber-50 border-amber-100' : 'bg-rose-50 border-rose-100'
                             }`}
                           >
-                            <p className="text-xs font-bold mb-3 opacity-60 uppercase tracking-widest text-slate-600">Compatibility Result</p>
+                            <p className="text-xs font-bold mb-3 opacity-60 uppercase tracking-widest text-slate-600">契合度结果</p>
                             <div className="flex items-baseline justify-center gap-1 mb-2">
                               <span className={`text-6xl font-black tracking-tighter ${
                                 compatibility >= 70 ? 'text-emerald-600' : compatibility >= 30 ? 'text-amber-500' : 'text-rose-500'

@@ -191,7 +191,7 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
 
   const renderVoteOpen = () => {
     const gameId = extra.gameId;
-    if (!gameId) return <p className="text-sm text-rose-500">公告缺少 gameId</p>;
+    if (!gameId) return <p className="text-sm text-rose-500">公告缺少游戏编号</p>;
 
     const castVote = async (vote: 'yes' | 'no') => {
       const res = await fetch(`/api/custom-games/${gameId}/vote/cast`, {
@@ -216,8 +216,8 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
         <p className="text-sm text-slate-600 mb-3">{latest.content}</p>
 
         <div className="text-xs rounded bg-slate-50 p-3 mb-4">
-          <div>YES：{voteStat?.yesCount ?? '-'}</div>
-          <div>NO：{voteStat?.noCount ?? '-'}</div>
+          <div>同意票：{voteStat?.yesCount ?? '-'}</div>
+          <div>反对票：{voteStat?.noCount ?? '-'}</div>
           <div>总票：{voteStat?.total ?? '-'}</div>
           <div>我的票：{voteStat?.myVote === null || voteStat?.myVote === undefined ? '未投票' : voteStat?.myVote === 1 ? '同意' : '反对'}</div>
         </div>
@@ -252,8 +252,8 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
           <button
             className="flex-1 py-2 rounded bg-rose-600 text-white font-bold"
             onClick={async () => {
-              if (!runId) return showToast('runId 缺失');
-              if (!gameId) return showToast('gameId 缺失');
+              if (!runId) return showToast('运行编号缺失');
+              if (!gameId) return showToast('游戏编号缺失');
               const res = await fetch(`/api/custom-games/${gameId}/run/join`, {
                 method: 'POST',
                 headers: {

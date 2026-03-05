@@ -17,14 +17,16 @@ interface Props {
   targetUser: User;
   onClose: () => void;
   onStartRP: (target: User) => Promise<RPStartResult>;
+  onOpenGroupRoleplay?: () => Promise<boolean> | boolean;
   showToast: (msg: string) => void;
 }
 
-export function PlayerInteractionUI({ currentUser, targetUser, onClose, onStartRP, showToast }: Props) {
+export function PlayerInteractionUI({ currentUser, targetUser, onClose, onStartRP, onOpenGroupRoleplay, showToast }: Props) {
   const [noteContent, setNoteContent] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [isActionPending, setIsActionPending] = useState(false);
   const [isStartingRP, setIsStartingRP] = useState(false);
+  const [isOpeningGroupRP, setIsOpeningGroupRP] = useState(false);
   const [actionLock, setActionLock] = useState(false);
 
   useEffect(() => {
@@ -146,6 +148,20 @@ useEffect(() => {
       showToast('建立连接失败，请稍后重试');
     } finally {
       setIsStartingRP(false);
+    }
+  };
+
+  const openGroupRPNow = async () => {
+    if (!onOpenGroupRoleplay || actionLock || isStartingRP) return;
+    try {
+      setIsOpeningGroupRP(true);
+      const ok = await onOpenGroupRoleplay();
+      if (ok) onClose();
+    } catch (e) {
+      console.error(e);
+      showToast('加入群戏失败，请稍后重试');
+    } finally {
+      setIsOpeningGroupRP(false);
     }
   };
 
@@ -449,7 +465,7 @@ useEffect(() => {
     );
   }
 
-  const disableAll = actionLock || isStartingRP;
+  const disableAll = actionLock || isStartingRP || isOpeningGroupRP;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 mobile-portrait-safe-overlay">
@@ -498,6 +514,14 @@ useEffect(() => {
             cls="top-0 left-1/2 -translate-x-1/2"
             color="bg-sky-600 hover:bg-sky-500"
             disabled={disableAll}
+          />
+          <ActionButton
+            onClick={openGroupRPNow}
+            icon={<Users />}
+            label={isOpeningGroupRP ? '加入中...' : '地图群戏'}
+            cls="top-0 right-16"
+            color="bg-cyan-600 hover:bg-cyan-500"
+            disabled={disableAll || !onOpenGroupRoleplay}
           />
           <ActionButton
             onClick={() => handleAction('combat')}

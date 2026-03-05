@@ -447,7 +447,7 @@ export function SpiritBureauView({ user, onExit, showToast, fetchGlobalData }: P
                       <div className="text-[11px] text-slate-300 leading-6">
                         <div>当前越狱题：{prisonState?.currentGameName || prisonState?.currentGameId || '未分配'}</div>
                         <div>失败次数：{prisonState?.failedAttempts || 0}</div>
-                        <div>当前难度：Lv.{Math.max(1, Number(prisonState?.difficultyLevel || 1))}</div>
+                        <div>当前难度：等级 {Math.max(1, Number(prisonState?.difficultyLevel || 1))}</div>
                       </div>
                       <button
                         onClick={() => {

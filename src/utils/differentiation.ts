@@ -37,14 +37,14 @@ const RANK_WEIGHTS = [
 ];
 
 const ABILITIES = [
-  'Physical',
-  'Elemental',
-  'Psychic',
-  'Perception',
-  'Information',
-  'Healing',
-  'Enhancement',
-  'Alchemy'
+  '物理',
+  '元素',
+  '精神',
+  '感知',
+  '信息',
+  '治疗',
+  '强化',
+  '炼金'
 ];
 
 const SPIRIT_ANIMALS = ['Wolf', 'Falcon', 'Panther', 'White Fox', 'Tiger', 'Raven'];
@@ -93,8 +93,8 @@ export function generateDifferentiationData(): DifferentiationData {
     physicalRank = weightedPick(RANK_WEIGHTS);
     const isPlant = Math.random() < 0.12;
     spirit = isPlant
-      ? { name: pickFrom(SPIRIT_PLANTS), type: 'Plant' }
-      : { name: pickFrom(SPIRIT_ANIMALS), type: 'Animal' };
+      ? { name: pickFrom(SPIRIT_PLANTS), type: '植物' }
+      : { name: pickFrom(SPIRIT_ANIMALS), type: '动物' };
   } else if (role === ROLE_HUMAN) {
     physicalRank = weightedPick(RANK_WEIGHTS);
   } else if (role === ROLE_GHOST) {

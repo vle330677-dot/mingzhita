@@ -153,7 +153,7 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
     if (!selectedNode) return;
     const npc: MapNpc = {
       id: uid('NPC'),
-      name: '新NPC',
+      name: '新角色',
       nodeId: selectedNode.id,
       dialogue: '你好，冒险者。'
     };
@@ -173,11 +173,11 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
   const exportJson = () => {
     const text = JSON.stringify({ mapJson: map, dropPointJson: drop }, null, 2);
     navigator.clipboard.writeText(text);
-    alert('地图 JSON 已复制到剪贴板');
+    alert('地图配置文本已复制到剪贴板');
   };
 
   const importJson = () => {
-    const raw = prompt('粘贴 JSON（格式: { mapJson, dropPointJson }）');
+    const raw = prompt('粘贴地图配置文本（需包含地图与降落点字段）');
     if (!raw) return;
     try {
       const obj = JSON.parse(raw);
@@ -186,7 +186,7 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
       emit(nextMap, nextDrop);
       alert('导入成功');
     } catch {
-      alert('JSON 格式错误');
+      alert('配置文本格式错误');
     }
   };
 
@@ -327,7 +327,7 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
                   +物品
                 </button>
                 <button className="flex-1 py-2 rounded bg-violet-600 text-white font-bold" onClick={addNpc}>
-                  +NPC
+                  +角色
                 </button>
               </div>
 
@@ -378,7 +378,7 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
           ))}
         </ListCard>
 
-        <ListCard title={`NPC (${map.npcs.length})`}>
+        <ListCard title={`角色 (${map.npcs.length})`}>
           {map.npcs.map((npc) => (
             <Row key={npc.id}>
               <input
@@ -429,10 +429,10 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
       {/* 导入导出 */}
       <div className="flex gap-2">
         <button className="px-4 py-2 rounded bg-slate-700 text-white font-bold" onClick={exportJson}>
-          导出JSON
+          导出配置
         </button>
         <button className="px-4 py-2 rounded bg-slate-700 text-white font-bold" onClick={importJson}>
-          导入JSON
+          导入配置
         </button>
       </div>
     </div>

@@ -11,6 +11,33 @@ export function AdminCustomGamesView() {
   const [voteStats, setVoteStats] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
 
+  const formatReviewStatus = (raw: unknown) => {
+    const key = String(raw || '').toLowerCase();
+    const map: Record<string, string> = {
+      pending: '待审核',
+      approved: '已通过',
+      rejected: '已驳回',
+      voting: '投票中',
+      open: '已开启',
+      closed: '已关闭',
+      active: '进行中',
+      ended: '已结束'
+    };
+    return map[key] || String(raw || '-');
+  };
+
+  const formatVoteStatus = (raw: unknown) => {
+    const key = String(raw || '').toLowerCase();
+    const map: Record<string, string> = {
+      open: '进行中',
+      closed: '已结束',
+      pending: '待开始',
+      passed: '已通过',
+      rejected: '未通过'
+    };
+    return map[key] || String(raw || '-');
+  };
+
   const normalizedMapList = useMemo(
     () =>
       mapList.map((m) => ({
@@ -135,7 +162,7 @@ export function AdminCustomGamesView() {
       <Block
         title="创意待审"
         list={ideaList}
-        subtitle={(g) => `创建者#${Number(g.creator_user_id || 0)} / ${String(g.status || '-')}`}
+        subtitle={(g) => `创建者#${Number(g.creator_user_id || 0)} / ${formatReviewStatus(g.status)}`}
         onApprove={(id) => reviewIdea(id, 'approved')}
         onReject={(id) => reviewIdea(id, 'rejected')}
       />
@@ -143,7 +170,7 @@ export function AdminCustomGamesView() {
       <Block
         title="地图待审"
         list={normalizedMapList}
-        subtitle={(g) => `${g.creatorLabel} / ${String(g.status || '-')}`}
+        subtitle={(g) => `${g.creatorLabel} / ${formatReviewStatus(g.status)}`}
         onApprove={(id) => reviewMap(id, 'approved')}
         onReject={(id) => reviewMap(id, 'rejected')}
       />
@@ -163,7 +190,7 @@ export function AdminCustomGamesView() {
                     <div>
                       <div className="font-bold">{String(g.title || `游戏#${gameId}`)}</div>
                       <div className="text-xs text-slate-500">
-                        创建者#{Number(g.creator_user_id || 0)} / {String(g.status || '-')}
+                        创建者#{Number(g.creator_user_id || 0)} / {formatReviewStatus(g.status)}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -200,7 +227,7 @@ export function AdminCustomGamesView() {
                     </button>
                     {vote && (
                       <div className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">
-                        YES:{Number(vote.yesCount || 0)} / NO:{Number(vote.noCount || 0)} / 总票:{Number(vote.total || 0)} / 状态:{String(vote.voteStatus || '-')}
+                        同意:{Number(vote.yesCount || 0)} / 反对:{Number(vote.noCount || 0)} / 总票:{Number(vote.total || 0)} / 状态:{formatVoteStatus(vote.voteStatus)}
                       </div>
                     )}
                   </div>
@@ -243,7 +270,7 @@ function Block({
             return (
               <div key={`${title}-${id}`} className="border rounded p-3 flex items-center justify-between">
                 <div>
-                  <div className="font-bold">{String(g.title || `ID:${id}`)}</div>
+                  <div className="font-bold">{String(g.title || `编号:${id}`)}</div>
                   <div className="text-xs text-slate-500">{subtitle(g)}</div>
                 </div>
                 <div className="flex gap-2">

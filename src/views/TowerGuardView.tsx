@@ -14,8 +14,8 @@ interface Props {
 
 const buildings = [
   { id: 'office', name: '守塔会事务厅', x: 48, y: 34, icon: <Shield />, desc: '守塔会入职、晋升与成员管理。' },
-  { id: 'chapel', name: '教堂', x: 25, y: 62, icon: <Cross />, desc: '外来者可进行冥想，恢复 MP 30%。' },
-  { id: 'atonement', name: '赎罪室', x: 72, y: 62, icon: <Sparkles />, desc: '哨兵可降低狂暴值，其他人恢复 MP。' },
+  { id: 'chapel', name: '教堂', x: 25, y: 62, icon: <Cross />, desc: '外来者可进行冥想，恢复精神 30%。' },
+  { id: 'atonement', name: '赎罪室', x: 72, y: 62, icon: <Sparkles />, desc: '哨兵可降低狂暴值，其他人恢复精神。' },
   { id: 'underground_prison', name: '地下监牢', x: 50, y: 78, icon: <Lock />, desc: '被抓捕者关押区，可探监对戏与越狱。' }
 ];
 
@@ -510,7 +510,7 @@ export function TowerGuardView({ user, onExit, showToast, fetchGlobalData }: Pro
                     ) : (
                       <div className="space-y-4">
                         <div className="p-5 rounded-xl bg-slate-800 border border-slate-700 text-center">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-widest">Current Position</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-widest">当前职位</p>
                           <p className="text-2xl font-black text-slate-100 mt-1">{user.job}</p>
                           {user.job !== ROLES.CHIEF && (
                             <button
@@ -568,7 +568,15 @@ export function TowerGuardView({ user, onExit, showToast, fetchGlobalData }: Pro
                                 </div>
                                 <p className="text-[11px] text-slate-400 mt-1">理由：{row.reason || '无'}</p>
                                 <div className="text-[10px] text-slate-500 mt-1">
-                                  撤销状态：{row.cancelStatus === 'pending' ? '目标已提交撤销申请（待命之塔审批）' : row.cancelStatus || 'none'}
+                                  撤销状态：{
+                                    row.cancelStatus === 'pending'
+                                      ? '目标已提交撤销申请（待命之塔审批）'
+                                      : row.cancelStatus === 'approved'
+                                        ? '撤销申请已批准'
+                                        : row.cancelStatus === 'rejected'
+                                          ? '撤销申请已驳回'
+                                          : (row.cancelStatus || '无')
+                                  }
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 mt-2">
                                   <button
@@ -638,7 +646,7 @@ export function TowerGuardView({ user, onExit, showToast, fetchGlobalData }: Pro
                 {selectedBuilding.id === 'chapel' && (
                   <div className="space-y-4">
                     <div className="p-4 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-200">
-                      外来者可在教堂进行冥想，MP 恢复 30%。
+                      外来者可在教堂进行冥想，精神恢复 30%。
                     </div>
                     <button
                       onClick={() => handleRitual('meditate')}
@@ -652,7 +660,7 @@ export function TowerGuardView({ user, onExit, showToast, fetchGlobalData }: Pro
                 {selectedBuilding.id === 'atonement' && (
                   <div className="space-y-4">
                     <div className="p-4 rounded-xl bg-slate-800 border border-slate-700 text-sm text-slate-200">
-                      赎罪：哨兵狂暴值 -10%；其他角色 MP 恢复 30%。
+                      赎罪：哨兵狂暴值 -10%；其他角色精神恢复 30%。
                     </div>
                     <button
                       onClick={() => handleRitual('atonement')}
@@ -687,7 +695,7 @@ export function TowerGuardView({ user, onExit, showToast, fetchGlobalData }: Pro
                         <div className="text-[11px] text-slate-300 leading-6">
                           <div>当前越狱题：{guardPrisonState?.currentGameName || guardPrisonState?.currentGameId || '未分配'}</div>
                           <div>失败次数：{guardPrisonState?.failedAttempts || 0}</div>
-                          <div>当前难度：Lv.{Math.max(1, Number(guardPrisonState?.difficultyLevel || 1))}</div>
+                          <div>当前难度：等级 {Math.max(1, Number(guardPrisonState?.difficultyLevel || 1))}</div>
                         </div>
                         <button
                           onClick={() => {

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, X, Eye, BookOpen, 
   Database, UserCog, Monitor, 
-  Feather, Skull, Users, Globe, Gavel
+  Feather, Skull, Users, Globe, Gavel, MessageCircle
 } from 'lucide-react';
 import { User } from '../types';
 import FactionMemberPanel from './shared/FactionMemberPanel';
@@ -25,6 +25,32 @@ interface ObserverBook {
   updatedAt: string;
   canEdit: boolean;
   canDelete: boolean;
+}
+
+interface ObserverReplayLog {
+  id: string;
+  kind: 'group' | 'pair';
+  title: string;
+  locationName: string;
+  participantNames: string;
+  createdAt: string;
+  messageCount: number;
+  latestMessage?: {
+    senderName: string;
+    content: string;
+    type: string;
+    createdAt: string;
+  } | null;
+}
+
+interface ObserverReplayMessage {
+  id: number;
+  archiveId: string;
+  senderId: number;
+  senderName: string;
+  content: string;
+  type: string;
+  createdAt: string;
 }
 
 // 建筑点坐标
@@ -52,10 +78,14 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
   const [isHacking, setIsHacking] = useState(false);
   
   // 图书馆相关状态
-  const [libraryTab, setLibraryTab] = useState<'records' | 'tombstones' | 'books' | 'auctions'>('records');
+  const [libraryTab, setLibraryTab] = useState<'records' | 'tombstones' | 'books' | 'auctions' | 'replays'>('records');
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [auctionArchives, setAuctionArchives] = useState<any[]>([]);
   const [books, setBooks] = useState<ObserverBook[]>([]);
+  const [replayLogs, setReplayLogs] = useState<ObserverReplayLog[]>([]);
+  const [expandedReplayId, setExpandedReplayId] = useState('');
+  const [replayMessagesByArchive, setReplayMessagesByArchive] = useState<Record<string, ObserverReplayMessage[]>>({});
+  const [replayLoadingId, setReplayLoadingId] = useState('');
   const [newBook, setNewBook] = useState({ title: '', content: '' });
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
   const [editBook, setEditBook] = useState({ title: '', content: '' });
@@ -72,9 +102,11 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
     fetchAllUsers();
     fetchAuctionArchives();
     fetchBooks(true);
+    fetchReplayLogs(true);
     const timer = setInterval(() => {
       fetchAuctionArchives();
       fetchBooks(true);
+      fetchReplayLogs(true);
     }, 6000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,6 +131,49 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
       if (res.ok && data.success) setAuctionArchives(Array.isArray(data.logs) ? data.logs : []);
     } catch {
       // ignore
+    }
+  };
+
+  const fetchReplayLogs = async (silent = false) => {
+    try {
+      const res = await fetch('/api/observer/library/replays?limit=120&kind=all');
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        if (!silent) showToast(data.message || '读取回顾失败');
+        return;
+      }
+      setReplayLogs(Array.isArray(data.logs) ? data.logs : []);
+    } catch {
+      if (!silent) showToast('网络异常，读取回顾失败');
+    }
+  };
+
+  const toggleReplayMessages = async (archiveId: string) => {
+    const id = String(archiveId || '').trim();
+    if (!id) return;
+    if (expandedReplayId === id) {
+      setExpandedReplayId('');
+      return;
+    }
+    setExpandedReplayId(id);
+    if (replayMessagesByArchive[id]) return;
+
+    setReplayLoadingId(id);
+    try {
+      const res = await fetch(`/api/observer/library/replays/${encodeURIComponent(id)}/messages?limit=300`);
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '读取回顾内容失败');
+        return;
+      }
+      setReplayMessagesByArchive((prev) => ({
+        ...prev,
+        [id]: Array.isArray(data.messages) ? data.messages : []
+      }));
+    } catch {
+      showToast('网络异常，读取回顾内容失败');
+    } finally {
+      setReplayLoadingId('');
     }
   };
 
@@ -329,9 +404,9 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
             <div className="text-center w-full max-w-md p-8 border-y-2 border-green-500 bg-green-900/10">
                <Monitor size={64} className="mx-auto text-green-500 animate-pulse mb-6"/>
                <p className="text-green-500 text-xl md:text-2xl overflow-hidden whitespace-nowrap border-r-4 border-green-500 animate-typing mx-auto w-fit">
-                 ACCESSING SECURE MAINFRAME...
+                 正在接入核心主机...
                </p>
-               <p className="text-green-700 text-xs mt-4 animate-pulse">DECRYPTING DATA PACKETS [||||||||||||||||||||] 100%</p>
+               <p className="text-green-700 text-xs mt-4 animate-pulse">数据包解密中 [||||||||||||||||||||] 100%</p>
             </div>
           </motion.div>
         )}
@@ -397,10 +472,10 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                         <>
                           <div className="p-4 bg-green-900/10 border border-green-800 text-xs text-green-500 font-mono leading-relaxed">
                             {/* 修复：将 > 替换为 &gt; */}
-                            <span className="text-green-400 font-bold">&gt; SYSTEM CHECK:</span><br/>
+                            <span className="text-green-400 font-bold">&gt; 系统检测:</span><br/>
                             &gt; 正在扫描访客生物特征...<br/>
                             &gt; 信息就是力量，而我们掌控着最大的服务器。<br/>
-                            &gt; <span className="text-red-500">RESTRICTION:</span> 年满16岁方可被授予访问权限。
+                            &gt; <span className="text-red-500">限制:</span> 年满16岁方可被授予访问权限。
                           </div>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -416,7 +491,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                              />
                              <div className="col-span-1 md:col-span-2">
                                <IntelJobBtn 
-                                 title="篡夺首领权限" sub="神S+ 体S+ | ROOT 权限" 
+                                 title="篡夺首领权限" sub="神S+ 体S+ | 最高权限" 
                                  qualified={checkQualifications(ROLES.BOSS)}
                                  onClick={() => handleJoinOrPromote(ROLES.BOSS)}
                                />
@@ -428,13 +503,13 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                           <div className="text-center p-8 border border-green-800 bg-green-900/10">
                             {/* 修复：UserSecret 不存在，替换为 UserCog */}
                             <UserCog size={48} className="mx-auto text-green-500 mb-4"/>
-                            <p className="text-green-800 text-xs font-bold mb-2 tracking-[0.2em]">AGENT STATUS: ONLINE</p>
+                            <p className="text-green-800 text-xs font-bold mb-2 tracking-[0.2em]">干员状态：在线</p>
                             <h3 className="text-2xl font-bold text-white mb-2">{user.job}</h3>
                             <p className="text-green-600/70 text-sm mb-8">保持警惕，真理永远在暗处。</p>
                             
                             {user.job !== ROLES.BOSS && (
                               <button onClick={() => handleJoinOrPromote(ROLES.BOSS)} className="w-full py-3 mb-4 bg-green-900/20 text-green-400 font-bold border border-green-700 hover:bg-green-800 hover:text-white transition-colors uppercase tracking-widest">
-                                申请 ROOT 权限 (晋升首领)
+                                申请最高权限（晋升首领）
                               </button>
                             )}
 
@@ -483,7 +558,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                             </button>
                           ) : (
                             <div className="text-center text-xs text-red-500 font-bold border border-red-900 bg-red-900/10 p-4">
-                              [ ACCESS DENIED ] 权限不足。非观察者成员无法访问控制台。
+                              [ 访问拒绝 ] 权限不足。非观察者成员无法访问控制台。
                             </div>
                           )}
                        </div>
@@ -499,13 +574,14 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                         <LibTab active={libraryTab==='tombstones'} onClick={() => setLibraryTab('tombstones')} icon={<Skull size={16}/>} label="死亡" />
                         <LibTab active={libraryTab==='books'} onClick={() => setLibraryTab('books')} icon={<BookOpen size={16}/>} label="文献" />
                         <LibTab active={libraryTab==='auctions'} onClick={() => setLibraryTab('auctions')} icon={<Gavel size={16}/>} label="拍卖归档" />
+                        <LibTab active={libraryTab==='replays'} onClick={() => setLibraryTab('replays')} icon={<MessageCircle size={16}/>} label="群戏回顾" />
                       </div>
 
                       {/* 人员档案 */}
                       {libraryTab === 'records' && (
                         <div className="space-y-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
                           {/* 修复：将 > 替换为 &gt; */}
-                          <p className="text-xs text-green-700 mb-4 font-mono">&gt; QUERYING GLOBAL USER DATABASE...</p>
+                          <p className="text-xs text-green-700 mb-4 font-mono">&gt; 正在查询全域角色数据库...</p>
                           {allUsers.filter(u => u.status !== 'dead').length === 0 && <p className="text-green-800 text-sm">暂无存活人员记录。</p>}
                           {allUsers.filter(u => u.status !== 'dead').map(u => (
                             <div key={u.id} className="p-3 border border-green-900/30 bg-green-900/5 flex justify-between items-center hover:border-green-600 hover:bg-green-900/10 transition-colors">
@@ -514,7 +590,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                                 <span className="text-[10px] text-green-600 bg-green-900/30 px-2 py-0.5 rounded border border-green-900">{u.faction || '未定'}</span>
                               </div>
                               <div className="text-xs text-green-500/70 font-mono">
-                                [ {u.job !== '无' ? `JOB: ${u.job}` : 'UNEMPLOYED'} ]
+                                [ {u.job !== '无' ? `职务：${u.job}` : '无业'} ]
                               </div>
                             </div>
                           ))}
@@ -525,7 +601,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                       {libraryTab === 'tombstones' && (
                         <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
                           {/* 修复：将 > 替换为 &gt; */}
-                          <p className="text-xs text-green-700 mb-4 font-mono">&gt; RETRIEVING DECEASED RECORDS...</p>
+                          <p className="text-xs text-green-700 mb-4 font-mono">&gt; 正在读取死亡档案...</p>
                           {allUsers.filter(u => u.status === 'dead').length === 0 ? (
                             <p className="text-green-600 text-sm text-center py-8 opacity-50">数据正常，目前无人死亡。</p>
                           ) : (
@@ -534,8 +610,8 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                                 <Skull className="absolute -bottom-2 -right-2 text-red-900/20 w-16 h-16 transform -rotate-12"/>
                                 <div className="relative z-10">
                                   <h4 className="font-black text-red-500 text-lg mb-1">{u.name} <span className="text-xs font-normal text-red-800">({u.role})</span></h4>
-                                  <p className="text-[10px] text-red-400/60 mb-2 uppercase tracking-widest">CAUSE OF DEATH:</p>
-                                  <p className="text-sm text-red-300 font-serif italic border-l-2 border-red-900 pl-3">"{u.deathDescription || 'DATA CORRUPTED'}"</p>
+                                  <p className="text-[10px] text-red-400/60 mb-2 uppercase tracking-widest">死因记录：</p>
+                                  <p className="text-sm text-red-300 font-serif italic border-l-2 border-red-900 pl-3">"{u.deathDescription || '数据损坏'}"</p>
                                 </div>
                               </div>
                             ))
@@ -548,7 +624,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                         <div className="space-y-4">
                           <div className="flex justify-between items-center mb-2">
                             {/* 修复：将 > 替换为 &gt; */}
-                            <p className="text-xs text-green-700 font-mono">&gt; ACCESSING CLASSIFIED ARCHIVES...</p>
+                            <p className="text-xs text-green-700 font-mono">&gt; 正在访问机密档案...</p>
                             {isObserver && !isWriting && editingBookId === null && (
                               <button onClick={() => setIsWriting(true)} className="flex items-center gap-1 text-xs bg-green-900/30 text-green-400 px-3 py-1.5 border border-green-600 hover:bg-green-700 hover:text-black transition-colors">
                                 <Feather size={14}/> 撰写新文献
@@ -577,8 +653,8 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                                 className="w-full p-3 bg-black border border-green-800 text-green-400 focus:border-green-500 outline-none h-32 custom-scrollbar font-mono text-sm"
                               />
                               <div className="flex gap-2">
-                                <button disabled={bookBusy} onClick={handlePublishBook} className="flex-1 py-2 bg-green-700 text-black font-bold hover:bg-green-600 uppercase disabled:opacity-60">UPLOAD</button>
-                                <button disabled={bookBusy} onClick={() => setIsWriting(false)} className="flex-1 py-2 bg-transparent text-green-600 font-bold border border-green-800 hover:border-green-600 uppercase disabled:opacity-60">CANCEL</button>
+                                <button disabled={bookBusy} onClick={handlePublishBook} className="flex-1 py-2 bg-green-700 text-black font-bold hover:bg-green-600 uppercase disabled:opacity-60">上传</button>
+                                <button disabled={bookBusy} onClick={() => setIsWriting(false)} className="flex-1 py-2 bg-transparent text-green-600 font-bold border border-green-800 hover:border-green-600 uppercase disabled:opacity-60">取消</button>
                               </div>
                             </motion.div>
                           )}
@@ -589,7 +665,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                               <div key={book.id} className="p-5 border border-green-900/50 bg-black/50 hover:border-green-500 transition-colors group cursor-default">
                                 <div className="flex justify-between items-start mb-3">
                                   <h3 className="font-bold text-green-400 text-lg group-hover:text-white transition-colors">{book.title || '无题文献'}</h3>
-                                  <span className="text-[10px] text-green-700 bg-green-900/10 px-2 py-1 border border-green-900/30">AUTH: {book.authorName || '未知'}</span>
+                                  <span className="text-[10px] text-green-700 bg-green-900/10 px-2 py-1 border border-green-900/30">作者：{book.authorName || '未知'}</span>
                                 </div>
                                 <div className="text-[10px] text-green-800 mb-3">
                                   更新于：{book.updatedAt || book.createdAt || '-'}
@@ -614,14 +690,14 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                                         onClick={() => saveEditBook(book.id)}
                                         className="flex-1 py-2 bg-green-700 text-black font-bold hover:bg-green-600 uppercase disabled:opacity-60"
                                       >
-                                        SAVE
+                                        保存
                                       </button>
                                       <button
                                         disabled={bookBusy}
                                         onClick={() => setEditingBookId(null)}
                                         className="flex-1 py-2 bg-transparent text-green-600 font-bold border border-green-800 hover:border-green-600 uppercase disabled:opacity-60"
                                       >
-                                        CANCEL
+                                        取消
                                       </button>
                                     </div>
                                   </div>
@@ -656,15 +732,68 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                         </div>
                       )}
 
+                      {libraryTab === 'replays' && (
+                        <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                          <p className="text-xs text-green-700 mb-3 font-mono">&gt; 正在读取群戏与对戏回顾...</p>
+                          {replayLogs.length === 0 && <p className="text-green-700 text-sm">暂无可查看的回顾记录。</p>}
+                          {replayLogs.map((row) => {
+                            const rid = String(row.id || '');
+                            const expanded = expandedReplayId === rid;
+                            const msgs = replayMessagesByArchive[rid] || [];
+                            return (
+                              <div key={rid} className="p-4 border border-green-900/40 bg-green-900/5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="font-bold text-green-300">{row.title || rid}</div>
+                                  <div className="text-[10px] text-green-600">{row.kind === 'group' ? '群戏' : '对戏'}</div>
+                                </div>
+                                <div className="text-xs text-green-500 mt-1">
+                                  地点：{row.locationName || '未知地点'} | 参与：{row.participantNames || '未知'} | 消息数：{Number(row.messageCount || 0)}
+                                </div>
+                                <div className="text-[10px] text-green-700 mt-1">{row.createdAt || ''}</div>
+                                {row.latestMessage && (
+                                  <div className="text-[11px] text-green-400 mt-2 line-clamp-2">
+                                    最近：[{row.latestMessage.senderName || '未知'}] {row.latestMessage.content || ''}
+                                  </div>
+                                )}
+
+                                <button
+                                  onClick={() => toggleReplayMessages(rid)}
+                                  className="mt-2 px-3 py-1.5 text-[11px] border border-green-700 text-green-400 hover:bg-green-900/30"
+                                >
+                                  {expanded ? '收起回顾内容' : '展开回顾内容'}
+                                </button>
+
+                                {expanded && (
+                                  <div className="mt-3 max-h-52 overflow-y-auto custom-scrollbar border border-green-900/40 bg-black/40 p-3 space-y-2">
+                                    {replayLoadingId === rid && (
+                                      <div className="text-[11px] text-green-700">正在读取内容...</div>
+                                    )}
+                                    {replayLoadingId !== rid && msgs.length === 0 && (
+                                      <div className="text-[11px] text-green-700">暂无内容</div>
+                                    )}
+                                    {replayLoadingId !== rid && msgs.map((m) => (
+                                      <div key={`${rid}-${m.id}`} className="text-[11px] leading-relaxed text-green-400">
+                                        <span className="text-green-600 mr-1">[{m.type === 'system' ? '系统' : (m.senderName || '未知')}]</span>
+                                        <span className="text-green-300">{m.content}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
                       {libraryTab === 'auctions' && (
                         <div className="space-y-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                          <p className="text-xs text-green-700 mb-3 font-mono">&gt; LOADING GUILD AUCTION ARCHIVES...</p>
+                          <p className="text-xs text-green-700 mb-3 font-mono">&gt; 正在读取公会拍卖归档...</p>
                           {auctionArchives.length === 0 && <p className="text-green-700 text-sm">暂无归档记录。</p>}
                           {auctionArchives.map((row: any) => (
                             <div key={row.id} className="p-4 border border-green-900/40 bg-green-900/5">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="font-bold text-green-300">{row.itemName || '未知道具'}</div>
-                                <div className="text-[10px] text-green-600">{row.channel || 'unknown'}</div>
+                                <div className="text-[10px] text-green-600">{row.channel || '未知渠道'}</div>
                               </div>
                               <div className="text-xs text-green-500 mt-1">
                                 成交价：{Number(row.finalPrice || 0)}G | 得主：{row.winnerName || '无人'} | 状态：{row.status || '-'}
@@ -716,7 +845,7 @@ function IntelJobBtn({ title, sub, qualified, onClick }: any) {
     >
       <span className={`font-bold text-sm group-hover:text-white transition-colors ${qualified ? 'text-green-400' : 'text-green-800'}`}>{title}</span>
       <span className="text-[10px] text-green-600 mt-1">{sub}</span>
-      {!qualified && <span className="absolute top-2 right-2 text-[9px] font-bold text-red-600 bg-red-900/20 px-1 border border-red-900">DENIED</span>}
+      {!qualified && <span className="absolute top-2 right-2 text-[9px] font-bold text-red-600 bg-red-900/20 px-1 border border-red-900">拒绝</span>}
     </button>
   );
 }

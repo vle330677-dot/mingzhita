@@ -419,7 +419,7 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
               {/* 涂鸦风格图标 */}
               <div className="w-16 h-16 md:w-20 md:h-20 bg-stone-900/90 border-4 border-stone-700 shadow-2xl flex items-center justify-center text-stone-400 group-hover:scale-110 group-hover:border-red-600 group-hover:text-red-500 transition-all rounded-full z-10 relative overflow-hidden">
                  {/* 装饰性涂鸦 */}
-                 <div className="absolute top-1 right-2 text-red-600 opacity-0 group-hover:opacity-100 font-black text-xs rotate-12 transition-opacity">XXX</div>
+                 <div className="absolute top-1 right-2 text-red-600 opacity-0 group-hover:opacity-100 font-black text-xs rotate-12 transition-opacity">乱涂</div>
                  <div className="absolute bottom-1 left-2 text-red-600 opacity-0 group-hover:opacity-100 font-black text-xs -rotate-12 transition-opacity">!!!</div>
                 {React.cloneElement(b.icon as React.ReactElement, { size: 32 })}
               </div>
@@ -441,7 +441,7 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
              <div className="text-center transform rotate-6">
                 <Flame size={120} className="mx-auto text-red-600 animate-pulse drop-shadow-[0_0_25px_rgba(220,38,38,0.8)]"/>
                 <h2 className="text-6xl md:text-8xl font-black text-red-500 stroke-black drop-shadow-xl tracking-tighter" style={{ WebkitTextStroke: '2px black' }}>
-                  ANARCHY!!
+                  混乱万岁!!
                 </h2>
              </div>
           </motion.div>
@@ -661,7 +661,7 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
 
                       <div className="bg-red-950/20 p-5 border border-red-800/50 rounded-sm">
                         <h4 className="text-sm font-black text-red-300 uppercase tracking-wide mb-2">
-                          恶劣黑市 NPC · {String(blackmarketNpc?.name || '“烂牙”维克')}
+                          恶劣黑市角色 · {String(blackmarketNpc?.name || '“烂牙”维克')}
                         </h4>
                         <p className="text-[11px] text-red-200/80 mb-4">
                           {String(blackmarketNpc?.persona || '脾气恶劣，开口就骂人。')}

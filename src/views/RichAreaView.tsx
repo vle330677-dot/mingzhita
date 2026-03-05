@@ -496,7 +496,7 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
                       ) : (
                         <div className="text-center p-8 bg-slate-50 border border-slate-200 rounded-3xl shadow-inner">
                           <Crown size={48} className="mx-auto text-amber-500 mb-2 drop-shadow-md" />
-                          <p className="text-xs text-slate-400 uppercase tracking-widest mb-2 font-bold">Current Position</p>
+                          <p className="text-xs text-slate-400 uppercase tracking-widest mb-2 font-bold">当前职位</p>
                           <h3 className="text-3xl font-black text-slate-800 mb-6">{user.job}</h3>
                         </div>
                       )}
@@ -510,12 +510,12 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
                             <div className="flex-1 border-r border-slate-100 pr-4">
                               <p className="text-xs text-slate-500 mb-1">东区繁荣度</p>
                               <p className="text-2xl font-black text-sky-500">{eastProsperity}</p>
-                              <p className="text-[10px] text-slate-400 mt-1">Pop: {eastResidents}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">人口：{eastResidents}</p>
                             </div>
                             <div className="flex-1 pl-4">
                               <p className="text-xs text-stone-500 mb-1">西区繁荣度</p>
                               <p className="text-2xl font-black text-orange-400">{westProsperity}</p>
-                              <p className="text-[10px] text-stone-400 mt-1">Pop: {westResidents}</p>
+                              <p className="text-[10px] text-stone-400 mt-1">人口：{westResidents}</p>
                             </div>
                           </div>
                           <button onClick={() => showToast(eastProsperity > westProsperity ? '制裁成功！已向西区市长征收10%的高额税赋！(模拟)' : '我们的繁荣度落后了，赶紧招商引资！')} className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white font-black rounded-xl shadow-lg transition-colors text-sm">

@@ -140,7 +140,7 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
   const handleSaveAvatar = async () => {
   try {
     if (!avatarDraft?.trim()) {
-      alert('请先输入头像URL或上传图片');
+      alert('请先输入头像链接或上传图片');
       return;
     }
 
@@ -221,7 +221,7 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
                       {user.name}
                     </span>
                     <span className={`text-[10px] font-bold uppercase truncate ${isChild ? 'text-amber-400' : 'text-sky-400'}`}>
-                      Lv.{user.age} {isChild ? '未分化' : user.role}
+                      {userAge}岁 {isChild ? '未分化' : user.role}
                     </span>
                   </button>
                 </div>
@@ -235,13 +235,13 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
 
               <div className="p-4 space-y-4 overflow-y-auto custom-scrollbar flex-1">
                 <div className="space-y-2">
-                  <StatBar icon={<Heart size={10} />} label="HP" current={user.hp || 100} max={user.maxHp || 100} color="bg-rose-500" />
-                  <StatBar icon={<Zap size={10} />} label="MP" current={user.mp || 100} max={user.maxMp || 100} color="bg-sky-500" />
+                  <StatBar icon={<Heart size={10} />} label="生命" current={user.hp || 100} max={user.maxHp || 100} color="bg-rose-500" />
+                  <StatBar icon={<Zap size={10} />} label="精神" current={user.mp || 100} max={user.maxMp || 100} color="bg-sky-500" />
                   {isSentinel && (
-                    <StatBar icon={<Activity size={10} />} label="FURY" current={user.fury || 0} max={100} color={furyColor} />
+                    <StatBar icon={<Activity size={10} />} label="狂暴" current={user.fury || 0} max={100} color={furyColor} />
                   )}
                   {isGuide && (
-                    <StatBar icon={<Activity size={10} />} label="STABILITY" current={Number((user as any).guideStability ?? 100)} max={100} color={stabilityColor} />
+                    <StatBar icon={<Activity size={10} />} label="稳定" current={Number((user as any).guideStability ?? 100)} max={100} color={stabilityColor} />
                   )}
                 </div>
 
@@ -266,7 +266,7 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
                         <div key={s.id} className="bg-slate-800/80 border border-slate-700 rounded-lg p-2 flex justify-between items-center">
                           <div className="flex flex-col overflow-hidden mr-2">
                             <span className="text-xs font-bold text-slate-200 truncate">{s.name}</span>
-                            <span className="text-[9px] font-black text-sky-400 uppercase mt-0.5">Lv.{s.level}</span>
+                            <span className="text-[9px] font-black text-sky-400 uppercase mt-0.5">等级 {s.level}</span>
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <button
@@ -402,7 +402,7 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
 
               <div className="space-y-2 text-sm mb-4">
                 <div className="text-slate-300">姓名：{user.name}</div>
-                <div className="text-slate-300">年龄：{user.age}</div>
+                <div className="text-slate-300">年龄：{userAge}岁</div>
                 <div className="text-slate-300">身份：{user.role || '无'}</div>
                 <div className="text-slate-300">职位：{user.job || '无'}</div>
                 <div className="text-slate-300">派系：{user.faction || '无'}</div>
@@ -411,7 +411,7 @@ export function CharacterHUD({ user, onLogout, onRefresh }: Props) {
               </div>
 
               <div className="border-t border-slate-700 pt-4 space-y-3">
-                <label className="text-xs text-slate-400 font-bold">头像 URL</label>
+                <label className="text-xs text-slate-400 font-bold">头像链接</label>
                 <input
                   value={avatarDraft}
                   onChange={(e) => setAvatarDraft(e.target.value)}

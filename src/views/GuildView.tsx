@@ -557,7 +557,7 @@ export function GuildView({ user, onExit, showToast, fetchGlobalData }: Props) {
                         <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
                           <div className="font-black text-indigo-800">冒险者专属功能键</div>
                           <div className="text-xs text-indigo-700 mt-1">
-                            等级：{adventurerProfile?.title || '见习冒险者'} Lv.{adventurerProfile?.level || 1}
+                            等级：{adventurerProfile?.title || '见习冒险者'} {adventurerProfile?.level || 1}
                             {' '}| 积分：{adventurerProfile?.score || 0}
                             {' '}| 已完成：{adventurerProfile?.completedTotal || 0}
                             {' '}| 奖励加成：{Math.round(Number(adventurerProfile?.rewardBonusRate || 0) * 100)}%
@@ -665,7 +665,7 @@ export function GuildView({ user, onExit, showToast, fetchGlobalData }: Props) {
                           {adventurerBoard.map((x, idx) => (
                             <div key={x.userId} className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
                               <div className="text-sm"><span className="font-black mr-2">#{idx + 1}</span>{x.name}</div>
-                              <div className="text-xs text-slate-600">{x.title} Lv.{x.level} · 积分 {x.score} · 完成 {x.completedTotal}</div>
+                              <div className="text-xs text-slate-600">{x.title} 等级 {x.level} · 积分 {x.score} · 完成 {x.completedTotal}</div>
                             </div>
                           ))}
                           {adventurerBoard.length === 0 && <div className="text-sm text-slate-500">暂无排行数据。</div>}

@@ -28,12 +28,63 @@ type SessionRow = {
   endProposedBy: number | null;
 };
 
+type GroupMemberRow = {
+  locationId: string;
+  dateKey: string;
+  archiveId: string;
+  userId: number;
+  userName: string;
+  joinedAt: string;
+  updatedAt: string;
+};
+
 const now = () => new Date().toISOString();
+const GROUP_ARCHIVE_PREFIX = 'GRP-';
+const GROUP_MEMBER_STALE_SECONDS = 180;
 
 function toSafeUserId(v: unknown): number | null {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return null;
   return n;
+}
+
+function toSafeLocationId(v: unknown): string {
+  return String(v || '').trim();
+}
+
+function getLocalDateKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function buildGroupArchiveId(dateKey: string, locationId: string) {
+  return `${GROUP_ARCHIVE_PREFIX}${dateKey}-${locationId || 'unknown'}`;
+}
+
+function isGroupArchiveId(archiveId: string) {
+  return String(archiveId || '').startsWith(GROUP_ARCHIVE_PREFIX);
+}
+
+function parseParticipantIds(raw: unknown): number[] {
+  try {
+    const arr = JSON.parse(String(raw || '[]'));
+    if (!Array.isArray(arr)) return [];
+    return arr.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0);
+  } catch {
+    return [];
+  }
+}
+
+function mergeParticipantNames(rawNames: unknown, nextName: string) {
+  const names = String(rawNames || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (nextName && !names.includes(nextName)) names.push(nextName);
+  return names.join(', ');
 }
 
 function mapSessionShape(session: SessionRow, members: MemberRow[]) {
@@ -57,6 +108,12 @@ function getBearerToken(req: any) {
   const h = (req.headers?.authorization || '').trim();
   if (!h.startsWith('Bearer ')) return '';
   return h.slice(7).trim();
+}
+
+function toLimit(v: unknown, min: number, max: number, fallback: number) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
 export function createRpRouter(db: Database.Database) {
@@ -102,6 +159,63 @@ export function createRpRouter(db: Database.Database) {
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e.message || '鉴权失败' });
     }
+  };
+
+  const cleanupGroupMembers = (dateKey: string, locationId?: string) => {
+    db.prepare(`DELETE FROM active_group_rp_members WHERE dateKey <> ?`).run(dateKey);
+    if (locationId) {
+      db.prepare(`
+        DELETE FROM active_group_rp_members
+        WHERE dateKey = ?
+          AND locationId = ?
+          AND datetime(updatedAt) < datetime('now', ?)
+      `).run(dateKey, locationId, `-${GROUP_MEMBER_STALE_SECONDS} seconds`);
+    } else {
+      db.prepare(`
+        DELETE FROM active_group_rp_members
+        WHERE dateKey = ?
+          AND datetime(updatedAt) < datetime('now', ?)
+      `).run(dateKey, `-${GROUP_MEMBER_STALE_SECONDS} seconds`);
+    }
+  };
+
+  const ensureGroupArchive = (archiveId: string, locationId: string, locationName: string) => {
+    const exists = db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
+    if (exists) return;
+    db.prepare(`
+      INSERT INTO rp_archives
+      (id, title, locationId, locationName, participants, participantNames, status, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+    `).run(
+      archiveId,
+      `${locationName || locationId || '未知地点'} 群戏回顾（${archiveId.replace(GROUP_ARCHIVE_PREFIX, '').slice(0, 10)}）`,
+      locationId || 'unknown',
+      locationName || locationId || '未知地点',
+      '[]',
+      '',
+      now()
+    );
+  };
+
+  const touchGroupArchiveParticipants = (archiveId: string, userId: number, userName: string, locationName: string) => {
+    const arc = db.prepare(`
+      SELECT participants, participantNames
+      FROM rp_archives
+      WHERE id = ?
+      LIMIT 1
+    `).get(archiveId) as { participants?: string; participantNames?: string } | undefined;
+    if (!arc) return;
+
+    const ids = parseParticipantIds(arc.participants);
+    if (!ids.includes(userId)) ids.push(userId);
+    const names = mergeParticipantNames(arc.participantNames, userName);
+    db.prepare(`
+      UPDATE rp_archives
+      SET participants = ?,
+          participantNames = ?,
+          locationName = COALESCE(NULLIF(?, ''), locationName)
+      WHERE id = ?
+    `).run(JSON.stringify(ids), names, locationName || '', archiveId);
   };
 
   // 1) 建立/续用会话（前端先开窗，这里异步 upsert）
@@ -600,6 +714,463 @@ export function createRpRouter(db: Database.Database) {
       return res.json({ success: true, status: 'accepted', sessionId: String(invite.sessionId || ''), message: '已加入评理会话' });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || '处理评理邀请失败' });
+    }
+  });
+
+  // 群戏：加入（按 日期+地图 归档）
+  router.post('/rp/group/join', (req, res) => {
+    try {
+      const userId = toSafeUserId(req.body?.userId);
+      const bodyLocationId = toSafeLocationId(req.body?.locationId);
+      const bodyLocationName = String(req.body?.locationName || '').trim();
+      const bodyUserName = String(req.body?.userName || '').trim();
+
+      if (!userId) return res.status(400).json({ success: false, message: 'userId 非法' });
+      if (!bodyLocationId) return res.status(400).json({ success: false, message: 'locationId 必填' });
+
+      const user = db.prepare(`
+        SELECT id, name, status, currentLocation
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(userId) as any;
+      if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+      if (!['approved', 'ghost'].includes(String(user.status || ''))) {
+        return res.status(403).json({ success: false, message: '当前状态无法加入群戏' });
+      }
+
+      const currentLocationId = toSafeLocationId(user.currentLocation);
+      if (currentLocationId && currentLocationId !== bodyLocationId) {
+        return res.status(400).json({ success: false, message: '你已不在该地图，无法加入群戏' });
+      }
+
+      const locationId = currentLocationId || bodyLocationId;
+      const locationName = bodyLocationName || locationId || '未知地点';
+      const userName = bodyUserName || String(user.name || `U${userId}`);
+      const dateKey = getLocalDateKey();
+      const archiveId = buildGroupArchiveId(dateKey, locationId || 'unknown');
+
+      const tx = db.transaction(() => {
+        cleanupGroupMembers(dateKey, locationId);
+        ensureGroupArchive(archiveId, locationId, locationName);
+
+        const existed = db.prepare(`
+          SELECT 1
+          FROM active_group_rp_members
+          WHERE locationId = ?
+            AND dateKey = ?
+            AND userId = ?
+          LIMIT 1
+        `).get(locationId, dateKey, userId);
+
+        db.prepare(`
+          INSERT INTO active_group_rp_members
+          (locationId, dateKey, archiveId, userId, userName, joinedAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT(locationId, dateKey, userId)
+          DO UPDATE SET
+            archiveId = excluded.archiveId,
+            userName = excluded.userName,
+            updatedAt = CURRENT_TIMESTAMP
+        `).run(locationId, dateKey, archiveId, userId, userName);
+
+        touchGroupArchiveParticipants(archiveId, userId, userName, locationName);
+        if (!existed) {
+          db.prepare(`
+            INSERT INTO rp_archive_messages (archiveId, senderId, senderName, content, type, createdAt)
+            VALUES (?, 0, '系统', ?, 'system', ?)
+          `).run(archiveId, `${userName} 加入了群戏`, now());
+        }
+      });
+      tx();
+
+      const members = db.prepare(`
+        SELECT locationId, dateKey, archiveId, userId, userName, joinedAt, updatedAt
+        FROM active_group_rp_members
+        WHERE locationId = ?
+          AND dateKey = ?
+        ORDER BY datetime(joinedAt) ASC, userId ASC
+      `).all(locationId, dateKey) as GroupMemberRow[];
+
+      const messages = db.prepare(`
+        SELECT
+          m.id,
+          m.archiveId,
+          m.senderId,
+          m.senderName,
+          m.content,
+          m.type,
+          m.createdAt,
+          u.avatarUrl as senderAvatar,
+          u.avatarUpdatedAt as senderAvatarUpdatedAt
+        FROM rp_archive_messages m
+        LEFT JOIN users u ON u.id = m.senderId
+        WHERE m.archiveId = ?
+        ORDER BY m.id DESC
+        LIMIT 200
+      `).all(archiveId) as any[];
+
+      return res.json({
+        success: true,
+        joined: true,
+        archiveId,
+        dateKey,
+        locationId,
+        locationName,
+        onlineCount: members.length,
+        members: members.map((m) => ({
+          userId: Number(m.userId || 0),
+          userName: String(m.userName || ''),
+          joinedAt: String(m.joinedAt || ''),
+          updatedAt: String(m.updatedAt || '')
+        })),
+        messages: messages.reverse()
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || '加入群戏失败' });
+    }
+  });
+
+  // 群戏：当前会话（用于轮询）
+  router.get('/rp/group/session', (req, res) => {
+    try {
+      const userId = toSafeUserId(req.query.userId);
+      const locationIdQuery = toSafeLocationId(req.query.locationId);
+      if (!userId) return res.status(400).json({ success: false, message: 'userId 非法' });
+
+      const user = db.prepare(`
+        SELECT id, name, currentLocation
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(userId) as any;
+      if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+      const currentLocationId = toSafeLocationId(user.currentLocation);
+      const locationId = currentLocationId || locationIdQuery;
+      if (!locationId) {
+        return res.json({ success: true, joined: false, archiveId: null, members: [], messages: [], onlineCount: 0 });
+      }
+
+      const locationName = String(req.query.locationName || '').trim() || locationId;
+      const dateKey = getLocalDateKey();
+      const archiveId = buildGroupArchiveId(dateKey, locationId);
+
+      cleanupGroupMembers(dateKey, locationId);
+
+      const joinedRow = db.prepare(`
+        SELECT locationId, dateKey, archiveId, userId, userName, joinedAt, updatedAt
+        FROM active_group_rp_members
+        WHERE locationId = ?
+          AND dateKey = ?
+          AND userId = ?
+        LIMIT 1
+      `).get(locationId, dateKey, userId) as GroupMemberRow | undefined;
+
+      if (joinedRow) {
+        db.prepare(`
+          UPDATE active_group_rp_members
+          SET updatedAt = CURRENT_TIMESTAMP
+          WHERE locationId = ?
+            AND dateKey = ?
+            AND userId = ?
+        `).run(locationId, dateKey, userId);
+      }
+
+      const arcExists = db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
+      if (arcExists && joinedRow) {
+        touchGroupArchiveParticipants(archiveId, userId, String(joinedRow.userName || user.name || `U${userId}`), locationName);
+      }
+
+      const members = db.prepare(`
+        SELECT locationId, dateKey, archiveId, userId, userName, joinedAt, updatedAt
+        FROM active_group_rp_members
+        WHERE locationId = ?
+          AND dateKey = ?
+        ORDER BY datetime(joinedAt) ASC, userId ASC
+      `).all(locationId, dateKey) as GroupMemberRow[];
+
+      const messages = db.prepare(`
+        SELECT
+          m.id,
+          m.archiveId,
+          m.senderId,
+          m.senderName,
+          m.content,
+          m.type,
+          m.createdAt,
+          u.avatarUrl as senderAvatar,
+          u.avatarUpdatedAt as senderAvatarUpdatedAt
+        FROM rp_archive_messages m
+        LEFT JOIN users u ON u.id = m.senderId
+        WHERE m.archiveId = ?
+        ORDER BY m.id DESC
+        LIMIT 200
+      `).all(archiveId) as any[];
+
+      return res.json({
+        success: true,
+        joined: !!joinedRow,
+        archiveId,
+        dateKey,
+        locationId,
+        locationName,
+        onlineCount: members.length,
+        members: members.map((m) => ({
+          userId: Number(m.userId || 0),
+          userName: String(m.userName || ''),
+          joinedAt: String(m.joinedAt || ''),
+          updatedAt: String(m.updatedAt || '')
+        })),
+        messages: messages.reverse()
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || '读取群戏会话失败' });
+    }
+  });
+
+  // 群戏：发言
+  router.post('/rp/group/messages', (req, res) => {
+    try {
+      const userId = toSafeUserId(req.body?.userId);
+      const text = String(req.body?.content ?? '').trim();
+      const bodyLocationId = toSafeLocationId(req.body?.locationId);
+      const bodyUserName = String(req.body?.userName || '').trim();
+      const bodyLocationName = String(req.body?.locationName || '').trim();
+
+      if (!userId) return res.status(400).json({ success: false, message: 'userId 非法' });
+      if (!bodyLocationId) return res.status(400).json({ success: false, message: 'locationId 必填' });
+      if (!text) return res.status(400).json({ success: false, message: '消息不能为空' });
+
+      const user = db.prepare(`
+        SELECT id, name, status, currentLocation
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(userId) as any;
+      if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+      if (!['approved', 'ghost'].includes(String(user.status || ''))) {
+        return res.status(403).json({ success: false, message: '当前状态无法参与群戏' });
+      }
+
+      const currentLocationId = toSafeLocationId(user.currentLocation);
+      if (currentLocationId && currentLocationId !== bodyLocationId) {
+        return res.status(400).json({ success: false, message: '你已离开该地图，无法继续群戏' });
+      }
+
+      const locationId = currentLocationId || bodyLocationId;
+      const locationName = bodyLocationName || locationId || '未知地点';
+      const userName = bodyUserName || String(user.name || `U${userId}`);
+      const dateKey = getLocalDateKey();
+      const archiveId = buildGroupArchiveId(dateKey, locationId);
+
+      cleanupGroupMembers(dateKey, locationId);
+
+      ensureGroupArchive(archiveId, locationId, locationName);
+      const member = db.prepare(`
+        SELECT 1
+        FROM active_group_rp_members
+        WHERE locationId = ?
+          AND dateKey = ?
+          AND userId = ?
+        LIMIT 1
+      `).get(locationId, dateKey, userId);
+      if (!member) {
+        return res.status(403).json({ success: false, message: '你尚未加入该地区群戏' });
+      }
+
+      const tx = db.transaction(() => {
+        db.prepare(`
+          UPDATE active_group_rp_members
+          SET updatedAt = CURRENT_TIMESTAMP,
+              userName = ?
+          WHERE locationId = ?
+            AND dateKey = ?
+            AND userId = ?
+        `).run(userName, locationId, dateKey, userId);
+
+        db.prepare(`
+          INSERT INTO rp_archive_messages (archiveId, senderId, senderName, content, type, createdAt)
+          VALUES (?, ?, ?, ?, 'user', ?)
+        `).run(archiveId, userId, userName, text, now());
+
+        touchGroupArchiveParticipants(archiveId, userId, userName, locationName);
+      });
+      tx();
+
+      return res.json({ success: true });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || '群戏发送失败' });
+    }
+  });
+
+  // 群戏：离开（离开地图即视为退出）
+  router.post('/rp/group/leave', (req, res) => {
+    try {
+      const userId = toSafeUserId(req.body?.userId);
+      const locationId = toSafeLocationId(req.body?.locationId);
+      const userNameRaw = String(req.body?.userName || '').trim();
+      if (!userId) return res.status(400).json({ success: false, message: 'userId 非法' });
+      if (!locationId) return res.status(400).json({ success: false, message: 'locationId 必填' });
+
+      const user = db.prepare(`
+        SELECT id, name
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(userId) as any;
+      if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+      const userName = userNameRaw || String(user.name || `U${userId}`);
+
+      const dateKey = getLocalDateKey();
+      const archiveId = buildGroupArchiveId(dateKey, locationId);
+      cleanupGroupMembers(dateKey, locationId);
+
+      const tx = db.transaction(() => {
+        const exists = db.prepare(`
+          SELECT 1
+          FROM active_group_rp_members
+          WHERE locationId = ?
+            AND dateKey = ?
+            AND userId = ?
+          LIMIT 1
+        `).get(locationId, dateKey, userId);
+        if (!exists) return false;
+
+        db.prepare(`
+          DELETE FROM active_group_rp_members
+          WHERE locationId = ?
+            AND dateKey = ?
+            AND userId = ?
+        `).run(locationId, dateKey, userId);
+
+        const arcExists = db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
+        if (arcExists) {
+          db.prepare(`
+            INSERT INTO rp_archive_messages (archiveId, senderId, senderName, content, type, createdAt)
+            VALUES (?, 0, '系统', ?, 'system', ?)
+          `).run(archiveId, `${userName} 离开了群戏`, now());
+        }
+        return true;
+      });
+
+      const left = tx();
+      return res.json({ success: true, left: !!left });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || '离开群戏失败' });
+    }
+  });
+
+  // 观察者图书馆：读取对戏/群戏回顾
+  router.get('/observer/library/replays', (req, res) => {
+    try {
+      const limit = toLimit(req.query.limit, 1, 200, 80);
+      const kind = String(req.query.kind || 'all').trim(); // all | group | pair
+
+      const rows = db.prepare(`
+        SELECT id, title, locationId, locationName, participants, participantNames, status, createdAt
+        FROM rp_archives
+        ORDER BY datetime(createdAt) DESC, id DESC
+        LIMIT ?
+      `).all(limit) as any[];
+
+      const filtered = rows.filter((x) => {
+        const id = String(x.id || '');
+        if (kind === 'group') return isGroupArchiveId(id);
+        if (kind === 'pair') return !isGroupArchiveId(id);
+        return true;
+      });
+
+      const logs = filtered.map((x) => {
+        const archiveId = String(x.id || '');
+        const msgCount = db.prepare(`
+          SELECT COUNT(*) AS c
+          FROM rp_archive_messages
+          WHERE archiveId = ?
+        `).get(archiveId) as any;
+        const latest = db.prepare(`
+          SELECT senderName, content, type, createdAt
+          FROM rp_archive_messages
+          WHERE archiveId = ?
+          ORDER BY id DESC
+          LIMIT 1
+        `).get(archiveId) as any;
+
+        return {
+          id: archiveId,
+          kind: isGroupArchiveId(archiveId) ? 'group' : 'pair',
+          title: String(x.title || ''),
+          locationId: String(x.locationId || ''),
+          locationName: String(x.locationName || ''),
+          participants: parseParticipantIds(x.participants),
+          participantNames: String(x.participantNames || ''),
+          status: String(x.status || 'active'),
+          createdAt: String(x.createdAt || ''),
+          messageCount: Number(msgCount?.c || 0),
+          latestMessage: latest
+            ? {
+                senderName: String(latest.senderName || ''),
+                content: String(latest.content || ''),
+                type: String(latest.type || 'text'),
+                createdAt: String(latest.createdAt || '')
+              }
+            : null
+        };
+      });
+
+      return res.json({ success: true, logs });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || '读取回顾失败', logs: [] });
+    }
+  });
+
+  router.get('/observer/library/replays/:archiveId/messages', (req, res) => {
+    try {
+      const archiveId = decodeURIComponent(String(req.params.archiveId || '')).trim();
+      const limit = toLimit(req.query.limit, 1, 500, 300);
+      if (!archiveId) return res.status(400).json({ success: false, message: 'archiveId 必填' });
+
+      const archive = db.prepare(`
+        SELECT id, title, locationId, locationName, participantNames, createdAt
+        FROM rp_archives
+        WHERE id = ?
+        LIMIT 1
+      `).get(archiveId) as any;
+      if (!archive) return res.status(404).json({ success: false, message: '回顾不存在', messages: [] });
+
+      const messages = db.prepare(`
+        SELECT
+          m.id,
+          m.archiveId,
+          m.senderId,
+          m.senderName,
+          m.content,
+          m.type,
+          m.createdAt,
+          u.avatarUrl as senderAvatar,
+          u.avatarUpdatedAt as senderAvatarUpdatedAt
+        FROM rp_archive_messages m
+        LEFT JOIN users u ON u.id = m.senderId
+        WHERE m.archiveId = ?
+        ORDER BY m.id DESC
+        LIMIT ?
+      `).all(archiveId, limit) as any[];
+
+      return res.json({
+        success: true,
+        archive: {
+          id: String(archive.id || ''),
+          title: String(archive.title || ''),
+          locationId: String(archive.locationId || ''),
+          locationName: String(archive.locationName || ''),
+          participantNames: String(archive.participantNames || ''),
+          createdAt: String(archive.createdAt || ''),
+          kind: isGroupArchiveId(String(archive.id || '')) ? 'group' : 'pair'
+        },
+        messages: messages.reverse()
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || '读取回顾消息失败', messages: [] });
     }
   });
 

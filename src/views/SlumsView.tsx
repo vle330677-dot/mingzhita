@@ -503,7 +503,7 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigate
                     ) : (
                       <div className="text-center p-6 bg-stone-900 border border-stone-700 rounded-xl">
                         <AlertOctagon size={40} className="mx-auto text-orange-600 mb-3" />
-                        <p className="text-stone-500 text-xs mb-1 uppercase tracking-widest">Current Position</p>
+                        <p className="text-stone-500 text-xs mb-1 uppercase tracking-widest">当前职位</p>
                         <p className="text-2xl font-black text-white mb-6">{user.job}</p>
 
                         <button onClick={() => { if (confirm('确定要辞去西区职务吗？')) handleQuit(); }} className="text-xs text-rose-500 hover:text-rose-400 underline">

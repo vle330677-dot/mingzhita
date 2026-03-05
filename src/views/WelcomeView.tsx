@@ -161,7 +161,7 @@ export function WelcomeView({ onNavigate }: Props) {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={handleCodeSubmit}
-            placeholder={isSubmitting ? '登录中...' : 'Admin Code'}
+            placeholder={isSubmitting ? '登录中...' : '管理员入口码'}
             className="px-3 py-1.5 text-sm border border-slate-300 bg-white/70 rounded-lg outline-none focus:border-sky-500 text-slate-700"
             autoFocus
             disabled={isSubmitting}

@@ -91,7 +91,7 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
         const data = await res.json().catch(() => ({} as any));
         if (!alive) return;
         if (!res.ok || data.success === false || !data.npc) {
-          showToast(data.message || '加载 NPC 状态失败');
+          showToast(data.message || '加载角色状态失败');
           return;
         }
         setNpcStatus(data.npc);
@@ -101,7 +101,7 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
           return prev.length > 0 ? prev : [hint];
         });
       } catch {
-        if (alive) showToast('网络异常，加载 NPC 状态失败');
+        if (alive) showToast('网络异常，加载角色状态失败');
       } finally {
         if (alive) setIsLoading(false);
       }
@@ -140,7 +140,7 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
-        showToast(data.message || 'NPC 交互失败');
+        showToast(data.message || '角色交互失败');
         return;
       }
 
@@ -153,7 +153,7 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
       }));
 
       const lines: string[] = [];
-      if (data.reply) lines.push(`【${String(data.npc?.name || npcStatus.name || 'NPC')}】${String(data.reply)}`);
+      if (data.reply) lines.push(`【${String(data.npc?.name || npcStatus.name || '角色')}】${String(data.reply)}`);
       if (data.intel) lines.push(`情报：${String(data.intel)}`);
       if (data.reward?.item?.name) {
         lines.push(`获得道具：${String(data.reward.item.name)}（${String(data.reward.item.tier || '高阶')}）`);
@@ -171,7 +171,7 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
       showToast(data.message || `${ACTION_META[action]?.label || action}完成`);
       if (onUpdated) await onUpdated();
     } catch {
-      showToast('网络异常，NPC 交互失败');
+      showToast('网络异常，角色交互失败');
     } finally {
       setPendingAction('');
     }
@@ -198,7 +198,7 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
               <UserRound size={22} />
             </div>
             <div className="min-w-0">
-              <div className="text-lg font-black text-white truncate">{String(npcStatus.name || '未知NPC')}</div>
+              <div className="text-lg font-black text-white truncate">{String(npcStatus.name || '未知角色')}</div>
               <div className="text-xs text-slate-400">
                 {String(npcStatus.locationName || '未知地点')} · {String(npcStatus.skillFaction || '通用')}
               </div>
@@ -256,10 +256,10 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3 min-h-[130px]">
             <div className="text-[11px] font-black text-slate-300 mb-2 flex items-center gap-1">
-              <Sparkles size={12} /> NPC 对话 / 情报回执
+              <Sparkles size={12} /> 角色对话 / 情报回执
             </div>
             {isLoading ? (
-              <div className="text-xs text-slate-500">正在读取 NPC 状态...</div>
+              <div className="text-xs text-slate-500">正在读取角色状态...</div>
             ) : chatLines.length === 0 ? (
               <div className="text-xs text-slate-500">选择一个行为开始互动。</div>
             ) : (

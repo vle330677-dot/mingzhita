@@ -250,7 +250,7 @@ export function PrisonEscapeMiniGame({ gameId, gameName, difficulty, onResolve, 
               <KeyRound size={18} />
               越狱解密 · {gameName || challenge.title}
             </div>
-            <div className="text-xs text-cyan-400 mt-1">难度 Lv.{difficulty} · 游戏 {challenge.title}</div>
+            <div className="text-xs text-cyan-400 mt-1">难度 等级 {difficulty} · 游戏 {challenge.title}</div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-800">
             <X size={18} />

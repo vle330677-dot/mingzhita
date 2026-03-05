@@ -398,7 +398,7 @@ export default function HomeRoomView({
       const rows = (Array.isArray(data) ? data : []).map((x: any) => ({
         id: Number(x.id || 0),
         title: String(x.title || `灾厄游戏#${x.id || 0}`),
-        status: String(x.status || 'unknown'),
+        status: String(x.status || '未知'),
         voteStatus: String(x.vote_status || 'none'),
         createdAt: String(x.created_at || '')
       }));
@@ -671,7 +671,7 @@ export default function HomeRoomView({
                     value={editBg}
                     onChange={(e) => setEditBg(e.target.value)}
                     className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
-                    placeholder={`背景图 URL（留空使用默认：${theme.defaultBg}）`}
+                    placeholder={`背景图链接（留空使用默认：${theme.defaultBg}）`}
                   />
 
                   <label className="text-xs flex items-center gap-2">
@@ -925,7 +925,7 @@ export default function HomeRoomView({
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-black text-white truncate">{spiritStatus.name || '未命名精神体'}</p>
-                      <p className="text-xs text-slate-400 mt-1">等级 Lv.{Math.max(1, Number(spiritStatus.level || 1))}</p>
+                      <p className="text-xs text-slate-400 mt-1">等级 {Math.max(1, Number(spiritStatus.level || 1))}</p>
                       <p className="text-xs text-slate-400">亲密度 {Math.max(0, Number(spiritStatus.intimacy || 0))}</p>
                       <p className="text-[11px] text-slate-500 mt-1">
                         今日互动：喂食 {Math.max(0, Number(spiritStatus.daily?.feed || 0))}/3 ·
@@ -979,7 +979,7 @@ export default function HomeRoomView({
                   <input
                     value={spiritImageDraft}
                     onChange={(e) => setSpiritImageDraft(e.target.value)}
-                    placeholder="精神体头像 URL（仅首次可锁定）"
+                    placeholder="精神体头像链接（仅首次可锁定）"
                     className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs"
                   />
                   <textarea

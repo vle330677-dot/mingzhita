@@ -60,7 +60,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
     const bleeding = Number(statsPreview.bleedingLevel ?? user.bleedingLevel ?? 0);
     const mental = Number(statsPreview.mentalProgress ?? user.mentalProgress ?? 0);
     const physical = Number(statsPreview.physicalProgress ?? user.physicalProgress ?? 0);
-    return `HP ${hp} | MP ${mp} | 侵蚀 ${erosion.toFixed(1)}% | 流血 ${bleeding.toFixed(1)}% | 精神力进度 ${mental.toFixed(1)}% | 肉体强度进度 ${physical.toFixed(1)}%`;
+    return `生命 ${hp} | 精神 ${mp} | 侵蚀 ${erosion.toFixed(1)}% | 流血 ${bleeding.toFixed(1)}% | 精神力进度 ${mental.toFixed(1)}% | 肉体强度进度 ${physical.toFixed(1)}%`;
   }, [statsPreview, user.hp, user.mp, user.erosionLevel, user.bleedingLevel, user.mentalProgress, user.physicalProgress]);
 
   const loadLogs = async () => {
@@ -256,7 +256,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
             界外区域 - 打怪系统
           </h2>
           <p className="text-xs text-slate-400 mt-2">{statLine}</p>
-          <p className="text-[11px] text-slate-500 mt-1">刷新遭遇消耗 {5} MP，冷却约 {8} 秒</p>
+          <p className="text-[11px] text-slate-500 mt-1">刷新遭遇消耗 {5} 精神，冷却约 {8} 秒</p>
 
           {eventType === 'monster' && monster && (
             <div className="mt-6 rounded-2xl border border-rose-500/30 bg-rose-950/20 p-5">
@@ -266,7 +266,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
                   <div className="text-xs text-rose-300/80 mt-1">{monster.description || '未知魔物，极具攻击性。'}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-black text-amber-300">Lv.{monster.level}</div>
+                  <div className="text-sm font-black text-amber-300">等级 {monster.level}</div>
                   <div className="text-[11px] text-slate-300">阶级：{monster.tier || '低阶'}</div>
                 </div>
               </div>
@@ -346,7 +346,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
                   <div className="mt-1 text-slate-300">
                     {log.eventType === 'item'
                       ? log.resultText || '获得道具'
-                      : `${log.monsterName || '未知魔物'} Lv.${Number(log.monsterLevel || 0)} · ${log.resultText || ''}`}
+                      : `${log.monsterName || '未知魔物'} 等级 ${Number(log.monsterLevel || 0)} · ${log.resultText || ''}`}
                   </div>
                   {!!log.droppedItem && <div className="text-amber-300 mt-1">掉落：{log.droppedItem}</div>}
                 </div>

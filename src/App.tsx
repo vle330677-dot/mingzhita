@@ -74,7 +74,7 @@ export default function App() {
   useEffect(() => {
     const onKicked = (e: Event) => {
       const ce = e as CustomEvent<{ message?: string }>;
-      const msg = ce?.detail?.message || 'You were logged out because this account signed in elsewhere.';
+      const msg = ce?.detail?.message || '该账号已在其他设备登录，你已被强制下线。';
       clearUserSession();
       setUser(null);
       setUserName('');
@@ -84,7 +84,7 @@ export default function App() {
 
     const onAdminExpired = (e: Event) => {
       const ce = e as CustomEvent<{ message?: string }>;
-      const msg = ce?.detail?.message || 'Admin session expired, please sign in again.';
+      const msg = ce?.detail?.message || '管理员会话已过期，请重新登录。';
       clearAdminSession();
       setAdminViewKey((v) => v + 1);
       setCurrentView('ADMIN');
@@ -188,7 +188,7 @@ export default function App() {
       }
 
       const joinOtherFaction = window.confirm(
-        'You have not graduated yet. Join another faction now?\nOK: join at lowest rank\nCancel: go to London Tower as student'
+        '你尚未毕业。是否现在加入其他阵营？\n确定：按最低职级加入\n取消：前往伦敦塔就读'
       );
 
       const followBody = joinOtherFaction

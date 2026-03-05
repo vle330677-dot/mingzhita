@@ -376,7 +376,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose }: Props) {
       >
         <div className="min-w-0">
           <div className="text-[12px] text-white font-black truncate">{title}</div>
-          {!minimized && <div className="text-[10px] text-slate-400 truncate">Session: {sessionId}</div>}
+          {!minimized && <div className="text-[10px] text-slate-400 truncate">会话ID：{sessionId}</div>}
         </div>
 
         <div className="flex items-center gap-1 ml-2">

@@ -142,7 +142,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
     }
     const next: DifferentiationData = {
       ...finalData,
-      spirit: { name: customSpirit.trim(), type: 'Custom' }
+      spirit: { name: customSpirit.trim(), type: '自定义' }
     };
     setFinalData(next);
     setShowSpiritModal(false);
@@ -247,7 +247,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
                     value={customSpirit}
                     onChange={(e) => setCustomSpirit(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg mb-3"
-                    placeholder="New spirit name"
+                    placeholder="输入新精神体名称"
                   />
                   <button
                     onClick={handleConfirmCustomSpirit}

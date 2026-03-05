@@ -169,6 +169,20 @@ export function runSchema(db: Database.Database) {
       PRIMARY KEY (sessionId, userId)
     );
 
+    CREATE TABLE IF NOT EXISTS active_group_rp_members (
+      locationId TEXT NOT NULL,
+      dateKey TEXT NOT NULL,
+      archiveId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      userName TEXT NOT NULL,
+      joinedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (locationId, dateKey, userId)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_active_group_rp_members_archive
+      ON active_group_rp_members(archiveId, updatedAt);
+
     CREATE TABLE IF NOT EXISTS rp_archives (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,

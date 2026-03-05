@@ -317,7 +317,7 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
                 <Target size={80} className="text-red-500 relative z-10"/>
               </div>
               <h2 className="text-3xl md:text-5xl font-black text-white uppercase tracking-[0.2em] drop-shadow-lg">域外厮杀中</h2>
-              <p className="text-red-200 animate-pulse font-mono">ENJOY THE CARNAGE...</p>
+              <p className="text-red-200 animate-pulse font-mono">尽情厮杀吧...</p>
             </div>
           </motion.div>
         )}
@@ -370,7 +370,7 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
                       {!isArmy ? (
                         <div className="space-y-3">
                           <p className="text-xs text-slate-400 bg-slate-800/50 p-3 rounded-lg border border-white/5">
-                            根据你的个人档案（年龄: <span className="text-white">{user.age || '未知'}</span>, 精神: <span className="text-sky-400">{user.mentalRank || '无'}</span>, 肉体: <span className="text-rose-400">{user.physicalRank || '无'}</span>），你可以申请以下职位：
+                            根据你的个人档案（年龄: <span className="text-white">{(user.age || 0) > 0 ? `${user.age}岁` : '未知'}</span>, 精神: <span className="text-sky-400">{user.mentalRank || '无'}</span>, 肉体: <span className="text-rose-400">{user.physicalRank || '无'}</span>），你可以申请以下职位：
                           </p>
                           <div className="grid gap-3">
                             {[
@@ -411,7 +411,7 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
                         <>
                           <div className="p-4 bg-gradient-to-r from-slate-800 to-slate-900 border border-slate-700 rounded-xl flex justify-between items-center shadow-lg">
                             <div>
-                              <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest block mb-1">Current Rank</span>
+                              <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest block mb-1">当前职级</span>
                               <span className="text-xl font-black text-white">{user.job}</span>
                             </div>
                             <Medal size={32} className="text-amber-500"/>
@@ -526,12 +526,12 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
                     ) : (
                       <div className="p-8 border-2 border-red-500 rounded-2xl bg-red-950/30 animate-pulse">
                         <p className="text-4xl font-black text-white mb-2 font-mono">{miniGame.timeLeft}s</p>
-                        <p className="text-sm text-red-400 mb-6 font-bold uppercase tracking-widest">Completed: {miniGame.clicks}/30</p>
+                        <p className="text-sm text-red-400 mb-6 font-bold uppercase tracking-widest">完成进度：{miniGame.clicks}/30</p>
                         <button 
                           onClick={() => setMiniGame(p => ({ ...p, clicks: p.clicks + 1 }))} 
                           className="w-full py-6 bg-red-600 active:bg-red-500 text-white font-black text-2xl rounded-xl shadow-[0_6px_0_rgb(153,27,27)] active:shadow-none active:translate-y-[6px] transition-all touch-manipulation"
                         >
-                          CLICK!!
+                          狂点!!
                         </button>
                       </div>
                     )}
