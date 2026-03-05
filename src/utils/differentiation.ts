@@ -47,8 +47,8 @@ const ABILITIES = [
   '炼金'
 ];
 
-const SPIRIT_ANIMALS = ['Wolf', 'Falcon', 'Panther', 'White Fox', 'Tiger', 'Raven'];
-const SPIRIT_PLANTS = ['Rose', 'Lily', 'Iris', 'Lotus', 'Camellia', 'Wisteria'];
+const SPIRIT_ANIMALS = ['狼', '猎鹰', '黑豹', '白狐', '虎', '渡鸦'];
+const SPIRIT_PLANTS = ['玫瑰', '百合', '鸢尾', '莲花', '山茶', '紫藤'];
 
 function weightedPick<T extends { name: string; w: number }>(items: T[]) {
   const total = items.reduce((s, x) => s + x.w, 0);

@@ -231,17 +231,21 @@ async function ensureReviewQuorumTables(db: DB) {
   ];
   for (const x of ddl) await dbRun(db, x);
 
+  // 单管理员即可决议（required_approvals = 1）
+  // 使用 UPSERT 确保已有旧记录（值为 2）也会被更新
   const defaults: Array<[ReviewModule, number]> = [
-    ["custom_idea", 2],
-    ["custom_map", 2],
-    ["custom_start", 2],
+    ["custom_idea", 1],
+    ["custom_map", 1],
+    ["custom_start", 1],
   ];
   for (const [k, n] of defaults) {
     await dbRun(
       db,
       `INSERT INTO review_rules(module_key, required_approvals, updated_at)
        VALUES (?, ?, ?)
-       ON CONFLICT(module_key) DO NOTHING`,
+       ON CONFLICT(module_key) DO UPDATE SET
+         required_approvals = excluded.required_approvals,
+         updated_at = excluded.updated_at`,
       [k, n, now()]
     );
   }
@@ -249,7 +253,7 @@ async function ensureReviewQuorumTables(db: DB) {
 
 async function getRequiredApprovals(db: DB, moduleKey: ReviewModule) {
   const r = await dbGet(db, `SELECT required_approvals FROM review_rules WHERE module_key = ?`, [moduleKey]);
-  return Math.max(1, Number(r?.required_approvals || 2));
+  return Math.max(1, Number(r?.required_approvals || 1));
 }
 
 async function setRequiredApprovals(db: DB, moduleKey: ReviewModule, required: number) {
@@ -317,8 +321,8 @@ async function voteAndJudge(db: DB, opts: {
     };
   }
 
-  // 发起人不能自审
-  if (task.creator_user_id && Number(task.creator_user_id) === Number(opts.adminId)) {
+  // 发起人不能自审（required > 1 时才限制，required = 1 时管理员可直接决议自己提交的游戏）
+  if (required > 1 && task.creator_user_id && Number(task.creator_user_id) === Number(opts.adminId)) {
     throw new Error("creator cannot self-review");
   }
 

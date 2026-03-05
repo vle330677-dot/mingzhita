@@ -124,29 +124,29 @@ function normalizeHomeLocation(v: any): HomeLocation | null {
 
 // ─── Per-species spirit entity SVG shapes ───────────────────────────────────
 
-type SpiritSpecies = 'Wolf'|'Falcon'|'Panther'|'White Fox'|'Tiger'|'Raven'
-  |'Rose'|'Lily'|'Iris'|'Lotus'|'Camellia'|'Wisteria'|'default';
+type SpiritSpecies = '狼'|'猎鹰'|'黑豹'|'白狐'|'虎'|'渡鸦'
+  |'玫瑰'|'百合'|'鸢尾'|'莲花'|'山茶'|'紫藤'|'default';
 
 const SPIRIT_COLORS: Record<string, { body: string; accent: string; glow: string }> = {
-  Wolf:       { body: '#7090b0', accent: '#a0c4e8', glow: '#60a8e0' },
-  Falcon:     { body: '#c09040', accent: '#f0c870', glow: '#e8b050' },
-  Panther:    { body: '#503870', accent: '#9060d0', glow: '#8050c8' },
-  'White Fox':{ body: '#e0e8f8', accent: '#ffffff', glow: '#b8d4f8' },
-  Tiger:      { body: '#e06020', accent: '#f0a030', glow: '#f08030' },
-  Raven:      { body: '#404858', accent: '#808ea8', glow: '#6070a0' },
-  Rose:       { body: '#d84070', accent: '#f880a8', glow: '#e86088' },
-  Lily:       { body: '#f8f0e0', accent: '#ffe8c0', glow: '#f8d8a0' },
-  Iris:       { body: '#6050a8', accent: '#9080e0', glow: '#8070d0' },
-  Lotus:      { body: '#e870a0', accent: '#f8a8c8', glow: '#f090b8' },
-  Camellia:   { body: '#c83040', accent: '#f06070', glow: '#e05060' },
-  Wisteria:   { body: '#9070c0', accent: '#c0a0e8', glow: '#b090d8' },
-  default:    { body: '#6080b0', accent: '#80a8d8', glow: '#5090c8' },
+  狼:       { body: '#7090b0', accent: '#a0c4e8', glow: '#60a8e0' },
+  猎鹰:     { body: '#c09040', accent: '#f0c870', glow: '#e8b050' },
+  黑豹:     { body: '#503870', accent: '#9060d0', glow: '#8050c8' },
+  白狐:     { body: '#e0e8f8', accent: '#ffffff', glow: '#b8d4f8' },
+  虎:       { body: '#e06020', accent: '#f0a030', glow: '#f08030' },
+  渡鸦:     { body: '#404858', accent: '#808ea8', glow: '#6070a0' },
+  玫瑰:     { body: '#d84070', accent: '#f880a8', glow: '#e86088' },
+  百合:     { body: '#f8f0e0', accent: '#ffe8c0', glow: '#f8d8a0' },
+  鸢尾:     { body: '#6050a8', accent: '#9080e0', glow: '#8070d0' },
+  莲花:     { body: '#e870a0', accent: '#f8a8c8', glow: '#f090b8' },
+  山茶:     { body: '#c83040', accent: '#f06070', glow: '#e05060' },
+  紫藤:     { body: '#9070c0', accent: '#c0a0e8', glow: '#b090d8' },
+  default:  { body: '#6080b0', accent: '#80a8d8', glow: '#5090c8' },
 };
 
 function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typeof SPIRIT_COLORS[string]; clicked: boolean }) {
   const bounce = clicked ? 'translate(0,-6)' : 'translate(0,0)';
   switch (species) {
-    case 'Wolf': return (
+    case '狼': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         {/* wolf head */}
         <ellipse cx="36" cy="38" rx="20" ry="22" fill={c.body} />
@@ -172,7 +172,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         </>}
       </g>
     );
-    case 'Falcon': return (
+    case '猎鹰': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         {/* body */}
         <ellipse cx="36" cy="40" rx="16" ry="20" fill={c.body} />
@@ -195,7 +195,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="45" cy="22" r="1" fill="white" opacity="0.9" />
       </g>
     );
-    case 'Panther': return (
+    case '黑豹': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <ellipse cx="36" cy="38" rx="20" ry="22" fill={c.body} />
         <polygon points="22,22 17,8 30,20" fill={c.body} />
@@ -222,7 +222,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         </g>}
       </g>
     );
-    case 'White Fox': return (
+    case '白狐': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <ellipse cx="36" cy="38" rx="19" ry="22" fill={c.body} />
         {/* pointy fox ears */}
@@ -250,7 +250,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         ))}
       </g>
     );
-    case 'Tiger': return (
+    case '虎': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <ellipse cx="36" cy="38" rx="22" ry="23" fill={c.body} />
         <polygon points="23,24 18,8 32,20" fill={c.body} />
@@ -276,7 +276,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="47" cy="33" r="1" fill="white" opacity="0.9" />
       </g>
     );
-    case 'Raven': return (
+    case '渡鸦': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         {/* body */}
         <ellipse cx="36" cy="42" rx="16" ry="18" fill={c.body} />
@@ -300,7 +300,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
       </g>
     );
     // Plants
-    case 'Rose': return (
+    case '玫瑰': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <line x1="36" y1="72" x2="36" y2="36" stroke="#2d7a3a" strokeWidth="3" strokeLinecap="round" />
         <path d="M36,50 Q28,44 32,38 Q36,52 36,50Z" fill="#2d7a3a" opacity="0.8" />
@@ -317,7 +317,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="36" cy="30" r="5" fill={c.body} opacity="0.6" />
       </g>
     );
-    case 'Lily': return (
+    case '百合': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <line x1="36" y1="74" x2="36" y2="42" stroke="#4a9050" strokeWidth="3" strokeLinecap="round" />
         {[0,1,2].map(i => (
@@ -338,7 +338,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="36" cy="30" r="4" fill={c.accent} opacity="0.6" />
       </g>
     );
-    case 'Iris': return (
+    case '鸢尾': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <line x1="36" y1="74" x2="36" y2="36" stroke="#5a7030" strokeWidth="3" strokeLinecap="round" />
         <path d="M36,52 Q26,48 28,40 Q36,56 36,52Z" fill="#5a7030" opacity="0.9" />
@@ -358,7 +358,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="36" cy="32" r="5" fill={c.accent} />
       </g>
     );
-    case 'Lotus': return (
+    case '莲花': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         {/* water surface */}
         <ellipse cx="36" cy="66" rx="22" ry="6" fill="#4080a0" opacity="0.4" />
@@ -382,7 +382,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="36" cy="32" r="7" fill={c.accent} />
       </g>
     );
-    case 'Camellia': return (
+    case '山茶': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         <line x1="36" y1="74" x2="36" y2="40" stroke="#3a7040" strokeWidth="3" strokeLinecap="round" />
         <path d="M36,54 Q26,50 28,42 Q36,58 36,54Z" fill="#3a7040" opacity="0.9" />
@@ -404,7 +404,7 @@ function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typ
         <circle cx="36" cy="32" r="4" fill={c.accent} />
       </g>
     );
-    case 'Wisteria': return (
+    case '紫藤': return (
       <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
         {/* vine */}
         <path d="M36,10 Q28,20 32,30 Q36,36 36,36" stroke="#5a4080" strokeWidth="2.5" fill="none" strokeLinecap="round" />
@@ -456,12 +456,12 @@ function SpiritEntity({ role, spiritName, spiritType }: { role: string; spiritNa
 
   // Determine species
   const species: SpiritSpecies = (() => {
-    const allSpecies: SpiritSpecies[] = ['Wolf','Falcon','Panther','White Fox','Tiger','Raven','Rose','Lily','Iris','Lotus','Camellia','Wisteria'];
-    const found = allSpecies.find(s => s.toLowerCase() === spiritName?.toLowerCase());
+    const allSpecies: SpiritSpecies[] = ['狼','猎鹰','黑豹','白狐','虎','渡鸦','玫瑰','百合','鸢尾','莲花','山茶','紫藤'];
+    const found = allSpecies.find(s => s === spiritName);
     return found || 'default';
   })();
 
-  const isPlant = spiritType === '植物' || ['Rose','Lily','Iris','Lotus','Camellia','Wisteria'].includes(species);
+  const isPlant = spiritType === '植物' || ['玫瑰','百合','鸢尾','莲花','山茶','紫藤'].includes(species);
   const c = SPIRIT_COLORS[species] || SPIRIT_COLORS.default;
   const glowColor = c.glow;
   const displayName = spiritName || (isSentinel ? '精神体' : '精神体');
