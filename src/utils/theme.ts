@@ -14,6 +14,7 @@ export interface UiThemePreset {
 export const UI_THEME_STORAGE_KEY = 'ui_theme_preset_v1';
 export const UI_BG_STORAGE_KEY = 'ui_theme_bg_url_v1';
 export const UI_CUSTOM_CSS_STORAGE_KEY = 'ui_theme_custom_css_v1';
+export const UI_TEXT_COLOR_STORAGE_KEY = 'ui_theme_text_color_v1';
 export const DEFAULT_UI_THEME: UiThemePresetId = 'holy_glass';
 const CUSTOM_STYLE_TAG_ID = 'user-custom-ui-theme-style';
 
@@ -74,6 +75,39 @@ export function getUiCustomCss(): string {
   return String(localStorage.getItem(UI_CUSTOM_CSS_STORAGE_KEY) || '');
 }
 
+function normalizeHexColor(raw: string): string {
+  const src = String(raw || '').trim().toLowerCase();
+  if (!src) return '';
+  const base = src.startsWith('#') ? src.slice(1) : src;
+  if (/^[0-9a-f]{3}$/.test(base)) {
+    return `#${base.split('').map((ch) => `${ch}${ch}`).join('')}`;
+  }
+  if (/^[0-9a-f]{6}$/.test(base)) {
+    return `#${base}`;
+  }
+  return '';
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const src = normalizeHexColor(hex);
+  if (!src) return null;
+  return {
+    r: parseInt(src.slice(1, 3), 16),
+    g: parseInt(src.slice(3, 5), 16),
+    b: parseInt(src.slice(5, 7), 16)
+  };
+}
+
+function deriveSecondaryTextColor(primaryHex: string): string {
+  const rgb = hexToRgb(primaryHex);
+  if (!rgb) return '';
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.76)`;
+}
+
+export function getUiTextColor(): string {
+  return normalizeHexColor(localStorage.getItem(UI_TEXT_COLOR_STORAGE_KEY) || '');
+}
+
 export function applyUiThemePreset(themeId: UiThemePresetId) {
   const next = sanitizeThemeId(themeId);
   document.documentElement.setAttribute('data-ui-theme', next);
@@ -114,6 +148,17 @@ export function applyUiCustomCss(cssText: string) {
   styleTag().textContent = String(cssText || '');
 }
 
+export function applyUiTextColor(rawColor: string) {
+  const color = normalizeHexColor(rawColor);
+  if (!color) {
+    document.documentElement.style.removeProperty('--ui-text-primary');
+    document.documentElement.style.removeProperty('--ui-text-secondary');
+    return;
+  }
+  document.documentElement.style.setProperty('--ui-text-primary', color);
+  document.documentElement.style.setProperty('--ui-text-secondary', deriveSecondaryTextColor(color));
+}
+
 export function setUiCustomCss(cssText: string) {
   const next = String(cssText || '');
   if (!next.trim()) {
@@ -129,8 +174,24 @@ export function clearUiCustomCss() {
   applyUiCustomCss('');
 }
 
+export function setUiTextColor(rawColor: string) {
+  const color = normalizeHexColor(rawColor);
+  if (!color) {
+    localStorage.removeItem(UI_TEXT_COLOR_STORAGE_KEY);
+  } else {
+    localStorage.setItem(UI_TEXT_COLOR_STORAGE_KEY, color);
+  }
+  applyUiTextColor(color);
+}
+
+export function clearUiTextColor() {
+  localStorage.removeItem(UI_TEXT_COLOR_STORAGE_KEY);
+  applyUiTextColor('');
+}
+
 export function hydrateUiTheme() {
   applyUiThemePreset(getUiThemePreset());
   applyUiBackgroundUrl(getUiBackgroundUrl());
   applyUiCustomCss(getUiCustomCss());
+  applyUiTextColor(getUiTextColor());
 }

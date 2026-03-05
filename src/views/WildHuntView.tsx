@@ -42,6 +42,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
   const [monster, setMonster] = useState<MonsterEncounter | null>(null);
   const [itemText, setItemText] = useState('');
   const [resultText, setResultText] = useState('');
+  const [pendingDefeatChoice, setPendingDefeatChoice] = useState<{ returnLocation: string } | null>(null);
   const [recentLogs, setRecentLogs] = useState<WildBattleLogRow[]>([]);
   const [statsPreview, setStatsPreview] = useState<{
     hp?: number;
@@ -76,6 +77,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
   const rollEncounter = async () => {
     setLoading(true);
     setResultText('');
+    setPendingDefeatChoice(null);
     try {
       const res = await fetch('/api/explore/wild/roll', {
         method: 'POST',
@@ -163,6 +165,10 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
       }
 
       const returnLocation = String(data.returnLocation || '');
+      if (Boolean(data.needsRetreatChoice)) {
+        setPendingDefeatChoice({ returnLocation });
+        return;
+      }
       window.setTimeout(() => {
         onDefeatReturn(returnLocation);
       }, 700);
@@ -170,6 +176,39 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
       showToast('网络异常，战斗失败');
     } finally {
       setFighting(false);
+    }
+  };
+
+  const handleHeadstrongRetry = async () => {
+    if (loading || fighting) return;
+    setPendingDefeatChoice(null);
+    await rollEncounter();
+  };
+
+  const handleRetreat = async () => {
+    if (!pendingDefeatChoice) return;
+    try {
+      setLoading(true);
+      const res = await fetch('/api/explore/wild/retreat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          returnLocation: pendingDefeatChoice.returnLocation || ''
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '撤退失败');
+        return;
+      }
+      showToast(data.message || '你选择知难而退。');
+      onDefeatReturn(String(data.returnLocation || pendingDefeatChoice.returnLocation || ''));
+    } catch {
+      showToast('网络异常，撤退失败');
+    } finally {
+      setLoading(false);
+      setPendingDefeatChoice(null);
     }
   };
 
@@ -189,7 +228,13 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
       <div className="relative z-10 max-w-4xl mx-auto min-h-full p-4 md:p-8 flex flex-col">
         <div className="flex items-center justify-between">
           <button
-            onClick={onClose}
+            onClick={() => {
+              if (pendingDefeatChoice) {
+                showToast('请先选择“头铁再战”或“知难而退”。');
+                return;
+              }
+              onClose();
+            }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900/80 border border-slate-700 hover:bg-slate-800"
           >
             <ArrowLeft size={16} />
@@ -197,7 +242,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
           </button>
           <button
             onClick={rollEncounter}
-            disabled={loading || fighting}
+            disabled={loading || fighting || Boolean(pendingDefeatChoice)}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60"
           >
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -230,7 +275,7 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
               </div>
               <button
                 onClick={fightMonster}
-                disabled={fighting || loading}
+                disabled={fighting || loading || Boolean(pendingDefeatChoice)}
                 className="mt-4 w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 font-black inline-flex items-center justify-center gap-2"
               >
                 <Swords size={16} />
@@ -262,6 +307,27 @@ export function WildHuntView({ user, onClose, onDefeatReturn, showToast, fetchGl
                 战斗结算
               </div>
               <div>{resultText}</div>
+            </div>
+          )}
+
+          {pendingDefeatChoice && (
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4">
+              <div className="text-sm font-black text-amber-200">你已战败，下一步怎么做？</div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleHeadstrongRetry}
+                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-black text-white"
+                >
+                  头铁再战
+                </button>
+                <button
+                  onClick={handleRetreat}
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-60 font-black text-slate-100"
+                >
+                  知难而退
+                </button>
+              </div>
             </div>
           )}
 

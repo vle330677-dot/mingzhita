@@ -32,12 +32,15 @@ import {
   DEFAULT_UI_THEME,
   getUiBackgroundUrl,
   getUiCustomCss,
+  getUiTextColor,
   getUiThemePreset,
   setUiBackgroundUrl,
   setUiCustomCss,
+  setUiTextColor,
   setUiThemePreset,
   clearUiBackgroundUrl,
-  clearUiCustomCss
+  clearUiCustomCss,
+  clearUiTextColor
 } from '../utils/theme';
 
 // ================== 资源映射配置 ==================
@@ -217,6 +220,7 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [showSettings, setShowSettings] = useState(false);
   const [uiThemePreset, setUiThemePresetState] = useState<string>(() => getUiThemePreset());
   const [bgImageInput, setBgImageInput] = useState<string>(() => getUiBackgroundUrl());
+  const [customTextColor, setCustomTextColorState] = useState<string>(() => getUiTextColor());
   const [customCssText, setCustomCssTextState] = useState<string>(() => getUiCustomCss());
   const [showDeathForm, setShowDeathForm] = useState<'death' | 'ghost' | null>(null);
   const [deathText, setDeathText] = useState('');
@@ -1184,6 +1188,14 @@ useEffect(() => {
     setActiveView(null);
   };
 
+  const handleNavigateLocationFromSubView = (locationId: string) => {
+    const next = String(locationId || '').trim();
+    if (!next) return;
+    setSelectedLocation(null);
+    setActiveView(next);
+    fetchGlobalData();
+  };
+
   const handleExploreSkill = async () => {
     if (!selectedLocation) return;
     try {
@@ -1424,12 +1436,31 @@ useEffect(() => {
     showToast('已清除自定义 CSS');
   };
 
+  const handleTextColorApply = () => {
+    const value = String(customTextColor || '').trim();
+    if (value && !/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) {
+      showToast('文字颜色格式应为 #RGB 或 #RRGGBB');
+      return;
+    }
+    setUiTextColor(value);
+    setCustomTextColorState(value ? value.toLowerCase() : '');
+    showToast(value ? '文字颜色已应用' : '已恢复主题默认文字颜色');
+  };
+
+  const handleTextColorReset = () => {
+    clearUiTextColor();
+    setCustomTextColorState('');
+    showToast('已恢复主题默认文字颜色');
+  };
+
   const handleThemeResetAll = () => {
     setUiThemePreset(DEFAULT_UI_THEME as any);
     clearUiBackgroundUrl();
+    clearUiTextColor();
     clearUiCustomCss();
     setUiThemePresetState(DEFAULT_UI_THEME);
     setBgImageInput('');
+    setCustomTextColorState('');
     setCustomCssTextState('');
     showToast('已恢复默认圣洁白雾风格');
   };
@@ -1568,19 +1599,19 @@ const closeAnnouncement = () => {
         content = <LondonTowerView {...commonProps} />;
         break;
       case 'sanctuary':
-        content = <SanctuaryView {...commonProps} />;
+        content = <SanctuaryView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
         break;
       case 'guild':
         content = <GuildView {...commonProps} />;
         break;
       case 'army':
-        content = <ArmyView {...commonProps} />;
+        content = <ArmyView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
         break;
       case 'slums':
-        content = <SlumsView {...commonProps} />;
+        content = <SlumsView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
         break;
       case 'rich_area':
-        content = <RichAreaView {...commonProps} />;
+        content = <RichAreaView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
         break;
       case 'demon_society':
         content = <DemonSocietyView {...commonProps} />;
@@ -2522,6 +2553,39 @@ const closeAnnouncement = () => {
                 </button>
                 <button
                   onClick={handleBackgroundReset}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-slate-700 text-slate-100 hover:bg-slate-600 transition-colors"
+                >
+                  恢复默认
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs font-black text-slate-300">
+                <Palette size={14} /> 自定义文字颜色
+              </div>
+              <div className="grid grid-cols-[52px_1fr] gap-2">
+                <input
+                  type="color"
+                  value={/^#[0-9a-fA-F]{6}$/.test(customTextColor) ? customTextColor : '#142032'}
+                  onChange={(e) => setCustomTextColorState(e.target.value)}
+                  className="h-9 w-full rounded-xl border border-slate-700 bg-slate-800/80 p-1"
+                />
+                <input
+                  type="text"
+                  value={customTextColor}
+                  onChange={(e) => setCustomTextColorState(e.target.value)}
+                  placeholder="#142032"
+                  className="w-full px-3 py-2 text-xs bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleTextColorApply}
+                  className="px-3 py-2 rounded-xl text-xs font-black bg-sky-600 text-white hover:bg-sky-500 transition-colors"
+                >
+                  应用文字色
+                </button>
+                <button
+                  onClick={handleTextColorReset}
                   className="px-3 py-2 rounded-xl text-xs font-black bg-slate-700 text-slate-100 hover:bg-slate-600 transition-colors"
                 >
                   恢复默认

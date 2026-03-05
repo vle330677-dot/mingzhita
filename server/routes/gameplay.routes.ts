@@ -4287,7 +4287,6 @@ export function createGameplayRouter(ctx: AppContext) {
       let nextMentalProgress = mentalProgress;
       let nextPhysicalProgress = physicalProgress;
       let dropName = '';
-      let returnLocation = String(user.currentLocation || 'tower_of_life');
 
       if (isWin) {
         nextMentalProgress = clamp(mentalProgress + WILD_WIN_STAT_GAIN, 0, 9999);
@@ -4365,17 +4364,16 @@ export function createGameplayRouter(ctx: AppContext) {
       nextHp = clamp(currentHp - hpLoss, 0, maxHp);
       nextMentalProgress = clamp(mentalProgress - WILD_LOSS_STAT_PENALTY, 0, 9999);
       nextPhysicalProgress = clamp(physicalProgress - WILD_LOSS_STAT_PENALTY, 0, 9999);
-      returnLocation = String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
+      const retreatLocation = String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
 
       db.prepare(`
         UPDATE users
         SET hp = ?,
             mentalProgress = ?,
             physicalProgress = ?,
-            currentLocation = ?,
             updatedAt = ?
         WHERE id = ?
-      `).run(nextHp, nextMentalProgress, nextPhysicalProgress, returnLocation, nowIso(), userId);
+      `).run(nextHp, nextMentalProgress, nextPhysicalProgress, nowIso(), userId);
       db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
       writeWildBattleLog(db, {
         userId,
@@ -4387,13 +4385,12 @@ export function createGameplayRouter(ctx: AppContext) {
         resultText: `败给 ${String(monster.name || '未知魔物')}`,
         hpDelta: -hpLoss,
         mentalDelta: -WILD_LOSS_STAT_PENALTY,
-        physicalDelta: -WILD_LOSS_STAT_PENALTY,
-        returnedTo: returnLocation
+        physicalDelta: -WILD_LOSS_STAT_PENALTY
       });
 
       const debuff = applyWildDebuff(db, userId);
       const refreshed = getUser(db, userId) || user;
-      const lossText = `战败：HP -10%，精神力 -${WILD_LOSS_STAT_PENALTY}%，肉体强度 -${WILD_LOSS_STAT_PENALTY}%，已返回城中`;
+      const lossText = `战败：HP -10%，精神力 -${WILD_LOSS_STAT_PENALTY}%，肉体强度 -${WILD_LOSS_STAT_PENALTY}%。请选择“头铁再战”或“知难而退”`;
       const message = debuff?.message ? `${lossText}；${debuff.message}` : lossText;
 
       return res.json({
@@ -4408,8 +4405,9 @@ export function createGameplayRouter(ctx: AppContext) {
         physicalProgress: Number(refreshed.physicalProgress || nextPhysicalProgress),
         erosionLevel: Number(refreshed.erosionLevel || 0),
         bleedingLevel: Number(refreshed.bleedingLevel || 0),
-        returnedToCity: true,
-        returnLocation,
+        returnedToCity: false,
+        needsRetreatChoice: true,
+        returnLocation: retreatLocation,
         debuff
       });
     } catch (e: any) {
@@ -4551,16 +4549,15 @@ export function createGameplayRouter(ctx: AppContext) {
       const nextHp = clamp(Number(user.hp || maxHp) - hpLoss, 0, maxHp);
       const nextMental = clamp(Number(user.mentalProgress || 0) - WILD_LOSS_STAT_PENALTY, 0, 9999);
       const nextPhysical = clamp(Number(user.physicalProgress || 0) - WILD_LOSS_STAT_PENALTY, 0, 9999);
-      const returnLocation = String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
+      const retreatLocation = String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
       db.prepare(`
         UPDATE users
         SET hp = ?,
             mentalProgress = ?,
             physicalProgress = ?,
-            currentLocation = ?,
             updatedAt = ?
         WHERE id = ?
-      `).run(nextHp, nextMental, nextPhysical, returnLocation, nowIso(), userId);
+      `).run(nextHp, nextMental, nextPhysical, nowIso(), userId);
       writeWildBattleLog(db, {
         userId,
         eventType: 'monster',
@@ -4571,12 +4568,11 @@ export function createGameplayRouter(ctx: AppContext) {
         resultText: `败给 ${monster.name}`,
         hpDelta: -hpLoss,
         mentalDelta: -WILD_LOSS_STAT_PENALTY,
-        physicalDelta: -WILD_LOSS_STAT_PENALTY,
-        returnedTo: returnLocation
+        physicalDelta: -WILD_LOSS_STAT_PENALTY
       });
       const debuff = applyWildDebuff(db, userId);
       const refreshed = getUser(db, userId) || user;
-      const lossText = `战败：HP -10%，精神力 -${WILD_LOSS_STAT_PENALTY}%，肉体强度 -${WILD_LOSS_STAT_PENALTY}%，已返回城中`;
+      const lossText = `战败：HP -10%，精神力 -${WILD_LOSS_STAT_PENALTY}%，肉体强度 -${WILD_LOSS_STAT_PENALTY}%。请选择“头铁再战”或“知难而退”`;
       const message = debuff?.message ? `${lossText}；${debuff.message}` : lossText;
       return res.json({
         success: true,
@@ -4590,12 +4586,39 @@ export function createGameplayRouter(ctx: AppContext) {
         physicalProgress: Number(refreshed.physicalProgress || nextPhysical),
         erosionLevel: Number(refreshed.erosionLevel || 0),
         bleedingLevel: Number(refreshed.bleedingLevel || 0),
-        returnedToCity: true,
-        returnLocation,
+        returnedToCity: false,
+        needsRetreatChoice: true,
+        returnLocation: retreatLocation,
         debuff
       });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'wild encounter failed' });
+    }
+  });
+
+  r.post('/explore/wild/retreat', (req, res) => {
+    try {
+      const userId = Number(req.body?.userId || 0);
+      const preferred = String(req.body?.returnLocation || '').trim();
+      if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
+      const user = getUser(db, userId);
+      if (!user) return res.status(404).json({ success: false, message: 'user not found' });
+
+      const returnLocation = preferred || String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
+      db.prepare(`
+        UPDATE users
+        SET currentLocation = ?, updatedAt = ?
+        WHERE id = ?
+      `).run(returnLocation, nowIso(), userId);
+      db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+
+      return res.json({
+        success: true,
+        message: '你选择知难而退，已返回城中。',
+        returnLocation
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'wild retreat failed' });
     }
   });
 
@@ -5983,11 +6006,13 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const age = Number(user.age || 0);
+      const roleText = String(user.role || '').trim();
       if (action === 'minor_to_student') {
-        if (age >= 16) return res.status(400).json({ success: false, message: 'already reached student stage' });
+        const canDifferentiate = age < 16 || roleText === '未分化';
+        if (!canDifferentiate) return res.status(400).json({ success: false, message: 'already reached student stage' });
 
-        const nextAge = 16 + Math.floor(Math.random() * 4); // 16~19
-        let nextRole = String(user.role || '');
+        const nextAge = age < 16 ? 16 + Math.floor(Math.random() * 4) : Math.min(19, Math.max(16, age || 16));
+        let nextRole = roleText;
         if (nextRole === '未分化' || !nextRole) nextRole = randomAdultRole();
 
         const nextJob = enrollStudent ? '伦敦塔学生' : '';

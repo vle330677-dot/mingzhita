@@ -16,6 +16,7 @@ interface Props {
   onExit: () => void;
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
+  onNavigateLocation?: (locationId: string) => void;
 }
 
 interface RoomEntrance {
@@ -61,7 +62,7 @@ const RANK_SCORES: Record<string, number> = {
   'A': 8, 'A+': 9, 'S': 10, 'S+': 11, 'SS': 12, 'SS+': 13, 'SSS': 14
 };
 
-export function SlumsView({ user, onExit, showToast, fetchGlobalData }: Props) {
+export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
 
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
@@ -385,6 +386,10 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData }: Props) {
         showToast={showToast}
         onSaved={(next) => setEnteredRoom(next as any)}
         refreshGlobalData={fetchGlobalData}
+        onRequestSwitchLocation={(locationId) => {
+          setEnteredRoom(null);
+          onNavigateLocation?.(locationId);
+        }}
       />
     );
   }

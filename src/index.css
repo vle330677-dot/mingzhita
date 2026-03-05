@@ -119,11 +119,43 @@ body {
   color: var(--ui-text-primary) !important;
 }
 
+.theme-shell [class*="text-slate-900"],
+.theme-shell [class*="text-slate-800"],
+.theme-shell [class*="text-slate-700"],
+.theme-shell [class*="text-gray-900"],
+.theme-shell [class*="text-gray-800"],
+.theme-shell [class*="text-gray-700"] {
+  color: var(--ui-text-primary) !important;
+}
+
+.theme-shell [class*="text-slate-200"],
+.theme-shell [class*="text-slate-300"],
+.theme-shell [class*="text-gray-300"],
+.theme-shell [class*="text-gray-400"],
 .theme-shell [class*="text-slate-400"],
 .theme-shell [class*="text-slate-500"],
 .theme-shell [class*="text-gray-500"],
 .theme-shell [class*="text-gray-600"] {
   color: var(--ui-text-secondary) !important;
+}
+
+.theme-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+.theme-shell select,
+.theme-shell textarea {
+  color: var(--ui-text-primary) !important;
+  background-color: var(--ui-panel-soft) !important;
+  border-color: var(--ui-border) !important;
+}
+
+.theme-shell input::placeholder,
+.theme-shell textarea::placeholder {
+  color: var(--ui-text-secondary) !important;
+  opacity: 0.82;
+}
+
+.theme-shell select option {
+  color: var(--ui-text-primary);
+  background-color: var(--ui-panel-strong);
 }
 
 .theme-shell [class*="bg-sky-600"],
@@ -177,11 +209,11 @@ body {
 }
 
 .mobile-contrast-surface-light {
-  color: #142032 !important;
+  color: var(--ui-text-primary) !important;
 }
 
 .mobile-contrast-surface-dark {
-  color: #f8fafc !important;
+  color: var(--ui-text-primary) !important;
 }
 
 @media (max-width: 767px) and (orientation: portrait) {

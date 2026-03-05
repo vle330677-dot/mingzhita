@@ -14,6 +14,7 @@ interface Props {
   onExit: () => void;
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
+  onNavigateLocation?: (locationId: string) => void;
 }
 
 const buildings = [
@@ -36,7 +37,7 @@ const RANK_SCORES: Record<string, number> = {
   'A': 8, 'A+': 9, 'S': 10, 'S+': 11, 'SS': 12, 'SS+': 13, 'SSS': 14
 };
 
-export function ArmyView({ user, onExit, showToast, fetchGlobalData }: Props) {
+export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
   const [isPatrolling, setIsPatrolling] = useState(false);
   
@@ -626,6 +627,11 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData }: Props) {
             showToast={showToast}
             onSaved={(next) => setTargetHomeRoom(next as any)}
             refreshGlobalData={fetchGlobalData}
+            onRequestSwitchLocation={(locationId) => {
+              setTargetHomeRoom(null);
+              setTargetHomeOwner(null);
+              onNavigateLocation?.(locationId);
+            }}
           />
         )}
       </AnimatePresence>

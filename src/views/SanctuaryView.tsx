@@ -16,6 +16,7 @@ interface Props {
   onExit: () => void;
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
+  onNavigateLocation?: (locationId: string) => void;
 }
 
 interface RoomEntrance {
@@ -68,7 +69,7 @@ const GENTLE_CLINIC_NPC = {
   quote: '别怕，慢慢呼吸。你会好起来的。'
 };
 
-export function SanctuaryView({ user, onExit, showToast, fetchGlobalData }: Props) {
+export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [healSkills, setHealSkills] = useState<any[]>([]);
@@ -344,6 +345,10 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData }: Prop
         showToast={showToast}
         onSaved={(next) => setEnteredRoom(next as any)}
         refreshGlobalData={fetchGlobalData}
+        onRequestSwitchLocation={(locationId) => {
+          setEnteredRoom(null);
+          onNavigateLocation?.(locationId);
+        }}
       />
     );
   }

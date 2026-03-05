@@ -86,6 +86,16 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
   }, [user]);
 
   useEffect(() => {
+    const uid = String((user as any)?.id || '');
+    if (!uid) return;
+    const jumpKey = `tower_open_differentiation_${uid}`;
+    if (sessionStorage.getItem(jumpKey) !== '1') return;
+    sessionStorage.removeItem(jumpKey);
+    setSelectedPoint('training_ground');
+    showToast('已打开分化面板，点击“开始抽属性分化”即可。');
+  }, [user, showToast]);
+
+  useEffect(() => {
     const pullPresence = async () => {
       try {
         const res = await fetch('/api/world/presence');

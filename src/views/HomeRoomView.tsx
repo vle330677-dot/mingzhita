@@ -73,6 +73,7 @@ interface Props {
   showToast: (msg: string) => void;
   onSaved?: (next: HomeRoomDetail) => void;
   refreshGlobalData?: () => void;
+  onRequestSwitchLocation?: (locationId: string) => void;
 }
 
 export function deriveInitialHomeLocation(user: UserLite): HomeLocation {
@@ -119,7 +120,8 @@ export default function HomeRoomView({
   onBack,
   showToast,
   onSaved,
-  refreshGlobalData
+  refreshGlobalData,
+  onRequestSwitchLocation
 }: Props) {
   const isOwner = Number(currentUser.id) === Number(room.ownerId);
   const actualLoc = normalizeHomeLocation(room.homeLocation) || sourceMap;
@@ -319,30 +321,32 @@ export default function HomeRoomView({
       setGrowing(true);
 
       if (isUndifferentiatedStage) {
-        const ok = window.confirm('进行成长测试并推进到16-19岁阶段吗？');
-        if (!ok) return;
-
-        const enrollStudent = window.confirm(
-          '是否前往伦敦塔成为学生？\n确定：成为伦敦塔学员\n取消：仅完成成长，不入学'
+        const goDifferentiate = window.confirm(
+          '未分化阶段成长需要先前往命之塔进行属性分化。\n确定：前往分化抽取属性\n取消：稍后再说'
         );
-
-        const res = await fetch('/api/growth/advance', {
+        if (!goDifferentiate) {
+          showToast('已取消成长推进。');
+          return;
+        }
+        const uid = Number(currentUser.id || 0);
+        const res = await fetch(`/api/characters/${uid}/location`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.id,
-            action: 'minor_to_student',
-            enrollStudent
-          })
+          body: JSON.stringify({ locationId: 'tower_of_life' })
         });
         const data = await res.json().catch(() => ({} as any));
         if (!res.ok || data.success === false) {
-          showToast(data.message || '成长推进失败');
+          showToast(data.message || '前往命之塔失败');
           return;
         }
-
-        showToast(enrollStudent ? '成长完成，已进入伦敦塔学生阶段' : '成长完成，已进入16-19岁阶段');
+        sessionStorage.setItem(`tower_open_differentiation_${uid}`, '1');
         refreshGlobalData?.();
+        if (onRequestSwitchLocation) {
+          onRequestSwitchLocation('tower_of_life');
+        } else {
+          onBack();
+        }
+        showToast('已前往命之塔，可直接进行属性分化。');
         return;
       }
 
@@ -732,7 +736,7 @@ export default function HomeRoomView({
                       className="w-full py-2 rounded bg-fuchsia-600 hover:bg-fuchsia-500 font-bold disabled:opacity-60"
                     >
                       {isUndifferentiatedStage
-                        ? (growing ? '成长推进中...' : '成长推进（未分化→学生）')
+                        ? (growing ? '前往分化中...' : '成长推进（前往命之塔分化）')
                         : (growing ? '毕业处理中...' : '成长推进（学生毕业→19+）')}
                     </button>
                   )}
