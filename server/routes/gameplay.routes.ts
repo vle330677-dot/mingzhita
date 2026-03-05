@@ -588,6 +588,9 @@ function ensureTables(db: any) {
     db.exec(`ALTER TABLE users ADD COLUMN lastResetDate TEXT`);
   } catch {}
   try {
+    db.exec(`ALTER TABLE users ADD COLUMN ghostImmuneUntil TEXT DEFAULT NULL`);
+  } catch {}
+  try {
     db.exec(`ALTER TABLE world_npcs ADD COLUMN mapX REAL DEFAULT 50`);
   } catch {}
   try {
@@ -2434,6 +2437,11 @@ export function createGameplayRouter(ctx: AppContext) {
           `).run(gain, gain, hpCost, nowIso(), userId);
           useMessage = `违禁品生效：精/体成长 +${gain}，副作用 HP -${hpCost}`;
         }
+      } else if (itemType === '辟邪符') {
+        const durationHours = Math.max(1, Number(item.effectValue || 4));
+        const immuneUntil = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
+        db.prepare(`UPDATE users SET ghostImmuneUntil=?, updatedAt=? WHERE id=?`).run(immuneUntil, nowIso(), userId);
+        useMessage = `辟邪符已激活，将免疫鬼魂光环 ${durationHours} 小时（至 ${immuneUntil.slice(0,16).replace('T',' ')} UTC）`;
       } else {
         const heal = Number(item.effectValue || 20) || 20;
         const descText = `${String(item.name || '')} ${String(item.description || '')}`;
@@ -6201,7 +6209,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const myLoc = String(me.currentLocation || '');
       if (!myLoc) return res.json({ success: true, drained: false, message: '未定位，跳过' });
 
-      // 同区域 10 分钟内有活动的非鬼魂在线玩家
+      // 同区域 10 分钟内有活动的非鬼魂在线玩家（跳过持有辟邪符免疫的玩家）
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       const targets = db.prepare(`
         SELECT id, mp
@@ -6210,7 +6218,8 @@ export function createGameplayRouter(ctx: AppContext) {
           AND id != ?
           AND status = 'approved'
           AND updatedAt > ?
-      `).all(myLoc, userId, cutoff) as AnyRow[];
+          AND (ghostImmuneUntil IS NULL OR ghostImmuneUntil < ?)
+      `).all(myLoc, userId, cutoff, nowIso()) as AnyRow[];
 
       const DRAIN = 2;
       const MIN_MP = 1;

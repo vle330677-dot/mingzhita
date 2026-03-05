@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, BedDouble, ChevronDown, ChevronUp, Download, MessageSquarePlus,
   Save, Settings, Sparkles, Trash2
@@ -66,6 +66,8 @@ export interface HomeRoomDetail {
   description?: string;
   visible?: boolean;
   allowVisit?: boolean;
+  spiritName?: string;
+  spiritType?: string;
 }
 
 interface Props {
@@ -77,6 +79,7 @@ interface Props {
   onSaved?: (next: HomeRoomDetail) => void;
   refreshGlobalData?: () => void;
   onRequestSwitchLocation?: (locationId: string) => void;
+  onExitToWorld?: () => void;
 }
 
 export function deriveInitialHomeLocation(user: UserLite): HomeLocation {
@@ -119,63 +122,392 @@ function normalizeHomeLocation(v: any): HomeLocation | null {
   return null;
 }
 
-// Floating spirit entity SVG
-function SpiritEntity({ role, name }: { role: string; name: string }) {
+// ─── Per-species spirit entity SVG shapes ───────────────────────────────────
+
+type SpiritSpecies = 'Wolf'|'Falcon'|'Panther'|'White Fox'|'Tiger'|'Raven'
+  |'Rose'|'Lily'|'Iris'|'Lotus'|'Camellia'|'Wisteria'|'default';
+
+const SPIRIT_COLORS: Record<string, { body: string; accent: string; glow: string }> = {
+  Wolf:       { body: '#7090b0', accent: '#a0c4e8', glow: '#60a8e0' },
+  Falcon:     { body: '#c09040', accent: '#f0c870', glow: '#e8b050' },
+  Panther:    { body: '#503870', accent: '#9060d0', glow: '#8050c8' },
+  'White Fox':{ body: '#e0e8f8', accent: '#ffffff', glow: '#b8d4f8' },
+  Tiger:      { body: '#e06020', accent: '#f0a030', glow: '#f08030' },
+  Raven:      { body: '#404858', accent: '#808ea8', glow: '#6070a0' },
+  Rose:       { body: '#d84070', accent: '#f880a8', glow: '#e86088' },
+  Lily:       { body: '#f8f0e0', accent: '#ffe8c0', glow: '#f8d8a0' },
+  Iris:       { body: '#6050a8', accent: '#9080e0', glow: '#8070d0' },
+  Lotus:      { body: '#e870a0', accent: '#f8a8c8', glow: '#f090b8' },
+  Camellia:   { body: '#c83040', accent: '#f06070', glow: '#e05060' },
+  Wisteria:   { body: '#9070c0', accent: '#c0a0e8', glow: '#b090d8' },
+  default:    { body: '#6080b0', accent: '#80a8d8', glow: '#5090c8' },
+};
+
+function SpiritBodySVG({ species, c, clicked }: { species: SpiritSpecies; c: typeof SPIRIT_COLORS[string]; clicked: boolean }) {
+  const bounce = clicked ? 'translate(0,-6)' : 'translate(0,0)';
+  switch (species) {
+    case 'Wolf': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        {/* wolf head */}
+        <ellipse cx="36" cy="38" rx="20" ry="22" fill={c.body} />
+        {/* ears */}
+        <polygon points="20,22 14,6 28,18" fill={c.body} />
+        <polygon points="52,22 58,6 44,18" fill={c.body} />
+        <polygon points="21,20 16,10 27,18" fill={c.accent} opacity="0.7" />
+        <polygon points="51,20 56,10 45,18" fill={c.accent} opacity="0.7" />
+        {/* snout */}
+        <ellipse cx="36" cy="46" rx="9" ry="6" fill={c.accent} opacity="0.8" />
+        <circle cx="36" cy="43" r="3" fill="#1a1a2a" />
+        {/* eyes */}
+        <ellipse cx="27" cy="34" rx="4" ry="4.5" fill="#fffde0" />
+        <ellipse cx="45" cy="34" rx="4" ry="4.5" fill="#fffde0" />
+        <circle cx="28" cy="35" r="2.5" fill="#1a1a2a" />
+        <circle cx="46" cy="35" r="2.5" fill="#1a1a2a" />
+        <circle cx="29" cy="33.5" r="1" fill="white" opacity="0.9" />
+        <circle cx="47" cy="33.5" r="1" fill="white" opacity="0.9" />
+        {/* ear wiggle on click */}
+        {clicked && <>
+          <polygon points="20,22 14,6 28,18" fill={c.accent} opacity="0.9" transform="rotate(-15,20,22)" />
+          <polygon points="52,22 58,6 44,18" fill={c.accent} opacity="0.9" transform="rotate(15,52,22)" />
+        </>}
+      </g>
+    );
+    case 'Falcon': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        {/* body */}
+        <ellipse cx="36" cy="40" rx="16" ry="20" fill={c.body} />
+        {/* wings */}
+        <path d={clicked ? 'M20,35 Q4,18 10,42 L20,40Z' : 'M20,38 Q8,32 12,44 L20,40Z'} fill={c.body} style={{ transition: 'd 0.2s' }} />
+        <path d={clicked ? 'M52,35 Q68,18 62,42 L52,40Z' : 'M52,38 Q64,32 60,44 L52,40Z'} fill={c.body} style={{ transition: 'd 0.2s' }} />
+        {/* wing pattern */}
+        <line x1="20" y1="40" x2="12" y2="44" stroke={c.accent} strokeWidth="1.5" opacity="0.6" />
+        <line x1="52" y1="40" x2="60" y2="44" stroke={c.accent} strokeWidth="1.5" opacity="0.6" />
+        {/* head */}
+        <ellipse cx="36" cy="24" rx="12" ry="13" fill={c.body} />
+        {/* beak */}
+        <path d="M32,28 L36,34 L40,28Z" fill={c.accent} />
+        {/* eyes */}
+        <circle cx="29" cy="22" r="4" fill="#fffde0" />
+        <circle cx="43" cy="22" r="4" fill="#fffde0" />
+        <circle cx="30" cy="23" r="2.5" fill="#1a1a2a" />
+        <circle cx="44" cy="23" r="2.5" fill="#1a1a2a" />
+        <circle cx="31" cy="22" r="1" fill="white" opacity="0.9" />
+        <circle cx="45" cy="22" r="1" fill="white" opacity="0.9" />
+      </g>
+    );
+    case 'Panther': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <ellipse cx="36" cy="38" rx="20" ry="22" fill={c.body} />
+        <polygon points="22,22 17,8 30,20" fill={c.body} />
+        <polygon points="50,22 55,8 42,20" fill={c.body} />
+        <polygon points="22,21 18,12 28,20" fill={c.accent} opacity="0.5" />
+        <polygon points="50,21 54,12 44,20" fill={c.accent} opacity="0.5" />
+        <ellipse cx="36" cy="46" rx="8" ry="5" fill={c.accent} opacity="0.6" />
+        <circle cx="36" cy="43" r="2.5" fill="#0a0a1a" />
+        {/* whiskers */}
+        <line x1="26" y1="45" x2="12" y2="42" stroke={c.accent} strokeWidth="0.8" opacity="0.7" />
+        <line x1="26" y1="47" x2="12" y2="48" stroke={c.accent} strokeWidth="0.8" opacity="0.7" />
+        <line x1="46" y1="45" x2="60" y2="42" stroke={c.accent} strokeWidth="0.8" opacity="0.7" />
+        <line x1="46" y1="47" x2="60" y2="48" stroke={c.accent} strokeWidth="0.8" opacity="0.7" />
+        {/* eyes - slitted */}
+        <ellipse cx="27" cy="33" rx="4" ry="5" fill="#d0ff80" />
+        <ellipse cx="45" cy="33" rx="4" ry="5" fill="#d0ff80" />
+        <ellipse cx="27" cy="33" rx="1.5" ry="4" fill="#0a0a1a" />
+        <ellipse cx="45" cy="33" rx="1.5" ry="4" fill="#0a0a1a" />
+        {clicked && <g opacity="0.6">
+          <line x1="26" y1="45" x2="8" y2="40" stroke={c.accent} strokeWidth="1" />
+          <line x1="26" y1="47" x2="8" y2="50" stroke={c.accent} strokeWidth="1" />
+          <line x1="46" y1="45" x2="64" y2="40" stroke={c.accent} strokeWidth="1" />
+          <line x1="46" y1="47" x2="64" y2="50" stroke={c.accent} strokeWidth="1" />
+        </g>}
+      </g>
+    );
+    case 'White Fox': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <ellipse cx="36" cy="38" rx="19" ry="22" fill={c.body} />
+        {/* pointy fox ears */}
+        <polygon points="22,24 15,4 32,20" fill={c.body} />
+        <polygon points="50,24 57,4 40,20" fill={c.body} />
+        <polygon points="22,23 17,9 30,20" fill={c.accent} />
+        <polygon points="50,23 55,9 42,20" fill={c.accent} />
+        {/* pointy snout */}
+        <ellipse cx="36" cy="47" rx="7" ry="5" fill={c.accent} />
+        <path d="M29,44 Q36,56 43,44" fill={c.body} />
+        <circle cx="36" cy="43.5" r="2.5" fill="#1a0a1a" />
+        {/* eyes */}
+        <ellipse cx="27" cy="34" rx="4" ry="4" fill="#a0f0e0" />
+        <ellipse cx="45" cy="34" rx="4" ry="4" fill="#a0f0e0" />
+        <circle cx="28" cy="35" r="2.5" fill="#0a0a1a" />
+        <circle cx="46" cy="35" r="2.5" fill="#0a0a1a" />
+        <circle cx="29" cy="34" r="1" fill="white" opacity="0.9" />
+        <circle cx="47" cy="34" r="1" fill="white" opacity="0.9" />
+        {/* tails behind (ghost nine-tails effect) */}
+        {[0,1,2].map(i => (
+          <path key={i} d={`M${36 + (i-1)*8},60 Q${36+(i-1)*12},78 ${36+(i-1)*10},72`}
+            stroke={c.body} strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.7"
+            style={{ transform: clicked ? `rotate(${(i-1)*12}deg)` : 'none', transformOrigin: '36px 60px' }}
+          />
+        ))}
+      </g>
+    );
+    case 'Tiger': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <ellipse cx="36" cy="38" rx="22" ry="23" fill={c.body} />
+        <polygon points="23,24 18,8 32,20" fill={c.body} />
+        <polygon points="49,24 54,8 40,20" fill={c.body} />
+        <polygon points="23,22 20,12 30,20" fill={c.accent} opacity="0.7" />
+        <polygon points="49,22 52,12 42,20" fill={c.accent} opacity="0.7" />
+        {/* stripes */}
+        {[0,1,2].map(i => (
+          <line key={i} x1={24+i*4} y1={30+i*5} x2={28+i*4} y2={22+i*4}
+            stroke="#3a1800" strokeWidth="2" opacity="0.5" strokeLinecap="round" />
+        ))}
+        {[0,1,2].map(i => (
+          <line key={i} x1={48-i*4} y1={30+i*5} x2={44-i*4} y2={22+i*4}
+            stroke="#3a1800" strokeWidth="2" opacity="0.5" strokeLinecap="round" />
+        ))}
+        <ellipse cx="36" cy="46" rx="10" ry="7" fill={c.accent} opacity="0.8" />
+        <circle cx="36" cy="43" r="3.5" fill="#1a0a00" />
+        <ellipse cx="27" cy="33" rx="4.5" ry="5" fill="#fffde0" />
+        <ellipse cx="45" cy="33" rx="4.5" ry="5" fill="#fffde0" />
+        <circle cx="28" cy="34" r="2.5" fill="#1a0a00" />
+        <circle cx="46" cy="34" r="2.5" fill="#1a0a00" />
+        <circle cx="29" cy="33" r="1" fill="white" opacity="0.9" />
+        <circle cx="47" cy="33" r="1" fill="white" opacity="0.9" />
+      </g>
+    );
+    case 'Raven': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        {/* body */}
+        <ellipse cx="36" cy="42" rx="16" ry="18" fill={c.body} />
+        {/* wings - flap on click */}
+        <path d={clicked ? 'M20,38 Q2,20 8,44 L20,42Z' : 'M20,40 Q8,36 10,48 L20,44Z'} fill={c.body} />
+        <path d={clicked ? 'M52,38 Q70,20 64,44 L52,42Z' : 'M52,40 Q64,36 62,48 L52,44Z'} fill={c.body} />
+        {/* wing shine */}
+        <path d={clicked ? 'M20,39 Q6,24 12,42' : 'M20,41 Q10,38 12,46'} stroke={c.accent} strokeWidth="1" fill="none" opacity="0.5" />
+        <path d={clicked ? 'M52,39 Q66,24 60,42' : 'M52,41 Q62,38 60,46'} stroke={c.accent} strokeWidth="1" fill="none" opacity="0.5" />
+        {/* head */}
+        <ellipse cx="36" cy="26" rx="13" ry="14" fill={c.body} />
+        {/* beak */}
+        <path d="M30,30 Q36,38 42,30 L36,26Z" fill="#3a3a4a" />
+        {/* eyes */}
+        <circle cx="28" cy="24" r="4.5" fill="#3a4060" />
+        <circle cx="44" cy="24" r="4.5" fill="#3a4060" />
+        <circle cx="29" cy="24" r="2.5" fill="#0808a8" />
+        <circle cx="45" cy="24" r="2.5" fill="#0808a8" />
+        <circle cx="30" cy="23" r="1" fill="white" opacity="0.9" />
+        <circle cx="46" cy="23" r="1" fill="white" opacity="0.9" />
+      </g>
+    );
+    // Plants
+    case 'Rose': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <line x1="36" y1="72" x2="36" y2="36" stroke="#2d7a3a" strokeWidth="3" strokeLinecap="round" />
+        <path d="M36,50 Q28,44 32,38 Q36,52 36,50Z" fill="#2d7a3a" opacity="0.8" />
+        <path d="M36,50 Q44,44 40,38 Q36,52 36,50Z" fill="#2d7a3a" opacity="0.8" />
+        {/* petals */}
+        {[0,1,2,3,4,5].map(i => {
+          const a = (i / 6) * Math.PI * 2 + (clicked ? 0.3 : 0);
+          const r = clicked ? 18 : 15;
+          return <ellipse key={i} cx={36 + Math.cos(a)*r} cy={30 + Math.sin(a)*r*0.7}
+            rx="9" ry="11" fill={c.body} opacity="0.9"
+            transform={`rotate(${i*60},${36 + Math.cos(a)*r},${30 + Math.sin(a)*r*0.7})`} />;
+        })}
+        <circle cx="36" cy="30" r="10" fill={c.accent} />
+        <circle cx="36" cy="30" r="5" fill={c.body} opacity="0.6" />
+      </g>
+    );
+    case 'Lily': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <line x1="36" y1="74" x2="36" y2="42" stroke="#4a9050" strokeWidth="3" strokeLinecap="round" />
+        {[0,1,2].map(i => (
+          <path key={i} d={`M${36+(i-1)*10},55 Q${36+(i-1)*16},45 ${36+(i-1)*8},42`}
+            stroke="#4a9050" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.8" />
+        ))}
+        {[0,1,2,3,4,5].map(i => {
+          const a = (i / 6) * Math.PI * 2;
+          const spread = clicked ? 24 : 18;
+          return <path key={i}
+            d={`M36,36 Q${36+Math.cos(a)*spread},${28+Math.sin(a)*spread*0.6} ${36+Math.cos(a)*spread*1.3},${24+Math.sin(a)*spread*0.5}`}
+            stroke={c.body} strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.9" />;
+        })}
+        {/* stamens */}
+        {[0,1,2].map(i => (
+          <circle key={i} cx={36+(i-1)*6} cy={32} r="2" fill={c.accent} opacity="0.9" />
+        ))}
+        <circle cx="36" cy="30" r="4" fill={c.accent} opacity="0.6" />
+      </g>
+    );
+    case 'Iris': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <line x1="36" y1="74" x2="36" y2="36" stroke="#5a7030" strokeWidth="3" strokeLinecap="round" />
+        <path d="M36,52 Q26,48 28,40 Q36,56 36,52Z" fill="#5a7030" opacity="0.9" />
+        <path d="M36,52 Q46,48 44,40 Q36,56 36,52Z" fill="#5a7030" opacity="0.9" />
+        {/* falls (lower petals) */}
+        {[-1,0,1].map(i => (
+          <path key={i} d={`M36,32 Q${36+i*20},${44+Math.abs(i)*4} ${36+i*16},${54+Math.abs(i)*6}`}
+            stroke={c.body} strokeWidth="6" fill="none" strokeLinecap="round" opacity="0.85"
+            style={{ transform: clicked ? `rotate(${i*8}deg)` : 'none', transformOrigin: '36px 32px' }} />
+        ))}
+        {/* standards (upper petals) */}
+        {[-1,0,1].map(i => (
+          <path key={i} d={`M36,32 Q${36+i*14},${18} ${36+i*8},${12}`}
+            stroke={c.accent} strokeWidth="5" fill="none" strokeLinecap="round" opacity="0.8"
+            style={{ transform: clicked ? `rotate(${i*6}deg)` : 'none', transformOrigin: '36px 32px' }} />
+        ))}
+        <circle cx="36" cy="32" r="5" fill={c.accent} />
+      </g>
+    );
+    case 'Lotus': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        {/* water surface */}
+        <ellipse cx="36" cy="66" rx="22" ry="6" fill="#4080a0" opacity="0.4" />
+        <line x1="36" y1="66" x2="36" y2="46" stroke="#5a8860" strokeWidth="2.5" strokeLinecap="round" />
+        {/* petals - two layers */}
+        {[0,1,2,3,4,5,6,7].map(i => {
+          const a = (i / 8) * Math.PI * 2;
+          const r = clicked ? 17 : 14;
+          return <ellipse key={i} cx={36+Math.cos(a)*r} cy={38+Math.sin(a)*r*0.5}
+            rx="7" ry="12" fill={c.body}
+            transform={`rotate(${i*45+90},${36+Math.cos(a)*r},${38+Math.sin(a)*r*0.5})`}
+            opacity="0.85" />;
+        })}
+        {[0,1,2,3,4].map(i => {
+          const a = (i / 5) * Math.PI * 2 + 0.3;
+          return <ellipse key={i} cx={36+Math.cos(a)*9} cy={34+Math.sin(a)*4}
+            rx="5" ry="9" fill={c.accent}
+            transform={`rotate(${i*72+90},${36+Math.cos(a)*9},${34+Math.sin(a)*4})`}
+            opacity="0.9" />;
+        })}
+        <circle cx="36" cy="32" r="7" fill={c.accent} />
+      </g>
+    );
+    case 'Camellia': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <line x1="36" y1="74" x2="36" y2="40" stroke="#3a7040" strokeWidth="3" strokeLinecap="round" />
+        <path d="M36,54 Q26,50 28,42 Q36,58 36,54Z" fill="#3a7040" opacity="0.9" />
+        <path d="M36,54 Q46,50 44,42 Q36,58 36,54Z" fill="#3a7040" opacity="0.9" />
+        {[0,1,2,3,4].map(i => {
+          const a = (i / 5) * Math.PI * 2 + (clicked ? 0.25 : 0);
+          const r = clicked ? 17 : 14;
+          return <ellipse key={i} cx={36+Math.cos(a)*r} cy={32+Math.sin(a)*r*0.7}
+            rx="10" ry="13" fill={c.body}
+            transform={`rotate(${i*72},${36+Math.cos(a)*r},${32+Math.sin(a)*r*0.7})`}
+            opacity="0.88" />;
+        })}
+        {/* stamens cluster */}
+        {[0,1,2,3,4,5,6].map(i => {
+          const a2 = (i/7)*Math.PI*2;
+          return <line key={i} x1="36" y1="32" x2={36+Math.cos(a2)*7} y2={32+Math.sin(a2)*7}
+            stroke={c.accent} strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />;
+        })}
+        <circle cx="36" cy="32" r="4" fill={c.accent} />
+      </g>
+    );
+    case 'Wisteria': return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        {/* vine */}
+        <path d="M36,10 Q28,20 32,30 Q36,36 36,36" stroke="#5a4080" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+        {/* drooping clusters */}
+        {[0,1,2,3].map(col => {
+          const cx2 = 20 + col * 11;
+          const startY = 28 + col * 4;
+          return Array.from({length: 5+col}, (_, row) => (
+            <ellipse key={`${col}-${row}`} cx={cx2 + (row%2)*3 - 1} cy={startY + row*9}
+              rx="4" ry="5" fill={c.body}
+              style={{ transform: clicked ? `translateY(-3px)` : 'none' }}
+              opacity={0.7 + row * 0.04} />
+          ));
+        })}
+        {/* leaves at top */}
+        {[-1,0,1].map(i => (
+          <ellipse key={i} cx={30+i*8} cy={18+Math.abs(i)*4} rx="6" ry="4"
+            fill="#5a7030" opacity="0.8" transform={`rotate(${i*20},${30+i*8},${18+Math.abs(i)*4})`} />
+        ))}
+      </g>
+    );
+    default: return (
+      <g transform={bounce} style={{ transition: 'transform 0.25s cubic-bezier(.34,1.56,.64,1)' }}>
+        <ellipse cx="36" cy="38" rx="20" ry="22" fill={c.body} opacity="0.9" />
+        <ellipse cx="27" cy="34" rx="4" ry="5" fill="#fffde0" />
+        <ellipse cx="45" cy="34" rx="4" ry="5" fill="#fffde0" />
+        <circle cx="28" cy="35" r="2.5" fill="#0a0a2a" />
+        <circle cx="46" cy="35" r="2.5" fill="#0a0a2a" />
+        <circle cx="29" cy="33.5" r="1" fill="white" opacity="0.9" />
+        <circle cx="47" cy="33.5" r="1" fill="white" opacity="0.9" />
+      </g>
+    );
+  }
+}
+
+function SpiritEntity({ role, spiritName, spiritType }: { role: string; spiritName: string; spiritType: string }) {
   const isSentinel = role === '哨兵';
   const isGuide = role === '向导';
   if (!isSentinel && !isGuide) return null;
 
-  const color = isSentinel ? '#60a5fa' : '#c084fc';
-  const glowColor = isSentinel ? '#3b82f6' : '#a855f7';
-  const label = name || (isSentinel ? '精神体' : '精神体');
+  const [clicked, setClicked] = useState(false);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClick = () => {
+    setClicked(true);
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = setTimeout(() => setClicked(false), 600);
+  };
+
+  // Determine species
+  const species: SpiritSpecies = (() => {
+    const allSpecies: SpiritSpecies[] = ['Wolf','Falcon','Panther','White Fox','Tiger','Raven','Rose','Lily','Iris','Lotus','Camellia','Wisteria'];
+    const found = allSpecies.find(s => s.toLowerCase() === spiritName?.toLowerCase());
+    return found || 'default';
+  })();
+
+  const isPlant = spiritType === '植物' || ['Rose','Lily','Iris','Lotus','Camellia','Wisteria'].includes(species);
+  const c = SPIRIT_COLORS[species] || SPIRIT_COLORS.default;
+  const glowColor = c.glow;
+  const displayName = spiritName || (isSentinel ? '精神体' : '精神体');
 
   return (
     <div
-      className="absolute pointer-events-none select-none"
+      className="absolute select-none cursor-pointer"
       style={{
-        bottom: '28%',
-        right: '18%',
+        bottom: '26%',
+        right: isPlant ? '14%' : '16%',
         animation: 'spirit-float 4s ease-in-out infinite',
-        filter: `drop-shadow(0 0 12px ${glowColor}88)`
+        filter: `drop-shadow(0 0 14px ${glowColor}99)`,
+        zIndex: 5
       }}
+      onClick={handleClick}
+      title={`点击和${displayName}互动`}
     >
       <style>{`
         @keyframes spirit-float {
-          0%, 100% { transform: translateY(0px) scale(1); opacity: 0.85; }
-          50% { transform: translateY(-12px) scale(1.04); opacity: 1; }
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+        }
+        @keyframes spirit-sparkle {
+          0% { opacity: 0; transform: scale(0.5) translateY(0); }
+          50% { opacity: 1; }
+          100% { opacity: 0; transform: scale(1.2) translateY(-16px); }
         }
       `}</style>
-      <svg width="72" height="90" viewBox="0 0 72 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg width="76" height="88" viewBox="0 0 72 80" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <radialGradient id="sg" cx="50%" cy="40%" r="50%">
-            <stop offset="0%" stopColor={color} stopOpacity="0.9" />
-            <stop offset="100%" stopColor={glowColor} stopOpacity="0.4" />
-          </radialGradient>
-          <filter id="sf"><feGaussianBlur stdDeviation="2" /></filter>
+          <filter id={`sf-${species}`}><feGaussianBlur stdDeviation="1.5" /></filter>
         </defs>
-        {/* Glow halo */}
-        <ellipse cx="36" cy="38" rx="28" ry="30" fill={glowColor} opacity="0.15" filter="url(#sf)" />
-        {/* Body */}
-        <path d="M36 8 C20 8 12 22 12 36 C12 52 18 62 36 68 C54 62 60 52 60 36 C60 22 52 8 36 8Z" fill="url(#sg)" opacity="0.92" />
-        {/* Tail wisps */}
-        <path d="M24 62 Q20 74 24 82 Q28 90 32 84" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.6" />
-        <path d="M36 66 Q36 78 34 86" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.5" />
-        <path d="M48 62 Q52 74 48 82 Q44 90 40 84" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.6" />
-        {/* Eyes */}
-        <ellipse cx="28" cy="34" rx="4" ry="5" fill="white" opacity="0.9" />
-        <ellipse cx="44" cy="34" rx="4" ry="5" fill="white" opacity="0.9" />
-        <circle cx="29" cy="35" r="2.5" fill="#0a0a2a" />
-        <circle cx="45" cy="35" r="2.5" fill="#0a0a2a" />
-        <circle cx="30" cy="33.5" r="1" fill="white" opacity="0.8" />
-        <circle cx="46" cy="33.5" r="1" fill="white" opacity="0.8" />
-        {/* Sparkles */}
-        <circle cx="14" cy="20" r="2" fill={color} opacity="0.7" />
-        <circle cx="58" cy="16" r="1.5" fill={color} opacity="0.5" />
-        <circle cx="10" cy="44" r="1.5" fill={color} opacity="0.5" />
-        <circle cx="62" cy="50" r="2" fill={color} opacity="0.6" />
+        {/* ambient glow */}
+        <ellipse cx="36" cy="50" rx="26" ry="14" fill={glowColor} opacity="0.12" filter={`url(#sf-${species})`} />
+        <SpiritBodySVG species={species} c={c} clicked={clicked} />
+        {/* click sparkles */}
+        {clicked && [0,1,2,3,4].map(i => {
+          const a = (i/5)*Math.PI*2;
+          return <circle key={i}
+            cx={36+Math.cos(a)*20} cy={30+Math.sin(a)*12}
+            r="3" fill={c.accent} opacity="0.9"
+            style={{ animation: 'spirit-sparkle 0.5s ease-out forwards' }} />;
+        })}
       </svg>
-      <div className="text-center mt-1" style={{ color, fontSize: 10, fontWeight: 700, letterSpacing: 1, textShadow: `0 0 8px ${glowColor}` }}>
-        {label}
+      <div className="text-center -mt-1" style={{ color: glowColor, fontSize: 10, fontWeight: 700, letterSpacing: 1, textShadow: `0 0 8px ${glowColor}` }}>
+        {displayName}
       </div>
     </div>
   );
@@ -191,7 +523,8 @@ export default function HomeRoomView({
   showToast,
   onSaved,
   refreshGlobalData,
-  onRequestSwitchLocation
+  onRequestSwitchLocation,
+  onExitToWorld
 }: Props) {
   const isOwner = Number(currentUser.id) === Number(room.ownerId);
   const actualLoc = normalizeHomeLocation(room.homeLocation) || sourceMap;
@@ -661,7 +994,7 @@ export default function HomeRoomView({
   }
 
   return (
-    <div className="fixed inset-0 z-[220] text-white overflow-hidden">
+    <div className={`fixed inset-0 z-[220] text-white overflow-hidden${isPortraitMobile ? ' mobile-room-safe' : ''}`}>
       {/* Background room image - full screen */}
       <div className="absolute inset-0">
         <img src={bg} className="w-full h-full object-cover" alt="home-bg" />
@@ -671,20 +1004,41 @@ export default function HomeRoomView({
 
       {/* Floating spirit entity for sentinel/guide */}
       {isOwner && (
-        <SpiritEntity role={role} name={spiritStatus.name} />
+        <SpiritEntity
+          role={role}
+          spiritName={(room as any).spiritName || spiritStatus.name || ''}
+          spiritType={(room as any).spiritType || ''}
+        />
       )}
       {!isOwner && (
-        <SpiritEntity role={room.role || ''} name='' />
+        <SpiritEntity
+          role={room.role || ''}
+          spiritName={(room as any).spiritName || ''}
+          spiritType={(room as any).spiritType || ''}
+        />
       )}
 
       {/* Top bar */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-3 bg-black/30 backdrop-blur-md border-b border-white/10">
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/40 border border-white/20 text-sm font-bold hover:bg-black/60 transition-colors"
-        >
-          <ArrowLeft size={15} /> {theme.backText}
-        </button>
+      <div
+        className="relative z-10 flex items-center justify-between px-4 py-3 bg-black/30 backdrop-blur-md border-b border-white/10"
+        style={isPortraitMobile ? { paddingTop: 'calc(env(safe-area-inset-top, 0px) + clamp(40px,10dvh,80px))' } : undefined}
+      >
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/40 border border-white/20 text-sm font-bold hover:bg-black/60 transition-colors"
+          >
+            <ArrowLeft size={15} /> {theme.backText}
+          </button>
+          {onExitToWorld && (
+            <button
+              onClick={onExitToWorld}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-900/50 border border-sky-500/30 text-xs font-bold text-sky-300 hover:bg-sky-800/60 transition-colors"
+            >
+              🌍 回到世界
+            </button>
+          )}
+        </div>
         <div className="text-sm font-bold text-white/90 flex items-center gap-2">
           <span className={`text-xs px-2 py-0.5 rounded-full bg-black/30 border border-white/15 ${theme.accent}`}>{theme.name}</span>
           {room.ownerName} 的家园
@@ -730,7 +1084,10 @@ export default function HomeRoomView({
       )}
 
       {/* Bottom collapsible function panels */}
-      <div className="absolute bottom-0 left-0 right-0 z-10">
+      <div
+        className="absolute left-0 right-0 z-10"
+        style={{ bottom: isPortraitMobile ? 'calc(env(safe-area-inset-bottom, 0px) + clamp(40px,10dvh,80px))' : 0 }}
+      >
         {/* Panel content area */}
         {activePanel && (
           <div className="bg-black/75 backdrop-blur-xl border-t border-white/10 max-h-64 overflow-y-auto custom-scrollbar p-4">

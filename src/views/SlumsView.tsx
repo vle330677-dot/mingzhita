@@ -390,6 +390,7 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigate
           setEnteredRoom(null);
           onNavigateLocation?.(locationId);
         }}
+        onExitToWorld={() => { setEnteredRoom(null); onExit(); }}
       />
     );
   }

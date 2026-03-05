@@ -389,6 +389,7 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
           setEnteredRoom(null);
           onNavigateLocation?.(locationId);
         }}
+        onExitToWorld={() => { setEnteredRoom(null); onExit(); }}
       />
     );
   }

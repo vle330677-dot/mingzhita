@@ -60,32 +60,34 @@ const LOCATION_BG_MAP: Record<string, string> = {
 };
 
 // ================== 地图坐标配置 ==================
+// 电脑端坐标（16:9 横屏 map_background.jpg）
 const LOCATIONS = [
-  { id: 'tower_of_life', name: '命之塔', x: 50, y: 50, type: 'safe', description: '世界的绝对中心，神明降下神谕的圣地。' },
-  { id: 'sanctuary', name: '圣所', x: 43, y: 42, type: 'safe', description: '未分化幼崽的摇篮，充满治愈与宁静的气息。' },
-  { id: 'london_tower', name: '伦敦塔', x: 69, y: 56, type: 'safe', description: '哨兵与向导的最高学府与管理机构。' },
-  { id: 'rich_area', name: '富人区', x: 69, y: 69, type: 'safe', description: '流光溢彩的销金窟，权贵们在此挥霍财富。' },
-  { id: 'slums', name: '贫民区', x: 21, y: 49, type: 'safe', description: '混乱、肮脏，但充满生机。' },
-  { id: 'demon_society', name: '恶魔会', x: 9, y: 54, type: 'safe', description: '混乱之王的狂欢所。(未知区域)' },
-  { id: 'guild', name: '工会', x: 45, y: 79, type: 'safe', description: '鱼龙混杂的地下交易网与冒险者聚集地。' },
-  { id: 'army', name: '军队', x: 47, y: 17, type: 'safe', description: '人类最坚实的物理防线。' },
-  { id: 'tower_guard', name: '守塔会', x: 62, y: 35, type: 'safe', description: '教堂秩序维护组织，可进行冥想与赎罪。' },
-  { id: 'observers', name: '观察者', x: 63, y: 16, type: 'safe', description: '记录世界历史与真相的隐秘结社。' },
-  { id: 'paranormal_office', name: '灵异管理所', x: 30, y: 68, type: 'safe', description: '专门处理非自然精神波动的神秘机关。' }
+  { id: 'tower_of_life',    name: '命之塔',    x: 42, y: 50, type: 'safe', description: '世界的绝对中心，神明降下神谕的圣地。' },
+  { id: 'sanctuary',        name: '圣所',      x: 34, y: 44, type: 'safe', description: '未分化幼崽的摇篮，充满治愈与宁静的气息。' },
+  { id: 'london_tower',     name: '伦敦塔',    x: 72, y: 44, type: 'safe', description: '哨兵与向导的最高学府与管理机构。' },
+  { id: 'rich_area',        name: '富人区',    x: 70, y: 57, type: 'safe', description: '流光溢彩的销金窟，权贵们在此挥霍财富。' },
+  { id: 'slums',            name: '贫民区',    x: 17, y: 43, type: 'safe', description: '混乱、肮脏，但充满生机。' },
+  { id: 'demon_society',    name: '恶魔会',    x:  8, y: 52, type: 'safe', description: '混乱之王的狂欢所。(未知区域)' },
+  { id: 'guild',            name: '工会',      x: 44, y: 71, type: 'safe', description: '鱼龙混杂的地下交易网与冒险者聚集地。' },
+  { id: 'army',             name: '军队',      x: 40, y: 19, type: 'safe', description: '人类最坚实的物理防线。' },
+  { id: 'tower_guard',      name: '守塔会',    x: 57, y: 33, type: 'safe', description: '教堂秩序维护组织，可进行冥想与赎罪。' },
+  { id: 'observers',        name: '观察者',    x: 68, y: 13, type: 'safe', description: '记录世界历史与真相的隐秘结社。' },
+  { id: 'paranormal_office',name: '灵异管理所',x: 27, y: 64, type: 'safe', description: '专门处理非自然精神波动的神秘机关。' }
 ];
 
+// 手机端坐标（9:16 竖屏 map_background-s.png）
 const MOBILE_MAP_COORDS: Record<string, { x: number; y: number }> = {
-  tower_of_life: { x: 50, y: 55 },
-  sanctuary: { x: 39, y: 48 },
-  london_tower: { x: 80, y: 49 },
-  rich_area: { x: 67, y: 58 },
-  slums: { x: 16, y: 47 },
-  demon_society: { x: 8, y: 55 },
-  guild: { x: 46, y: 79 },
-  army: { x: 47, y: 20 },
-  tower_guard: { x: 58, y: 50 },
-  observers: { x: 62, y: 22 },
-  paranormal_office: { x: 18, y: 63 }
+  tower_of_life:     { x: 46, y: 51 },
+  sanctuary:         { x: 37, y: 46 },
+  london_tower:      { x: 76, y: 39 },
+  rich_area:         { x: 73, y: 53 },
+  slums:             { x: 17, y: 44 },
+  demon_society:     { x:  9, y: 57 },
+  guild:             { x: 47, y: 74 },
+  army:              { x: 46, y: 22 },
+  tower_guard:       { x: 57, y: 42 },
+  observers:         { x: 72, y: 19 },
+  paranormal_office: { x: 18, y: 66 }
 };
 
 const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';

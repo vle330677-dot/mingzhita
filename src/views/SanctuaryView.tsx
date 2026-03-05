@@ -349,6 +349,7 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
           setEnteredRoom(null);
           onNavigateLocation?.(locationId);
         }}
+        onExitToWorld={() => { setEnteredRoom(null); onExit(); }}
       />
     );
   }

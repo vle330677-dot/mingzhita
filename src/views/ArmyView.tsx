@@ -645,6 +645,7 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
               setTargetHomeOwner(null);
               onNavigateLocation?.(locationId);
             }}
+            onExitToWorld={() => { setTargetHomeRoom(null); setTargetHomeOwner(null); onExit(); }}
           />
         )}
       </AnimatePresence>
