@@ -325,5 +325,24 @@ export function runSchema(db: Database.Database) {
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS job_challenges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      challengerId INTEGER NOT NULL,
+      holderId INTEGER NOT NULL,
+      targetJobName TEXT NOT NULL,
+      status TEXT DEFAULT 'voting',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS job_challenge_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      challengeId INTEGER NOT NULL,
+      voterId INTEGER NOT NULL,
+      vote TEXT NOT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(challengeId, voterId)
+    );
   `);
 }

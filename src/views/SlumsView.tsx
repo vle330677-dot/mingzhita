@@ -407,21 +407,20 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigate
         </button>
       </div>
 
-      {/* 房间入口点 */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        {roomEntrances.map((r) => (
+      {/* 居民区入口按钮（固定位置，避免头像堆叠） */}
+      {roomEntrances.length > 0 && (
+        <div className="absolute z-20" style={{ left: '40%', top: '58%', transform: 'translate(-50%,-50%)' }}>
           <button
-            key={r.ownerId}
-            className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
-            style={{ left: `${r.x}%`, top: `${r.y}%` }}
-            onClick={() => setSelectedEntrance(r)}
+            className="flex flex-col items-center gap-1 group"
+            onClick={() => setSelectedBuilding({ id: 'residents', name: '西区住宅目录', icon: <Home />, desc: '查看所有居民房间' })}
           >
-            <div className="w-9 h-9 rounded-full bg-black/85 border border-orange-400 text-orange-200 flex items-center justify-center shadow-lg hover:scale-110 transition-all">
+            <div className="w-12 h-12 rounded-xl bg-black/80 border-2 border-orange-500/70 text-orange-300 flex items-center justify-center shadow-lg group-hover:scale-110 transition-all text-lg">
               🏠
             </div>
+            <span className="text-[10px] bg-black/70 text-orange-300 px-2 py-0.5 rounded font-bold">{roomEntrances.length} 户</span>
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
       {buildings.map(b => (
         <div
@@ -528,7 +527,24 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigate
                           </div>
                         </div>
                         <button
-                          onClick={() => showToast(westProsperity > eastProsperity ? '结算成功！已从东区抽成10%资金！(模拟)' : '繁荣度不足，无法发起经济掠夺！')}
+                          onClick={async () => {
+                            if (westProsperity <= eastProsperity) {
+                              showToast('繁荣度不足，无法发起经济掠夺！');
+                              return;
+                            }
+                            try {
+                              const res = await fetch('/api/market/prosperity/settle', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ initiatorId: user.id })
+                              });
+                              const data = await res.json().catch(() => ({} as any));
+                              showToast(data.message || (data.success ? '结算成功！' : '结算失败'));
+                              if (data.success) fetchGlobalData?.();
+                            } catch {
+                              showToast('网络错误，结算失败');
+                            }
+                          }}
                           className="w-full py-3 bg-orange-800 hover:bg-orange-700 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 transition-colors"
                         >
                           <Coins size={14} /> 发起经济战结算
@@ -568,6 +584,42 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigate
                         申请贫民窟床位
                       </button>
                     )}
+                  </div>
+                )}
+
+                {selectedBuilding.id === 'residents' && (
+                  <div className="space-y-4">
+                    <div className="text-xs text-stone-400 leading-relaxed">
+                      西市共有 <span className="text-orange-400 font-bold">{roomEntrances.length}</span> 户居民。点击名字可查看房间或前往家园。
+                    </div>
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+                      {roomEntrances.length === 0 ? (
+                        <div className="text-stone-500 text-xs text-center py-4">暂无居民记录</div>
+                      ) : roomEntrances.map((r) => {
+                        const isMe = Number(r.ownerId) === Number(user.id);
+                        return (
+                          <div key={r.ownerId} className="flex items-center gap-3 bg-stone-800/60 border border-stone-700/50 rounded-xl px-3 py-2.5">
+                            <div className="w-8 h-8 rounded-full bg-stone-700 border border-stone-600 overflow-hidden shrink-0 flex items-center justify-center text-stone-400 text-xs font-black">
+                              {r.avatarUrl ? <img src={r.avatarUrl} className="w-full h-full object-cover" alt="" /> : (r.ownerName?.[0] || '?')}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-stone-100 truncate">{r.ownerName}</div>
+                              <div className="text-[10px] text-stone-500 truncate">{r.job || r.role || '自由人'}</div>
+                            </div>
+                            <button
+                              onClick={() => { setSelectedEntrance(r); setSelectedBuilding(null); }}
+                              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-black transition-colors ${
+                                isMe
+                                  ? 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                                  : 'bg-stone-700 hover:bg-stone-600 text-stone-200'
+                              }`}
+                            >
+                              {isMe ? '回家' : '访问'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

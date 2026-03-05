@@ -406,21 +406,20 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
         </button>
       </div>
 
-      {/* 房间入口点 */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        {roomEntrances.map((r) => (
+      {/* 居民区入口按钮（固定位置，避免头像堆叠） */}
+      {roomEntrances.length > 0 && (
+        <div className="absolute z-20" style={{ left: '25%', top: '42%', transform: 'translate(-50%,-50%)' }}>
           <button
-            key={r.ownerId}
-            className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
-            style={{ left: `${r.x}%`, top: `${r.y}%` }}
-            onClick={() => setSelectedEntrance(r)}
+            className="flex flex-col items-center gap-1 group"
+            onClick={() => setSelectedBuilding({ id: 'residents', name: '东区住宅目录', icon: <Home />, desc: '查看所有居民房间' })}
           >
-            <div className="w-9 h-9 rounded-full bg-slate-900/90 border border-amber-300 text-amber-200 flex items-center justify-center shadow-lg hover:scale-110 transition-all">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-50 to-yellow-100 border-2 border-amber-400 text-amber-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-all text-lg">
               🏠
             </div>
+            <span className="text-[10px] bg-white/90 text-amber-800 px-2 py-0.5 rounded-full font-bold shadow">{roomEntrances.length} 户</span>
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
       <div className="relative z-10 w-full h-full">
         {buildings.map((b) => (
@@ -518,7 +517,27 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
                               <p className="text-[10px] text-stone-400 mt-1">人口：{westResidents}</p>
                             </div>
                           </div>
-                          <button onClick={() => showToast(eastProsperity > westProsperity ? '制裁成功！已向西区市长征收10%的高额税赋！(模拟)' : '我们的繁荣度落后了，赶紧招商引资！')} className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white font-black rounded-xl shadow-lg transition-colors text-sm">
+                          <button
+                            onClick={async () => {
+                              if (eastProsperity <= westProsperity) {
+                                showToast('我们的繁荣度落后了，赶紧招商引资！');
+                                return;
+                              }
+                              try {
+                                const res = await fetch('/api/market/prosperity/settle', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ initiatorId: user.id })
+                                });
+                                const data = await res.json().catch(() => ({} as any));
+                                showToast(data.message || (data.success ? '制裁成功！' : '制裁失败'));
+                                if (data.success) fetchGlobalData?.();
+                              } catch {
+                                showToast('网络错误，结算失败');
+                              }
+                            }}
+                            className="w-full py-4 bg-sky-600 hover:bg-sky-700 text-white font-black rounded-xl shadow-lg transition-colors text-sm"
+                          >
                             向西区发起经济制裁
                           </button>
                         </div>
@@ -558,6 +577,42 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
                           出示资产并办理入住
                         </button>
                       )}
+                    </div>
+                  )}
+
+                  {selectedBuilding.id === 'residents' && (
+                    <div className="space-y-4">
+                      <div className="text-xs text-slate-500 leading-relaxed">
+                        东区共有 <span className="text-emerald-600 font-bold">{roomEntrances.length}</span> 户居民。点击可前往家园或访问他人房间。
+                      </div>
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+                        {roomEntrances.length === 0 ? (
+                          <div className="text-slate-400 text-xs text-center py-4">暂无居民记录</div>
+                        ) : roomEntrances.map((r) => {
+                          const isMe = Number(r.ownerId) === Number(user.id);
+                          return (
+                            <div key={r.ownerId} className="flex items-center gap-3 bg-amber-50/60 border border-amber-200/50 rounded-2xl px-3 py-2.5">
+                              <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-300 overflow-hidden shrink-0 flex items-center justify-center text-amber-600 text-xs font-black">
+                                {r.avatarUrl ? <img src={r.avatarUrl} className="w-full h-full object-cover" alt="" /> : (r.ownerName?.[0] || '?')}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-bold text-slate-800 truncate">{r.ownerName}</div>
+                                <div className="text-[10px] text-slate-400 truncate">{r.job || r.role || '自由人'}</div>
+                              </div>
+                              <button
+                                onClick={() => { setSelectedEntrance(r); setSelectedBuilding(null); }}
+                                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-colors ${
+                                  isMe
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                    : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                                }`}
+                              >
+                                {isMe ? '回家' : '访问'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 

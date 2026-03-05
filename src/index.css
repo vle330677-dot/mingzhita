@@ -71,6 +71,66 @@ html[data-ui-theme='wasteland_brown'] {
   --ui-accent-soft: #d49a5a;
 }
 
+/* 冰蓝精灵 — sc/1.jpg 冰雪蓝白精灵风 */
+html[data-ui-theme='ice_fairy'] {
+  --ui-text-primary: #1a3a5c;
+  --ui-text-secondary: #4a7aa0;
+  --ui-border: rgba(135, 196, 232, 0.45);
+  --ui-panel-strong: rgba(220, 240, 255, 0.78);
+  --ui-panel-soft: rgba(200, 232, 252, 0.50);
+  --ui-bg-main: radial-gradient(circle at 20% 15%, #e8f7ff 0%, #cdedfb 30%, #b8e2f8 58%, #a4d4f0 100%);
+  --ui-accent: #3aaee0;
+  --ui-accent-soft: #7fcdf0;
+}
+
+/* 苹果甜心 — sc/2.jpg 暖粉红苹果格纹 */
+html[data-ui-theme='apple_sweet'] {
+  --ui-text-primary: #5a1a1a;
+  --ui-text-secondary: #a05050;
+  --ui-border: rgba(210, 100, 100, 0.35);
+  --ui-panel-strong: rgba(255, 236, 230, 0.80);
+  --ui-panel-soft: rgba(255, 218, 210, 0.52);
+  --ui-bg-main: radial-gradient(circle at 18% 12%, #fff0eb 0%, #ffddd5 30%, #f7c5bc 60%, #e8a9a0 100%);
+  --ui-accent: #d94040;
+  --ui-accent-soft: #f07070;
+}
+
+/* 温暖咖啡馆 — sc/3.jpg 羊皮纸米棕 */
+html[data-ui-theme='cafe_parchment'] {
+  --ui-text-primary: #3a2210;
+  --ui-text-secondary: #7a5538;
+  --ui-border: rgba(180, 140, 95, 0.38);
+  --ui-panel-strong: rgba(245, 232, 210, 0.82);
+  --ui-panel-soft: rgba(232, 212, 182, 0.55);
+  --ui-bg-main: radial-gradient(circle at 20% 16%, #f8edd8 0%, #efd8b8 32%, #e0c298 62%, #cba87a 100%);
+  --ui-accent: #9a6030;
+  --ui-accent-soft: #c88a55;
+}
+
+/* 翠绿药草 — sc/4.jpg 植物系淡绿薄荷 */
+html[data-ui-theme='botanical_green'] {
+  --ui-text-primary: #1e3a22;
+  --ui-text-secondary: #4a7052;
+  --ui-border: rgba(110, 170, 120, 0.38);
+  --ui-panel-strong: rgba(220, 242, 222, 0.80);
+  --ui-panel-soft: rgba(195, 230, 200, 0.52);
+  --ui-bg-main: radial-gradient(circle at 18% 14%, #edf8ee 0%, #d4edce 30%, #b8ddb8 60%, #96c898 100%);
+  --ui-accent: #3a8f4a;
+  --ui-accent-soft: #70bc7a;
+}
+
+/* 薰衣草诗境 — sc/5.jpg 薰衣紫水墨东方 */
+html[data-ui-theme='lavender_poem'] {
+  --ui-text-primary: #2e1a40;
+  --ui-text-secondary: #7050a0;
+  --ui-border: rgba(175, 130, 210, 0.38);
+  --ui-panel-strong: rgba(240, 228, 255, 0.80);
+  --ui-panel-soft: rgba(222, 204, 245, 0.52);
+  --ui-bg-main: radial-gradient(circle at 22% 14%, #f2e8ff 0%, #e0cefc 30%, #cdb0f0 60%, #b490d8 100%);
+  --ui-accent: #8a40d0;
+  --ui-accent-soft: #b580f0;
+}
+
 html,
 body,
 #root {

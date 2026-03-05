@@ -6183,6 +6183,215 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // 鬼魂光环：同一位置的非鬼魂玩家 MP 缓慢衰减（不清零，保底 1）
+  // POST /api/ghost/aura/tick  { userId }
+  // ──────────────────────────────────────────────────────────────
+  r.post('/ghost/aura/tick', (req, res) => {
+    try {
+      const userId = Number(req.body?.userId || 0);
+      if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
+
+      const me = getUser(db, userId);
+      if (!me) return res.status(404).json({ success: false, message: 'user not found' });
+      if (String(me.status || '') !== 'ghost') {
+        return res.json({ success: true, drained: false, message: '非鬼魂，无光环效果' });
+      }
+
+      const myLoc = String(me.currentLocation || '');
+      if (!myLoc) return res.json({ success: true, drained: false, message: '未定位，跳过' });
+
+      // 同区域 10 分钟内有活动的非鬼魂在线玩家
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const targets = db.prepare(`
+        SELECT id, mp
+        FROM users
+        WHERE currentLocation = ?
+          AND id != ?
+          AND status = 'approved'
+          AND updatedAt > ?
+      `).all(myLoc, userId, cutoff) as AnyRow[];
+
+      const DRAIN = 2;
+      const MIN_MP = 1;
+      let drainedCount = 0;
+
+      for (const t of targets) {
+        const curMp = Math.max(0, Number(t.mp ?? 0));
+        const newMp = Math.max(MIN_MP, curMp - DRAIN);
+        if (newMp < curMp) {
+          db.prepare(`UPDATE users SET mp=?, updatedAt=? WHERE id=?`).run(newMp, nowIso(), Number(t.id));
+          drainedCount++;
+        }
+      }
+
+      res.json({ success: true, drained: drainedCount > 0, drainedCount, message: `鬼魂光环影响了 ${drainedCount} 名玩家` });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'ghost aura tick failed' });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // 繁荣度竞争结算：高繁荣度市长从低繁荣度市长扣 10%
+  // POST /api/market/prosperity/settle  { initiatorId }
+  // ──────────────────────────────────────────────────────────────
+  r.post('/market/prosperity/settle', (req, res) => {
+    try {
+      const initiatorId = Number(req.body?.initiatorId || 0);
+      if (!initiatorId) return res.status(400).json({ success: false, message: 'invalid initiatorId' });
+
+      const eastMayor = db.prepare(`SELECT id, name, gold FROM users WHERE job='东区市长' AND status='approved' LIMIT 1`).get() as AnyRow | undefined;
+      const westMayor = db.prepare(`SELECT id, name, gold FROM users WHERE job='西区市长' AND status='approved' LIMIT 1`).get() as AnyRow | undefined;
+
+      if (!eastMayor || !westMayor) {
+        return res.json({ success: false, message: '东西市必须各有一位市长才能发起竞争结算' });
+      }
+
+      const CUTOFF = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const eastCount = (db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE currentLocation='rich_area' AND status='approved' AND updatedAt>?`).get(CUTOFF) as AnyRow).cnt as number;
+      const westCount = (db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE currentLocation='slums' AND status='approved' AND updatedAt>?`).get(CUTOFF) as AnyRow).cnt as number;
+
+      const eastPros = eastCount * 1000;
+      const westPros = westCount * 100;
+
+      if (eastPros === westPros) {
+        return res.json({ success: false, message: '双方繁荣度相同，无需结算' });
+      }
+
+      const winner = eastPros > westPros ? eastMayor : westMayor;
+      const loser  = eastPros > westPros ? westMayor : eastMayor;
+
+      if (Number(initiatorId) !== Number(winner.id)) {
+        return res.status(403).json({ success: false, message: '只有繁荣度更高的市长才能发起结算' });
+      }
+
+      const loserGold = Math.max(0, Number(loser.gold || 0));
+      const take = Math.floor(loserGold * 0.1);
+      if (take <= 0) {
+        return res.json({ success: false, message: '对方市长资金不足，无法扣除' });
+      }
+
+      db.prepare(`UPDATE users SET gold=gold-?, updatedAt=? WHERE id=?`).run(take, nowIso(), Number(loser.id));
+      db.prepare(`UPDATE users SET gold=gold+?, updatedAt=? WHERE id=?`).run(take, nowIso(), Number(winner.id));
+
+      res.json({
+        success: true,
+        take,
+        winnerName: String(winner.name || ''),
+        loserName: String(loser.name || ''),
+        message: `结算成功！从 ${loser.name} 征收 ${take} G 转入 ${winner.name} 账户`
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'prosperity settle failed' });
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // 职位挑战：发起 / 投票 / 查询
+  // ──────────────────────────────────────────────────────────────
+
+  // 发起挑战 POST /api/job/challenge
+  r.post('/job/challenge', (req, res) => {
+    try {
+      const challengerId = Number(req.body?.challengerId || 0);
+      const targetJobName = String(req.body?.targetJobName || '').trim();
+      if (!challengerId || !targetJobName) return res.status(400).json({ success: false, message: 'invalid params' });
+
+      const challenger = getUser(db, challengerId);
+      if (!challenger) return res.status(404).json({ success: false, message: 'challenger not found' });
+
+      const holder = db.prepare(`SELECT id, name FROM users WHERE job=? AND status='approved' LIMIT 1`).get(targetJobName) as AnyRow | undefined;
+      if (!holder) return res.status(409).json({ success: false, message: '该职位暂无人占据，直接申请入职即可' });
+      if (Number(holder.id) === challengerId) return res.status(400).json({ success: false, message: '不能挑战自己' });
+
+      const existing = db.prepare(`SELECT id FROM job_challenges WHERE targetJobName=? AND status='voting' LIMIT 1`).get(targetJobName) as AnyRow | undefined;
+      if (existing) return res.status(409).json({ success: false, message: '该职位已有进行中的挑战，请等待结束' });
+
+      const challengeId = (db.prepare(`
+        INSERT INTO job_challenges(challengerId, holderId, targetJobName, status, createdAt, updatedAt)
+        VALUES(?,?,?,?,?,?)
+      `).run(challengerId, Number(holder.id), targetJobName, 'voting', nowIso(), nowIso()) as any).lastInsertRowid;
+
+      res.json({ success: true, challengeId: Number(challengeId), holderName: String(holder.name || ''), message: `已对 ${holder.name} 发起 [${targetJobName}] 职位挑战，等待同阵营玩家投票` });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'job challenge failed' });
+    }
+  });
+
+  // 投票 POST /api/job/challenge/vote
+  r.post('/job/challenge/vote', (req, res) => {
+    try {
+      const challengeId = Number(req.body?.challengeId || 0);
+      const voterId = Number(req.body?.voterId || 0);
+      const vote = String(req.body?.vote || '');
+      if (!challengeId || !voterId || !['challenger', 'holder'].includes(vote)) {
+        return res.status(400).json({ success: false, message: 'invalid params' });
+      }
+
+      const challenge = db.prepare(`SELECT * FROM job_challenges WHERE id=? LIMIT 1`).get(challengeId) as AnyRow | undefined;
+      if (!challenge || String(challenge.status || '') !== 'voting') {
+        return res.status(404).json({ success: false, message: '挑战不存在或已结束' });
+      }
+
+      const voter = getUser(db, voterId);
+      const challengerRow = db.prepare(`SELECT faction FROM users WHERE id=? LIMIT 1`).get(Number(challenge.challengerId)) as AnyRow | undefined;
+      if (!voter || !challengerRow || String(voter.faction || '') !== String(challengerRow.faction || '')) {
+        return res.status(403).json({ success: false, message: '只有同阵营成员才能投票' });
+      }
+
+      const dup = db.prepare(`SELECT id FROM job_challenge_votes WHERE challengeId=? AND voterId=? LIMIT 1`).get(challengeId, voterId);
+      if (dup) return res.status(409).json({ success: false, message: '您已投过票' });
+
+      db.prepare(`INSERT INTO job_challenge_votes(challengeId, voterId, vote, createdAt) VALUES(?,?,?,?)`).run(challengeId, voterId, vote, nowIso());
+
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const factionSize = Math.max(1, (db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE faction=? AND status='approved' AND updatedAt>?`).get(String(challengerRow.faction || ''), cutoff) as AnyRow).cnt as number);
+      const voteCounts = db.prepare(`SELECT vote, COUNT(*) as cnt FROM job_challenge_votes WHERE challengeId=? GROUP BY vote`).all(challengeId) as AnyRow[];
+      const forChallenger = Number(voteCounts.find((v: AnyRow) => v.vote === 'challenger')?.cnt || 0);
+      const forHolder = Number(voteCounts.find((v: AnyRow) => v.vote === 'holder')?.cnt || 0);
+      const totalVotes = forChallenger + forHolder;
+
+      let message = `投票成功。当前：挑战者 ${forChallenger} 票 vs 现任 ${forHolder} 票（共 ${factionSize} 名在线成员）`;
+      let settled = false;
+
+      if (totalVotes >= Math.max(1, Math.ceil(factionSize / 2))) {
+        const winnerId = forChallenger >= forHolder ? Number(challenge.challengerId) : Number(challenge.holderId);
+        const loserId  = forChallenger >= forHolder ? Number(challenge.holderId)    : Number(challenge.challengerId);
+        const winner = getUser(db, winnerId);
+        const loser  = getUser(db, loserId);
+
+        const targetJob = String(challenge.targetJobName || '');
+        const winnerOldJob = String(winner?.job || '无');
+
+        db.prepare(`UPDATE users SET job=?, updatedAt=? WHERE id=?`).run(targetJob, nowIso(), winnerId);
+        db.prepare(`UPDATE users SET job=?, updatedAt=? WHERE id=?`).run(winnerOldJob === targetJob ? '无' : winnerOldJob, nowIso(), loserId);
+        db.prepare(`UPDATE job_challenges SET status='settled', updatedAt=? WHERE id=?`).run(nowIso(), challengeId);
+
+        settled = true;
+        message = `投票结束！${winner?.name || '挑战者'} 赢得 [${targetJob}]，${loser?.name || '现任'} 接任原职位`;
+      }
+
+      res.json({ success: true, forChallenger, forHolder, settled, message });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'vote failed' });
+    }
+  });
+
+  // 查询活跃挑战 GET /api/job/challenge/active?jobName=xxx
+  r.get('/job/challenge/active', (req, res) => {
+    try {
+      const jobName = String(req.query?.jobName || '').trim();
+      if (!jobName) return res.status(400).json({ success: false, message: 'missing jobName' });
+      const row = db.prepare(`SELECT * FROM job_challenges WHERE targetJobName=? AND status='voting' LIMIT 1`).get(jobName) as AnyRow | undefined;
+      if (!row) return res.json({ success: true, active: false });
+      const votes = db.prepare(`SELECT vote, COUNT(*) as cnt FROM job_challenge_votes WHERE challengeId=? GROUP BY vote`).all(Number(row.id)) as AnyRow[];
+      const forChallenger = Number(votes.find((v: AnyRow) => v.vote === 'challenger')?.cnt || 0);
+      const forHolder = Number(votes.find((v: AnyRow) => v.vote === 'holder')?.cnt || 0);
+      res.json({ success: true, active: true, challenge: { ...row, forChallenger, forHolder } });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'query challenge failed' });
+    }
+  });
+
   return r;
 }
-

@@ -243,6 +243,9 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [rescueReqId, setRescueReqId] = useState<number | null>(null);
   const prevJobRef = useRef<string>(String(user?.job || '无'));
 
+  // 职位挑战投票浮层
+  const [activeChallenges, setActiveChallenges] = useState<any[]>([]);
+
   const [showGraveyard, setShowGraveyard] = useState(false);
   const [tombstones, setTombstones] = useState<any[]>([]);
   const [expandedTombstone, setExpandedTombstone] = useState<number | null>(null);
@@ -394,6 +397,46 @@ useEffect(() => {
   const t = setInterval(pull, 3000);
   return () => { alive = false; clearInterval(t); };
 }, [actor.id]);
+
+// 职位挑战轮询：当本人所属阵营有活跃挑战时拉取并展示投票浮层
+useEffect(() => {
+  if (!actor?.faction || !actor?.id) return;
+  let alive = true;
+  const poll = async () => {
+    try {
+      // 用当前用户职位的阵营推断需要轮询的职位列表（直接拉所有进行中的挑战）
+      const res = await fetch(`/api/job/challenge/active?jobName=__all__`, { cache: 'no-store' });
+      // 如果 jobName=__all__ 没数据就忽略，仅当所在阵营有人发起时才提示
+      const data = await res.json().catch(() => ({} as any));
+      if (!alive) return;
+      if (data.active && data.challenge) {
+        setActiveChallenges((prev) => {
+          const id = Number(data.challenge.id || 0);
+          if (prev.some((c) => c.id === id)) return prev;
+          return [...prev, data.challenge];
+        });
+      }
+    } catch {}
+  };
+  poll();
+  const t = setInterval(poll, 20000);
+  return () => { alive = false; clearInterval(t); };
+}, [actor?.id, actor?.faction]);
+
+// 鬼魂光环：每 15 秒向服务端发一次 tick，让同区域非鬼魂玩家 MP -2（保底 1）
+useEffect(() => {
+  if (!isGhostActor) return;
+  const tick = () => {
+    fetch('/api/ghost/aura/tick', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: actor.id })
+    }).catch(() => {});
+  };
+  tick();
+  const t = setInterval(tick, 15000);
+  return () => clearInterval(t);
+}, [actor.id, isGhostActor]);
 
 useEffect(() => {
   if (!isGhostActor) {
@@ -1881,20 +1924,94 @@ const closeAnnouncement = () => {
         )}
       </AnimatePresence>
 
-      {isTreatmentLocked && (
-        <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-red-950/90 border border-red-700 text-red-100 text-xs font-black shadow-lg">
-          当前精神状态异常，必须先前往圣所治疗
+      {/* 哨兵狂暴≥80 全屏暗红叠加层 */}
+      {isFuryLocked && (
+        <div className="absolute inset-0 z-35 pointer-events-none">
+          <div className="absolute inset-0 bg-red-950/50 animate-pulse" />
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 30%, rgba(127,0,0,0.55) 100%)' }} />
         </div>
       )}
 
-      {isMinorFogMode && (
-        <div className="absolute left-1/2 top-16 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-slate-900/90 border border-slate-600 text-slate-100 text-xs font-black shadow-lg">
-          迷雾状态：非玩家角色将驱离你，仅可探索掉落
+      {/* 向导稳定值≤20 全屏冷紫叠加层 */}
+      {isStabilityLocked && !isFuryLocked && (
+        <div className="absolute inset-0 z-35 pointer-events-none">
+          <div className="absolute inset-0 bg-purple-950/45 animate-pulse" />
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 30%, rgba(80,0,120,0.5) 100%)' }} />
         </div>
+      )}
+
+      {isTreatmentLocked && (
+        <div className="absolute left-1/2 top-4 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-red-950/90 border border-red-700 text-red-100 text-xs font-black shadow-lg">
+          {isFuryLocked ? '⚠ 狂暴值过载，必须前往圣所治疗后才能离开' : '⚠ 精神稳定值崩溃，必须前往圣所治疗后才能离开'}
+        </div>
+      )}
+
+      {/* 未分化迷雾全屏视觉效果 */}
+      {isMinorFogMode && (
+        <>
+          <div className="absolute inset-0 z-35 pointer-events-none overflow-hidden">
+            <div className="absolute inset-0 bg-slate-900/40" />
+            <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 60%, rgba(150,160,180,0.18) 0%, rgba(80,90,110,0.55) 100%)' }} />
+            {/* 流动迷雾层 */}
+            <div className="absolute inset-0 opacity-30" style={{ background: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'400\' height=\'400\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'400\' height=\'400\' filter=\'url(%23noise)\' opacity=\'0.4\'/%3E%3C/svg%3E")', animation: 'none' }} />
+          </div>
+          <div className="absolute left-1/2 top-16 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-slate-900/90 border border-slate-500 text-slate-100 text-xs font-black shadow-lg">
+            🌫 迷雾笼罩此地，NPC将驱离你，仅可探索掉落物
+          </div>
+        </>
       )}
       {isTowerGuardPrisonLocked && (
         <div className="absolute left-1/2 top-28 z-40 -translate-x-1/2 px-4 py-2 rounded-xl bg-amber-950/90 border border-amber-700 text-amber-100 text-xs font-black shadow-lg">
           地下监牢状态：你被关押在守塔会，当前无法离开该区域
+        </div>
+      )}
+
+      {/* 职位挑战投票浮层 */}
+      {activeChallenges.length > 0 && (
+        <div className="fixed bottom-24 right-6 z-50 space-y-2 max-w-xs w-full">
+          {activeChallenges.map((ch: any) => (
+            <div key={ch.id} className="bg-slate-900/95 border border-amber-600 rounded-2xl p-4 shadow-2xl backdrop-blur">
+              <div className="text-amber-400 font-black text-xs mb-1">⚔ 职位挑战进行中</div>
+              <div className="text-white text-sm font-bold mb-1">{ch.targetJobName}</div>
+              <div className="text-slate-300 text-xs mb-3">
+                挑战者 <span className="text-sky-400">{ch.forChallenger ?? 0} 票</span>
+                {' vs '}现任 <span className="text-rose-400">{ch.forHolder ?? 0} 票</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const res = await fetch('/api/job/challenge/vote', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ challengeId: ch.id, voterId: actor.id, vote: 'challenger' })
+                    });
+                    const data = await res.json().catch(() => ({} as any));
+                    showToast(data.message || '投票已提交');
+                    if (data.settled) setActiveChallenges((prev: any[]) => prev.filter((x: any) => x.id !== ch.id));
+                  }}
+                  className="flex-1 py-1.5 bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold rounded-lg"
+                >支持挑战者</button>
+                <button
+                  onClick={async () => {
+                    const res = await fetch('/api/job/challenge/vote', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ challengeId: ch.id, voterId: actor.id, vote: 'holder' })
+                    });
+                    const data = await res.json().catch(() => ({} as any));
+                    showToast(data.message || '投票已提交');
+                    if (data.settled) setActiveChallenges((prev: any[]) => prev.filter((x: any) => x.id !== ch.id));
+                  }}
+                  className="flex-1 py-1.5 bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold rounded-lg"
+                >支持现任</button>
+                <button
+                  onClick={() => setActiveChallenges((prev: any[]) => prev.filter((x: any) => x.id !== ch.id))}
+                  className="px-2 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-lg"
+                  title="关闭"
+                >✕</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -2713,17 +2830,44 @@ const closeAnnouncement = () => {
               <div className="flex items-center gap-2 text-xs font-black text-slate-300">
                 <Palette size={14} /> 主题模板
               </div>
-              <select
-                value={uiThemePreset}
-                onChange={(e) => handleThemePresetApply(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-800/80 border border-slate-700 rounded-xl outline-none focus:border-sky-500"
-              >
-                {UI_THEME_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.name} · {preset.desc}
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-5 gap-1.5">
+                {UI_THEME_PRESETS.map((preset) => {
+                  const SWATCH: Record<string, string[]> = {
+                    holy_glass:      ['#f0f4ff','#4f8eff','#dfe7f5'],
+                    crystal_glass:   ['#dff4ff','#1e90ff','#d1e2fc'],
+                    pink_sweet:      ['#ffd8ee','#ff63b0','#efbad8'],
+                    cyber_blue:      ['#142f50','#00d8ff','#050d1c'],
+                    wasteland_brown: ['#f2ddbd','#b87437','#a37f54'],
+                    ice_fairy:       ['#cdedfb','#3aaee0','#a4d4f0'],
+                    apple_sweet:     ['#ffddd5','#d94040','#e8a9a0'],
+                    cafe_parchment:  ['#f8edd8','#9a6030','#cba87a'],
+                    botanical_green: ['#d4edce','#3a8f4a','#96c898'],
+                    lavender_poem:   ['#e0cefc','#8a40d0','#b490d8'],
+                  };
+                  const sw = SWATCH[preset.id] || ['#888','#aaa','#ccc'];
+                  const isActive = uiThemePreset === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      onClick={() => handleThemePresetApply(preset.id)}
+                      title={`${preset.name}：${preset.desc}`}
+                      className={`relative flex flex-col items-center gap-0.5 p-1 rounded-xl border transition-all ${
+                        isActive
+                          ? 'border-sky-400 ring-2 ring-sky-400/60 scale-105'
+                          : 'border-slate-700 hover:border-slate-500'
+                      }`}
+                    >
+                      <div className="w-full h-5 rounded-md overflow-hidden flex">
+                        {sw.map((c, i) => (
+                          <div key={i} className="flex-1" style={{ background: c }} />
+                        ))}
+                      </div>
+                      <span className="text-[9px] text-slate-300 leading-tight text-center truncate w-full">{preset.name}</span>
+                      {isActive && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-sky-400 rounded-full border border-slate-900" />}
+                    </button>
+                  );
+                })}
+              </div>
 
               <div className="flex items-center gap-2 text-xs font-black text-slate-300">
                 <ImagePlus size={14} /> 背景图链接

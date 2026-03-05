@@ -3,7 +3,12 @@ export type UiThemePresetId =
   | 'crystal_glass'
   | 'pink_sweet'
   | 'cyber_blue'
-  | 'wasteland_brown';
+  | 'wasteland_brown'
+  | 'ice_fairy'
+  | 'apple_sweet'
+  | 'cafe_parchment'
+  | 'botanical_green'
+  | 'lavender_poem';
 
 export interface UiThemePreset {
   id: UiThemePresetId;
@@ -43,6 +48,31 @@ export const UI_THEME_PRESETS: UiThemePreset[] = [
     id: 'wasteland_brown',
     name: '废土棕褐',
     desc: '黄沙与锈褐质感，末世工业风格'
+  },
+  {
+    id: 'ice_fairy',
+    name: '冰蓝精灵',
+    desc: '冰雪系淡蓝白，晶莹剔透少女感'
+  },
+  {
+    id: 'apple_sweet',
+    name: '苹果甜心',
+    desc: '暖粉红苹果格纹，甜蜜可爱风格'
+  },
+  {
+    id: 'cafe_parchment',
+    name: '温暖咖啡馆',
+    desc: '羊皮纸米棕，温馨复古书卷气'
+  },
+  {
+    id: 'botanical_green',
+    name: '翠绿药草',
+    desc: '植物系淡绿薄荷，自然清新疗愈'
+  },
+  {
+    id: 'lavender_poem',
+    name: '薰衣草诗境',
+    desc: '薰衣紫水墨，古典东方诗意飘渺'
   }
 ];
 

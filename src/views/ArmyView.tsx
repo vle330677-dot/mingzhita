@@ -173,6 +173,19 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
       if (data.success) {
         showToast(`欢迎加入，${jobName}。以阵营之名，履行你的职责。`);
         fetchGlobalData();
+      } else if (String(data.message || '').includes('已有人') || String(data.message || '').includes('occupied')) {
+        // 职位已被占据，提示发起挑战
+        const wantChallenge = window.confirm(`${jobName} 已有人担任。是否向现任者发起职位挑战？\n（发起后由同阵营玩家投票决定归属）`);
+        if (wantChallenge) {
+          const cRes = await fetch('/api/job/challenge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ challengerId: user.id, targetJobName: jobName })
+          });
+          const cData = await cRes.json().catch(() => ({} as any));
+          showToast(cData.message || (cData.success ? '挑战已发起，等待投票' : '挑战失败'));
+          if (cData.success) fetchGlobalData();
+        }
       } else {
         showToast(data.message || '加入/晋升失败');
       }
