@@ -1,134 +1,28 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ViewState } from '../App';
+import {
+  type DifferentiationData,
+  buildUndifferentiatedData,
+  generateDifferentiationData,
+  isSentinelOrGuide,
+  MAX_DIFFERENTIATION_DRAWS,
+  NONE
+} from '../utils/differentiation';
 
 interface Props {
   onNavigate: (view: ViewState) => void;
   userName: string;
 }
 
-interface DrawData {
-  role: string;
-  mentalRank: string;
-  physicalRank: string;
-  gold: number;
-  ability: string;
-  spirit: {
-    name: string;
-    type: string;
-  };
-}
-
-const ROLE_SENTINEL = '\u54E8\u5175';
-const ROLE_GUIDE = '\u5411\u5BFC';
-const ROLE_HUMAN = '\u666E\u901A\u4EBA';
-const ROLE_GHOST = '\u9B3C\u9B42';
-const ROLE_UNDIFF = '\u672A\u5206\u5316';
-const NONE = '\u65E0';
-const UNAWAKENED = '\u672A\u89C9\u9192';
-
-const MAX_DRAWS = 10;
-
-const ROLE_WEIGHTS = [
-  { name: ROLE_SENTINEL, w: 40 },
-  { name: ROLE_GUIDE, w: 40 },
-  { name: ROLE_HUMAN, w: 10 },
-  { name: ROLE_GHOST, w: 10 }
-];
-
-const RANK_WEIGHTS = [
-  { name: 'D', w: 24.5 },
-  { name: 'C', w: 24.5 },
-  { name: 'B', w: 24.5 },
-  { name: 'A', w: 24.5 },
-  { name: 'S', w: 1.2 },
-  { name: 'SS', w: 0.6 },
-  { name: 'SSS', w: 0.2 }
-];
-
-const ABILITIES = [
-  'Physical',
-  'Elemental',
-  'Psychic',
-  'Perception',
-  'Information',
-  'Healing',
-  'Enhancement',
-  'Alchemy'
-];
-
-const SPIRIT_ANIMALS = ['Wolf', 'Falcon', 'Panther', 'White Fox', 'Tiger', 'Raven'];
-const SPIRIT_PLANTS = ['Rose', 'Lily', 'Iris', 'Lotus', 'Camellia', 'Wisteria'];
-
-function weightedPick<T extends { name: string; w: number }>(items: T[]) {
-  const total = items.reduce((s, x) => s + x.w, 0);
-  let r = Math.random() * total;
-  for (const it of items) {
-    r -= it.w;
-    if (r <= 0) return it.name;
-  }
-  return items[items.length - 1].name;
-}
-
-function pickFrom(items: string[]) {
-  return items[Math.floor(Math.random() * items.length)];
-}
-
-function randomGold() {
-  return Math.random() < 0.1
-    ? Math.floor(Math.random() * (10000 - 8000 + 1)) + 8000
-    : Math.floor(Math.random() * (7999 - 100 + 1)) + 100;
-}
-
-function buildUndifferentiatedData(): DrawData {
-  return {
-    role: ROLE_UNDIFF,
-    mentalRank: NONE,
-    physicalRank: NONE,
-    gold: randomGold(),
-    ability: UNAWAKENED,
-    spirit: { name: NONE, type: NONE }
-  };
-}
-
-function generateData(): DrawData {
-  const role = weightedPick(ROLE_WEIGHTS);
-
-  let mentalRank = NONE;
-  let physicalRank = NONE;
-  let spirit = { name: NONE, type: NONE };
-
-  if (role === ROLE_SENTINEL || role === ROLE_GUIDE) {
-    mentalRank = weightedPick(RANK_WEIGHTS);
-    physicalRank = weightedPick(RANK_WEIGHTS);
-    const isPlant = Math.random() < 0.12;
-    spirit = isPlant
-      ? { name: pickFrom(SPIRIT_PLANTS), type: 'Plant' }
-      : { name: pickFrom(SPIRIT_ANIMALS), type: 'Animal' };
-  } else if (role === ROLE_HUMAN) {
-    physicalRank = weightedPick(RANK_WEIGHTS);
-  } else if (role === ROLE_GHOST) {
-    mentalRank = weightedPick(RANK_WEIGHTS);
-  }
-
-  return {
-    role,
-    mentalRank,
-    physicalRank,
-    gold: randomGold(),
-    ability: pickFrom(ABILITIES),
-    spirit
-  };
-}
-
 export function ExtractorView({ onNavigate, userName }: Props) {
   const [drawCount, setDrawCount] = useState(0);
-  const [historyData, setHistoryData] = useState<DrawData[]>([]);
-  const [currentData, setCurrentData] = useState<DrawData | null>(null);
+  const [historyData, setHistoryData] = useState<DifferentiationData[]>([]);
+  const [currentData, setCurrentData] = useState<DifferentiationData | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showSpiritModal, setShowSpiritModal] = useState(false);
-  const [finalData, setFinalData] = useState<DrawData | null>(null);
+  const [finalData, setFinalData] = useState<DifferentiationData | null>(null);
   const [customSpirit, setCustomSpirit] = useState('');
   const [loading, setLoading] = useState(false);
   const [spiritView, setSpiritView] = useState<'question' | 'input'>('question');
@@ -154,7 +48,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
     };
   }, [userName]);
 
-  const executeFinalLock = async (raw: DrawData) => {
+  const executeFinalLock = async (raw: DifferentiationData) => {
     const isMinor = (initialAge ?? 16) < 16;
     const data = isMinor ? buildUndifferentiatedData() : raw;
 
@@ -199,17 +93,17 @@ export function ExtractorView({ onNavigate, userName }: Props) {
       executeFinalLock(buildUndifferentiatedData());
       return;
     }
-    if (drawCount >= MAX_DRAWS) {
+    if (drawCount >= MAX_DIFFERENTIATION_DRAWS) {
       setShowHistoryModal(true);
       return;
     }
 
-    const data = generateData();
+    const data = generateDifferentiationData();
     setHistoryData((prev) => [...prev, data]);
     setCurrentData(data);
     setDrawCount((n) => n + 1);
 
-    if (drawCount + 1 === MAX_DRAWS) {
+    if (drawCount + 1 === MAX_DIFFERENTIATION_DRAWS) {
       setTimeout(() => setShowHistoryModal(true), 200);
     }
   };
@@ -220,7 +114,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
     setFinalData(data);
     setShowHistoryModal(false);
 
-    if (data.role === ROLE_HUMAN || data.role === ROLE_GHOST || data.role === ROLE_UNDIFF) {
+    if (!isSentinelOrGuide(data.role)) {
       executeFinalLock(data);
       return;
     }
@@ -246,7 +140,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
       alert('精神体名称不能为空');
       return;
     }
-    const next: DrawData = {
+    const next: DifferentiationData = {
       ...finalData,
       spirit: { name: customSpirit.trim(), type: 'Custom' }
     };
@@ -267,7 +161,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
 
         <div className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-xs text-gray-500">进度：{isLocked ? '已锁定' : `${drawCount}/${MAX_DRAWS}`}</span>
+            <span className="text-xs text-gray-500">进度：{isLocked ? '已锁定' : `${drawCount}/${MAX_DIFFERENTIATION_DRAWS}`}</span>
             {!isLocked && (
               <button
                 onClick={drawOnce}
@@ -275,7 +169,7 @@ export function ExtractorView({ onNavigate, userName }: Props) {
               >
                 {isMinorUndifferentiated
                   ? '确认未分化档案'
-                  : (drawCount >= MAX_DRAWS ? '打开抉择面板' : `抽取（剩余${MAX_DRAWS - drawCount}次）`)}
+                  : (drawCount >= MAX_DIFFERENTIATION_DRAWS ? '打开抉择面板' : `抽取（剩余${MAX_DIFFERENTIATION_DRAWS - drawCount}次）`)}
               </button>
             )}
           </div>

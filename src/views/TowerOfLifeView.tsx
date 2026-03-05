@@ -3,6 +3,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, BookOpen, Shield, Sparkles, Trophy, X, MapPin } from 'lucide-react';
 import { User } from '../types';
 import FactionMemberPanel from './shared/FactionMemberPanel';
+import {
+  type DifferentiationData,
+  generateDifferentiationData,
+  isSentinelOrGuide,
+  MAX_DIFFERENTIATION_DRAWS,
+  NONE
+} from '../utils/differentiation';
 
 interface Props {
   user: User;
@@ -68,6 +75,15 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
   const [delegationMeta, setDelegationMeta] = useState<any>(null);
   const [delegationBusy, setDelegationBusy] = useState(false);
   const [growthBusy, setGrowthBusy] = useState(false);
+  const [drawCount, setDrawCount] = useState(0);
+  const [drawHistory, setDrawHistory] = useState<DifferentiationData[]>([]);
+  const [currentDraw, setCurrentDraw] = useState<DifferentiationData | null>(null);
+  const [showDrawHistoryModal, setShowDrawHistoryModal] = useState(false);
+  const [showSpiritModal, setShowSpiritModal] = useState(false);
+  const [finalDraw, setFinalDraw] = useState<DifferentiationData | null>(null);
+  const [spiritView, setSpiritView] = useState<'question' | 'input'>('question');
+  const [customSpirit, setCustomSpirit] = useState('');
+  const [enrollStudentAfterDiff, setEnrollStudentAfterDiff] = useState(false);
   const [selectedPoint, setSelectedPoint] = useState<TowerPointId | null>(null);
   const isTowerGovernor = ['圣子', '圣女'].includes(String(user.job || ''));
   const isUndifferentiatedStage = Number(user.age || 0) < 16 || String(user.role || '') === '未分化';
@@ -92,7 +108,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
     if (sessionStorage.getItem(jumpKey) !== '1') return;
     sessionStorage.removeItem(jumpKey);
     setSelectedPoint('training_ground');
-    showToast('已打开分化面板，点击“开始抽属性分化”即可。');
+    showToast('已打开分化面板，可进行“抽10次后选1次”的属性分化。');
   }, [user, showToast]);
 
   useEffect(() => {
@@ -200,29 +216,64 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
     onExit();
   };
 
-  const handleTowerDifferentiation = async () => {
+  const resetDifferentiationDraws = () => {
+    setDrawCount(0);
+    setDrawHistory([]);
+    setCurrentDraw(null);
+    setFinalDraw(null);
+    setShowDrawHistoryModal(false);
+    setShowSpiritModal(false);
+    setSpiritView('question');
+    setCustomSpirit('');
+  };
+
+  const drawTowerDifferentiationOnce = () => {
     if (growthBusy) return;
     if (!isUndifferentiatedStage) {
       showToast('当前角色已完成分化。');
       return;
     }
+    if (drawCount >= MAX_DIFFERENTIATION_DRAWS) {
+      setShowDrawHistoryModal(true);
+      return;
+    }
 
-    const confirmStart = window.confirm('在命之塔进行属性分化？将进入 16-19 岁阶段并随机抽取身份。');
-    if (!confirmStart) return;
+    const data = generateDifferentiationData();
+    setDrawHistory((prev) => [...prev, data]);
+    setCurrentDraw(data);
+    setDrawCount((n) => n + 1);
 
-    const enrollStudent = window.confirm(
-      '分化后是否直接前往伦敦塔就读？\n确定：分化并前往伦敦塔\n取消：仅完成分化，留在当前区域'
-    );
+    if (drawCount + 1 === MAX_DIFFERENTIATION_DRAWS) {
+      window.setTimeout(() => setShowDrawHistoryModal(true), 160);
+    }
+  };
 
+  const commitTowerDifferentiation = async (picked: DifferentiationData) => {
+    if (growthBusy) return;
     setGrowthBusy(true);
     try {
-      const res = await fetch('/api/growth/advance', {
+      const nextAge = Math.min(19, Math.max(16, Number(user.age || 16)));
+      const enrollStudent = enrollStudentAfterDiff;
+      const nextLocation = enrollStudent ? 'london_tower' : 'tower_of_life';
+      const nextJob = enrollStudent ? '伦敦塔学生' : '';
+
+      const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.id,
-          action: 'minor_to_student',
-          enrollStudent
+          id: user.id,
+          name: user.name,
+          status: user.status || 'approved',
+          age: nextAge,
+          role: picked.role,
+          mentalRank: picked.mentalRank,
+          physicalRank: picked.physicalRank,
+          gold: picked.gold,
+          ability: picked.ability,
+          spiritName: picked.spirit?.name || NONE,
+          spiritType: picked.spirit?.type || NONE,
+          job: nextJob,
+          currentLocation: nextLocation
         })
       });
       const data = await res.json().catch(() => ({} as any));
@@ -232,16 +283,63 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
       }
 
       const next = data.user || {};
-      const roleText = String(next.role || '');
-      const ageText = Number(next.age || 0);
+      const roleText = String(next.role || picked.role || '');
+      const ageText = Number(next.age || nextAge || 16);
       const suffix = enrollStudent ? '，并已前往伦敦塔。' : '。';
-      showToast(`分化完成：${roleText || '身份已更新'}（${ageText || 16}岁）${suffix}`);
+      showToast(`分化完成：${roleText || '身份已更新'}（${ageText}岁）${suffix}`);
+      resetDifferentiationDraws();
       fetchGlobalData();
+      if (enrollStudent) {
+        setSelectedPoint(null);
+      }
     } catch {
       showToast('网络异常，分化失败');
     } finally {
       setGrowthBusy(false);
     }
+  };
+
+  const selectTowerDifferentiationFinal = (index: number) => {
+    const picked = drawHistory[index];
+    if (!picked) return;
+    setFinalDraw(picked);
+    setCurrentDraw(picked);
+    setShowDrawHistoryModal(false);
+
+    if (!isSentinelOrGuide(picked.role)) {
+      commitTowerDifferentiation(picked);
+      return;
+    }
+
+    setSpiritView('question');
+    setCustomSpirit('');
+    setShowSpiritModal(true);
+  };
+
+  const keepTowerSpirit = () => {
+    if (!finalDraw) return;
+    setShowSpiritModal(false);
+    commitTowerDifferentiation(finalDraw);
+  };
+
+  const showTowerCustomSpiritInput = () => {
+    setSpiritView('input');
+  };
+
+  const confirmTowerCustomSpirit = () => {
+    if (!finalDraw) return;
+    const spiritName = customSpirit.trim();
+    if (!spiritName) {
+      showToast('精神体名称不能为空');
+      return;
+    }
+    const next: DifferentiationData = {
+      ...finalDraw,
+      spirit: { name: spiritName, type: 'Custom' }
+    };
+    setFinalDraw(next);
+    setShowSpiritModal(false);
+    commitTowerDifferentiation(next);
   };
 
   const selectedPointMeta = TOWER_POINTS.find((p) => p.id === selectedPoint) || null;
@@ -436,17 +534,74 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
                   <div className="space-y-4">
                     {isUndifferentiatedStage && (
                       <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/10 p-4">
-                        <h4 className="text-sm font-black text-fuchsia-200">未分化属性分化</h4>
+                        <h4 className="text-sm font-black text-fuchsia-200">未分化属性分化（抽10选1）</h4>
                         <p className="mt-2 text-xs leading-6 text-fuchsia-100/90">
-                          在命之塔进行属性分化，可随机抽取身份并进入 16-19 岁阶段。
+                          分化规则与 Extractor 一致：抽取 10 次后由你亲自锁定 1 次结果，写入角色档案并同步角色状态栏。
                         </p>
-                        <button
-                          onClick={handleTowerDifferentiation}
-                          disabled={growthBusy}
-                          className="mt-3 w-full rounded-xl bg-fuchsia-600 px-3 py-2 text-xs font-black text-white hover:bg-fuchsia-500 disabled:opacity-60"
-                        >
-                          {growthBusy ? '分化处理中...' : '开始抽属性分化'}
-                        </button>
+                        <label className="mt-3 flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-900/15 px-3 py-2 text-[11px] text-fuchsia-100">
+                          <input
+                            type="checkbox"
+                            checked={enrollStudentAfterDiff}
+                            disabled={growthBusy}
+                            onChange={(e) => setEnrollStudentAfterDiff(e.target.checked)}
+                            className="accent-fuchsia-500"
+                          />
+                          <span>分化后直接前往伦敦塔就读</span>
+                        </label>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">
+                            抽取进度：{drawCount}/{MAX_DIFFERENTIATION_DRAWS}
+                          </div>
+                          <div className="rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">
+                            当前状态：{growthBusy ? '分化处理中' : (drawCount >= MAX_DIFFERENTIATION_DRAWS ? '等待抉择' : '抽取中')}
+                          </div>
+                        </div>
+
+                        {currentDraw && (
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                            <div className="rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">身份：{currentDraw.role}</div>
+                            <div className="rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">金币：{currentDraw.gold}</div>
+                            <div className="rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">精神：{currentDraw.mentalRank}</div>
+                            <div className="rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">肉体：{currentDraw.physicalRank}</div>
+                            <div className="col-span-2 rounded-lg border border-fuchsia-500/25 bg-black/20 px-2 py-1.5 text-fuchsia-100">精神体：{currentDraw.spirit?.name || NONE}</div>
+                          </div>
+                        )}
+
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            onClick={drawTowerDifferentiationOnce}
+                            disabled={growthBusy}
+                            className="w-full rounded-xl bg-fuchsia-600 px-3 py-2 text-xs font-black text-white hover:bg-fuchsia-500 disabled:opacity-60"
+                          >
+                            {growthBusy
+                              ? '分化处理中...'
+                              : (
+                                drawCount >= MAX_DIFFERENTIATION_DRAWS
+                                  ? '抽取完成，打开抉择面板'
+                                  : `抽取一次（剩余${Math.max(0, MAX_DIFFERENTIATION_DRAWS - drawCount)}次）`
+                              )}
+                          </button>
+                          <button
+                            onClick={() => setShowDrawHistoryModal(true)}
+                            disabled={growthBusy || drawCount < MAX_DIFFERENTIATION_DRAWS}
+                            className="w-full rounded-xl border border-fuchsia-400/40 bg-fuchsia-900/25 px-3 py-2 text-xs font-black text-fuchsia-100 hover:bg-fuchsia-900/45 disabled:opacity-50"
+                          >
+                            打开 10 选 1 抉择
+                          </button>
+                        </div>
+
+                        {drawCount > 0 && (
+                          <button
+                            onClick={() => {
+                              if (!window.confirm('确定重置本轮抽取记录吗？')) return;
+                              resetDifferentiationDraws();
+                            }}
+                            disabled={growthBusy}
+                            className="mt-2 w-full rounded-xl border border-slate-600 bg-slate-900/70 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-60"
+                          >
+                            重置本轮抽取
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -493,6 +648,110 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
               </div>
             </motion.section>
           </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showDrawHistoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[220] bg-black/70 p-4 flex items-center justify-center"
+          >
+            <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5">
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <h3 className="text-lg font-black text-fuchsia-200">10 选 1 分化抉择</h3>
+                <button
+                  onClick={() => setShowDrawHistoryModal(false)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:text-white"
+                >
+                  关闭
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {drawHistory.map((d, idx) => (
+                  <div key={`tower-diff-${idx}`} className="rounded-xl border border-slate-700 bg-slate-800/80 p-3">
+                    <div className="text-sm font-black text-fuchsia-100 mb-2">第 {idx + 1} 次</div>
+                    <div className="text-xs text-slate-300">身份：{d.role}</div>
+                    <div className="text-xs text-slate-300">精神/肉体：{d.mentalRank}/{d.physicalRank}</div>
+                    <div className="text-xs text-slate-300">金币：{d.gold}</div>
+                    <div className="text-xs text-slate-300">能力：{d.ability}</div>
+                    <div className="text-xs text-slate-300 mb-2">精神体：{d.spirit?.name || NONE}</div>
+                    <button
+                      onClick={() => selectTowerDifferentiationFinal(idx)}
+                      disabled={growthBusy}
+                      className="w-full rounded-lg bg-fuchsia-600 px-3 py-2 text-xs font-black text-white hover:bg-fuchsia-500 disabled:opacity-60"
+                    >
+                      锁定该结果
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSpiritModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[230] bg-black/70 p-4 flex items-center justify-center"
+          >
+            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5">
+              {spiritView === 'question' ? (
+                <div className="text-center">
+                  <h3 className="text-lg font-black text-fuchsia-100 mb-2">保留当前精神体？</h3>
+                  <p className="text-sm text-slate-300 mb-4">{finalDraw?.spirit?.name || NONE}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={keepTowerSpirit}
+                      disabled={growthBusy}
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-black text-white hover:bg-emerald-500 disabled:opacity-60"
+                    >
+                      保留
+                    </button>
+                    <button
+                      onClick={showTowerCustomSpiritInput}
+                      disabled={growthBusy}
+                      className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-black text-white hover:bg-rose-500 disabled:opacity-60"
+                    >
+                      更换
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <h3 className="text-lg font-black text-fuchsia-100 mb-2">输入新精神体名称</h3>
+                  <input
+                    value={customSpirit}
+                    onChange={(e) => setCustomSpirit(e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white mb-3"
+                    placeholder="请输入精神体名称"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={confirmTowerCustomSpirit}
+                      disabled={growthBusy}
+                      className="rounded-lg bg-fuchsia-600 px-3 py-2 text-sm font-black text-white hover:bg-fuchsia-500 disabled:opacity-60"
+                    >
+                      确认锁定
+                    </button>
+                    <button
+                      onClick={() => setSpiritView('question')}
+                      disabled={growthBusy}
+                      className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-black text-slate-200 hover:bg-slate-700 disabled:opacity-60"
+                    >
+                      返回
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

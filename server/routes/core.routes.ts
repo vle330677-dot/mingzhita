@@ -335,11 +335,14 @@ export function createCoreRouter(ctx: AppContext) {
         const createAge = Number(req.body?.age ?? 15);
         const createRole = normalizeRoleByAge(createAge, normalizeRole(req.body?.role));
         const createGold = Number(req.body?.gold ?? 0);
+        const createAbility = String(req.body?.ability ?? '').trim();
+        const createSpiritName = String(req.body?.spiritName ?? '').trim();
+        const createSpiritType = String(req.body?.spiritType ?? '').trim();
         const createHomeLocation = resolveHomeLocationByRule(createAge, createGold, createRole, req.body?.homeLocation);
         const createCurrentLocation = String(req.body?.currentLocation ?? '').trim() || createHomeLocation;
         db.prepare(
-          `INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, ability, spiritName, spiritType, currentLocation, homeLocation, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(
           name,
           createRole,
@@ -349,6 +352,9 @@ export function createCoreRouter(ctx: AppContext) {
           normalizeJob(req.body?.job),
           String(req.body?.physicalRank ?? '无'),
           String(req.body?.mentalRank ?? '无'),
+          createAbility,
+          createSpiritName,
+          createSpiritType,
           createCurrentLocation,
           createHomeLocation,
           nowIso(),
@@ -363,6 +369,9 @@ export function createCoreRouter(ctx: AppContext) {
         const nextGold = Number(req.body?.gold ?? user.gold ?? 0);
         const nextPhysical = String(req.body?.physicalRank ?? user.physicalRank ?? '无');
         const nextMental = String(req.body?.mentalRank ?? user.mentalRank ?? '无');
+        const nextAbility = String(req.body?.ability ?? user.ability ?? '').trim();
+        const nextSpiritName = String(req.body?.spiritName ?? user.spiritName ?? '').trim();
+        const nextSpiritType = String(req.body?.spiritType ?? user.spiritType ?? '').trim();
         const nextHomeLocation = resolveHomeLocationByRule(
           nextAge,
           nextGold,
@@ -373,7 +382,7 @@ export function createCoreRouter(ctx: AppContext) {
 
         db.prepare(
           `UPDATE users
-           SET role = ?, status = ?, job = ?, age = ?, gold = ?, physicalRank = ?, mentalRank = ?, currentLocation = ?, homeLocation = ?, updatedAt = ?
+           SET role = ?, status = ?, job = ?, age = ?, gold = ?, physicalRank = ?, mentalRank = ?, ability = ?, spiritName = ?, spiritType = ?, currentLocation = ?, homeLocation = ?, updatedAt = ?
            WHERE id = ?`
         ).run(
           nextRole,
@@ -383,6 +392,9 @@ export function createCoreRouter(ctx: AppContext) {
           nextGold,
           nextPhysical,
           nextMental,
+          nextAbility,
+          nextSpiritName,
+          nextSpiritType,
           nextCurrentLocation,
           nextHomeLocation,
           nowIso(),
