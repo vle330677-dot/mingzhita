@@ -44,6 +44,15 @@ function normalizeJob(v: any) {
   return s || '无';
 }
 
+function parseEditableAge(v: any, fallbackRaw: any = 16) {
+  if (v === undefined || v === null || String(v).trim() === '') {
+    const fallback = Number(fallbackRaw ?? 16);
+    return Number.isInteger(fallback) && fallback >= 0 ? fallback : 16;
+  }
+  const age = Number(v);
+  if (!Number.isInteger(age) || age < 0 || age > 999) return null;
+  return age;
+}
 function normalizeRoleByAge(ageRaw: any, roleRaw: any) {
   const age = Number(ageRaw ?? 0);
   const role = String(roleRaw ?? '').trim();
@@ -819,7 +828,10 @@ export function createCoreRouter(ctx: AppContext) {
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
       const body = req.body || {};
-      const age = Number(body.age ?? user.age ?? 16);
+      const age = parseEditableAge(body.age, user.age ?? 16);
+      if (age === null) {
+        return safeJson(res, 400, { success: false, message: 'age must be an integer between 0 and 999' });
+      }
       const gold = Number(body.gold ?? user.gold ?? 0);
       const role = normalizeRoleByAge(age, normalizeRole(body.role ?? user.role ?? '未分化'));
       const status = normalizeAdminStatus(body.status ?? user.status, String(user.status || 'pending'));
@@ -830,7 +842,14 @@ export function createCoreRouter(ctx: AppContext) {
       if (dup) return safeJson(res, 400, { success: false, message: 'name already exists' });
 
       const nextHome = resolveHomeLocationByRule(age, gold, role, body.homeLocation ?? user.homeLocation);
-      const nextCurrentLocation = String(body.currentLocation ?? user.currentLocation ?? '').trim() || nextHome;
+      const prevCurrentLocation = String(user.currentLocation ?? '').trim();
+      const requestedCurrentLocation = String(body.currentLocation ?? '').trim();
+      const currentLocationProvided = Object.prototype.hasOwnProperty.call(body, 'currentLocation');
+      const homeChanged = nextHome !== String(user.homeLocation ?? '').trim();
+      const shouldFollowHomeRule = homeChanged && (!currentLocationProvided || requestedCurrentLocation === prevCurrentLocation);
+      const nextCurrentLocation = shouldFollowHomeRule
+        ? nextHome
+        : (requestedCurrentLocation || prevCurrentLocation || nextHome);
       const nextJob = normalizeJob(body.job ?? user.job ?? '无');
       const nextPhysicalRank = String(body.physicalRank ?? user.physicalRank ?? '无').trim() || '无';
       const nextMentalRank = String(body.mentalRank ?? user.mentalRank ?? '无').trim() || '无';

@@ -227,6 +227,13 @@ const summarizeLogDetail = (detail: AdminActionLog['detail']) => {
   return pairs.join(' · ');
 };
 
+const parseAdminAgeValue = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const age = Number(trimmed);
+  if (!Number.isInteger(age) || age < 0 || age > 999) return null;
+  return age;
+};
 export function AdminView() {
   // ---------------- 管理员登录态 ----------------
   const [authStep, setAuthStep] = useState<'code' | 'name' | 'done'>('code');
@@ -270,6 +277,8 @@ export function AdminView() {
   // ---------------- 编辑用户 ----------------
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [editingUserSkills, setEditingUserSkills] = useState<UserSkill[]>([]);
+  const [ageDrafts, setAgeDrafts] = useState<Record<number, string>>({});
+  const [savingAgeUserId, setSavingAgeUserId] = useState<number | null>(null);
 
   // ---------------- 技能筛选 ----------------
   const [skillFactionFilter, setSkillFactionFilter] = useState('ALL');
@@ -280,6 +289,14 @@ export function AdminView() {
   const [showReviewConfig, setShowReviewConfig] = useState(false);
   const [reviewRules, setReviewRules] = useState<ReviewRule[]>(DEFAULT_REVIEW_RULES);
   const [reviewVotes, setReviewVotes] = useState<Record<string, ReviewVoteRecord>>({});
+
+  useEffect(() => {
+    const next: Record<number, string> = {};
+    users.forEach((u) => {
+      next[u.id] = String(u.age ?? 0);
+    });
+    setAgeDrafts(next);
+  }, [users]);
 
 const handleDeleteArchive = async (arc: RPArchive) => {
   if (!confirm(`确定删除存档《${arc.title}》吗？此操作不可恢复。`)) return;
@@ -781,6 +798,27 @@ const handleDeleteArchive = async (arc: RPArchive) => {
     }
   };
 
+  const handleQuickAgeSave = async (u: AdminUser) => {
+    const age = parseAdminAgeValue(ageDrafts[u.id] ?? String(u.age ?? 0));
+    if (age === null) {
+      alert('年龄必须是 0 到 999 的整数');
+      return;
+    }
+    if (age === Number(u.age ?? 0)) return;
+    try {
+      setSavingAgeUserId(u.id);
+      const data = await authedFetch(`/api/admin/users/${u.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ age })
+      });
+      showOk(data.message || `管理员 ${adminName} 修改了玩家 ${u.name} 的年龄`);
+      await fetchData();
+    } catch (e: any) {
+      alert(e.message || '年龄更新失败');
+    } finally {
+      setSavingAgeUserId((current) => (current === u.id ? null : current));
+    }
+  };
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
@@ -1404,7 +1442,12 @@ const reviewStats = useMemo(() => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
-                    {users.map((u) => (
+                    {users.map((u) => {
+                      const ageDraft = ageDrafts[u.id] ?? String(u.age ?? 0);
+                      const parsedAgeDraft = parseAdminAgeValue(ageDraft);
+                      const ageInputInvalid = ageDraft.trim() !== '' && parsedAgeDraft === null;
+                      const ageDirty = parsedAgeDraft !== null && parsedAgeDraft !== Number(u.age ?? 0);
+                      return (
                       <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-6">
                           <div className="font-black text-slate-900 text-base mb-1">{u.name}</div>
@@ -1413,6 +1456,26 @@ const reviewStats = useMemo(() => {
                               {(u.age ?? 0)} 岁
                             </span>
                             <span className="text-xs text-slate-400 font-medium">{(u.age ?? 0) < 16 ? '未分化幼崽' : (u.role || '未分化')}</span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={999}
+                              value={ageDraft}
+                              onChange={e => setAgeDrafts(prev => ({ ...prev, [u.id]: e.target.value }))}
+                              className={`w-24 rounded-lg border px-3 py-1.5 text-sm font-bold outline-none transition ${ageInputInvalid ? 'border-rose-300 bg-rose-50 text-rose-700 focus:ring-2 focus:ring-rose-500/20' : 'border-slate-200 bg-white text-slate-700 focus:ring-2 focus:ring-sky-500/20'}`}
+                            />
+                            <button
+                              onClick={() => handleQuickAgeSave(u)}
+                              disabled={savingAgeUserId === u.id || !ageDirty}
+                              className="px-3 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-black hover:bg-sky-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:bg-slate-200 transition-colors"
+                            >
+                              {savingAgeUserId === u.id ? '保存中...' : '保存年龄'}
+                            </button>
+                          </div>
+                          <div className={`text-[10px] mt-2 ${ageInputInvalid ? 'text-rose-500' : 'text-slate-400'}`}>
+                            {ageInputInvalid ? '年龄必须是 0 到 999 的整数' : '保存后会自动同步身份和家园归属'}
                           </div>
                         </td>
 
@@ -1503,7 +1566,8 @@ const reviewStats = useMemo(() => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {users.length === 0 && (
                       <tr>
                         <td colSpan={5} className="p-10 text-center text-slate-400">
