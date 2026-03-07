@@ -453,6 +453,76 @@ export function runSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_sensitive_confirmations_user_status
       ON sensitive_operation_confirmations(userId, status, expiresAt);
+
+    CREATE TABLE IF NOT EXISTS faction_custom_roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      locationId TEXT NOT NULL,
+      factionName TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      minAge INTEGER DEFAULT 16,
+      minMentalRank TEXT DEFAULT '',
+      minPhysicalRank TEXT DEFAULT '',
+      maxMembers INTEGER DEFAULT 0,
+      salary INTEGER DEFAULT 0,
+      createdByUserId INTEGER DEFAULT 0,
+      isActive INTEGER DEFAULT 1,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(locationId, title)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_faction_custom_roles_location_active
+      ON faction_custom_roles(locationId, isActive, updatedAt);
+
+    CREATE TABLE IF NOT EXISTS custom_factions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT DEFAULT '',
+      ownerUserId INTEGER NOT NULL,
+      ownerName TEXT DEFAULT '',
+      leaderTitle TEXT DEFAULT '???',
+      pointX REAL NOT NULL,
+      pointY REAL NOT NULL,
+      mapImageUrl TEXT DEFAULT '',
+      pointType TEXT DEFAULT 'safe',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_factions_owner
+      ON custom_factions(ownerUserId, updatedAt);
+
+    CREATE TABLE IF NOT EXISTS custom_faction_nodes (
+      id TEXT PRIMARY KEY,
+      factionId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      x REAL NOT NULL,
+      y REAL NOT NULL,
+      dailyInteractionLimit INTEGER DEFAULT 1,
+      salary INTEGER DEFAULT 0,
+      createdByUserId INTEGER DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_faction_nodes_faction
+      ON custom_faction_nodes(factionId, updatedAt);
+
+    CREATE TABLE IF NOT EXISTS custom_faction_node_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nodeId TEXT NOT NULL,
+      factionId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      dateKey TEXT NOT NULL,
+      interactionCount INTEGER DEFAULT 0,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(nodeId, userId, dateKey)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_faction_node_logs_lookup
+      ON custom_faction_node_logs(nodeId, userId, dateKey);
   `);
 }
 

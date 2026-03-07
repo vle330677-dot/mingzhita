@@ -321,12 +321,15 @@ export function createCharacterRouter(ctx: AppContext) {
       const id = Number(req.params.id || 0);
       const locationId = String(req.body?.locationId || '').trim();
       if (!id || !locationId) return res.status(400).json({ success: false, message: 'id/locationId required' });
-      const row = db.prepare(`SELECT id,name,age,role,status,fury,guideStability,partyId,currentLocation FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = db.prepare(`SELECT id,name,age,role,status,fury,guideStability,partyId,currentLocation,job FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'user not found' });
       const role = String(row.role || '').trim();
       const isSentinel = role === '哨兵' || role.toLowerCase() === 'sentinel';
       const isGuide = role === '向导' || role.toLowerCase() === 'guide';
-      if (Number(row.age ?? 0) < 16 && !SAFE_ZONES.has(locationId)) {
+      const customFaction = db.prepare(`SELECT id, pointType FROM custom_factions WHERE id = ? LIMIT 1`).get(locationId) as AnyRow | undefined;
+      const isSafeLocation = SAFE_ZONES.has(locationId) || String(customFaction?.pointType || 'safe') === 'safe';
+      const hasActiveJob = !!String(row.job || '').trim() && String(row.job || '').trim() !== '\u65e0';
+      if (Number(row.age ?? 0) < 16 && !isSafeLocation && !hasActiveJob) {
         const partyId = String(row.partyId || '').trim();
         const hasGuideEscort = partyId ? (db.prepare(`SELECT id, role FROM users WHERE partyId = ?`).all(partyId) as AnyRow[]).some((m) => Number(m.id) !== id && isGuideRole(m.role)) : false;
         if (!Boolean(req.body?.minorRiskConfirmed) && !hasGuideEscort) return res.status(403).json({ success: false, code: 'MINOR_RISK_CONFIRM_REQUIRED', message: 'undifferentiated players need risk confirmation or guide escort for unsafe areas' });
@@ -338,7 +341,7 @@ export function createCharacterRouter(ctx: AppContext) {
       if (Number(prisonRow.isImprisoned || 0) === 1 && locationId !== PARANORMAL_OFFICE) return res.status(403).json({ success: false, code: 'GHOST_PRISON_LOCKED', message: '你被收容在灵异监牢中，当前无法离开。' });
       const guardPrisonRow = ensureGuardPrisonRow(db, id);
       if (Number(guardPrisonRow.isImprisoned || 0) === 1 && locationId !== TOWER_GUARD_LOCATION) return res.status(403).json({ success: false, code: 'TOWER_GUARD_PRISON_LOCKED', message: '你被关押在守塔会地下监牢中，当前无法离开。' });
-      if (fromLocation === 'tower_of_life' && locationId !== 'tower_of_life' && !new Set(['sanctuary','london_tower','slums','rich_area','guild','army']).has(locationId)) return res.status(403).json({ success: false, code: 'TOWER_ADJACENT_ONLY', message: '你无法一下子走得那么远' });
+      if (fromLocation === 'tower_of_life' && locationId !== 'tower_of_life' && !customFaction && !new Set(['sanctuary','london_tower','slums','rich_area','guild','army']).has(locationId)) return res.status(403).json({ success: false, code: 'TOWER_ADJACENT_ONLY', message: '你无法一下子走得那么远' });
       db.prepare(`UPDATE users SET currentLocation = ?, updatedAt = ? WHERE id = ?`).run(locationId, nowIso(), id);
       touchPresence(db, id);
       let prisonTrigger: null | { gameId: string; gameName: string } = null;
