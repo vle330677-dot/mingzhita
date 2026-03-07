@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, X, Skull, Flame, 
@@ -12,6 +12,38 @@ interface Props {
   onExit: () => void;
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
+}
+
+interface DemonGambleRequest {
+  id: number;
+  challengerId: number;
+  challengerName: string;
+  targetId: number;
+  targetName: string;
+  amount: number;
+  status: string;
+  responderId: number;
+  challengerRoll: number;
+  targetRoll: number;
+  winnerId: number;
+  loserId: number;
+  viewerRole?: string;
+  viewerWon?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DiceRevealState {
+  visible: boolean;
+  phase: 'rolling' | 'result';
+  mode: 'solo' | 'pvp';
+  accent: 'amber' | 'rose';
+  title: string;
+  subtitle: string;
+  soloRoll: number;
+  challengerRoll: number;
+  targetRoll: number;
+  resultText: string;
 }
 
 // 基于图片设定的建筑坐标
@@ -36,8 +68,6 @@ const RANK_SCORES: Record<string, number> = {
 export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
   const [isRioting, setIsRioting] = useState(false);
-  
-  // 赌场小游戏状态
   const [miniGame, setMiniGame] = useState({ active: false, clicks: 0, timeLeft: 10 });
   const [infoSkills, setInfoSkills] = useState<any[]>([]);
   const [demonDailySkill, setDemonDailySkill] = useState({
@@ -56,20 +86,54 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
   const [blackmarketNpc, setBlackmarketNpc] = useState<any>(null);
   const [blackmarketOffers, setBlackmarketOffers] = useState<any[]>([]);
   const [blackmarketCanTrade, setBlackmarketCanTrade] = useState(false);
+  const [incomingGambleRequests, setIncomingGambleRequests] = useState<DemonGambleRequest[]>([]);
+  const [outgoingGambleRequests, setOutgoingGambleRequests] = useState<DemonGambleRequest[]>([]);
+  const [diceReveal, setDiceReveal] = useState<DiceRevealState>({
+    visible: false,
+    phase: 'rolling',
+    mode: 'solo',
+    accent: 'amber',
+    title: '',
+    subtitle: '',
+    soloRoll: 1,
+    challengerRoll: 1,
+    targetRoll: 1,
+    resultText: ''
+  });
+  const diceRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const diceRevealHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenGambleEventKeysRef = useRef<Set<string>>(new Set());
+  const demonGambleBootstrappedRef = useRef(false);
 
   // 身份判断
   const isDemon = Object.values(ROLES).includes(user.job || '');
   const canUseDemonSkill = isDemon || demonDailySkill.isDemonMember;
+  const hasPendingPvpRequest = incomingGambleRequests.length > 0 || outgoingGambleRequests.length > 0;
   const getScore = (rank?: string) => RANK_SCORES[rank || '无'] || 0;
 
   useEffect(() => {
-    if (selectedBuilding?.id === 'casino') {
-      fetchSkills();
+    if (selectedBuilding?.id !== 'casino') {
+      setIncomingGambleRequests([]);
+      setOutgoingGambleRequests([]);
+      demonGambleBootstrappedRef.current = false;
+      seenGambleEventKeysRef.current.clear();
+      return;
+    }
+
+    demonGambleBootstrappedRef.current = false;
+    seenGambleEventKeysRef.current.clear();
+    fetchSkills();
+    fetchDemonState();
+    fetchBlackmarketState();
+
+    const timer = setInterval(() => {
       fetchDemonState();
       fetchBlackmarketState();
-    }
+    }, 4000);
+
+    return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBuilding, user.id]);
+  }, [selectedBuilding?.id, user.id]);
 
   // --- 小游戏计时器 ---
   useEffect(() => {
@@ -82,6 +146,11 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
     return () => clearInterval(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [miniGame.active, miniGame.timeLeft]);
+
+  useEffect(() => () => {
+    if (diceRevealTimerRef.current) clearTimeout(diceRevealTimerRef.current);
+    if (diceRevealHideTimerRef.current) clearTimeout(diceRevealHideTimerRef.current);
+  }, []);
 
   // --- 核心逻辑：资质校验 ---
   const checkQualifications = (targetRank: string) => {
@@ -217,10 +286,107 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
     if (res.ok) showToast(`成功窃取情报网权限：${skillName}`);
   };
 
+  const clearDiceRevealTimers = () => {
+    if (diceRevealTimerRef.current) clearTimeout(diceRevealTimerRef.current);
+    if (diceRevealHideTimerRef.current) clearTimeout(diceRevealHideTimerRef.current);
+    diceRevealTimerRef.current = null;
+    diceRevealHideTimerRef.current = null;
+  };
+
+  const buildGambleEventKey = (row: Partial<DemonGambleRequest> | null | undefined) => {
+    return `${Number(row?.id || 0)}:${String(row?.status || '')}:${String(row?.updatedAt || '')}`;
+  };
+
+  const launchDiceReveal = (payload: Omit<DiceRevealState, 'visible' | 'phase'>) => {
+    clearDiceRevealTimers();
+    setDiceReveal({ ...payload, visible: true, phase: 'rolling' });
+    diceRevealTimerRef.current = setTimeout(() => {
+      setDiceReveal((prev) => ({ ...prev, phase: 'result' }));
+      diceRevealHideTimerRef.current = setTimeout(() => {
+        setDiceReveal((prev) => ({ ...prev, visible: false }));
+      }, 1800);
+    }, 1300);
+  };
+
+  const openSoloDiceReveal = (amount: number, guess: 'big' | 'small', data: any) => {
+    const roll = Math.max(1, Number(data?.roll || 1));
+    const isWin = Boolean(data?.isWin);
+    launchDiceReveal({
+      mode: 'solo',
+      accent: 'amber',
+      title: 'Roll Dice',
+      subtitle: `Bet ${amount}G ? You picked ${guess === 'big' ? 'Big' : 'Small'}`,
+      soloRoll: roll,
+      challengerRoll: 1,
+      targetRoll: 1,
+      resultText: isWin ? `Dice landed on ${roll}. You won ${amount}G.` : `Dice landed on ${roll}. You lost ${amount}G.`
+    });
+  };
+
+  const openPvpDiceReveal = (request: DemonGambleRequest | null | undefined) => {
+    if (!request) return;
+    const amount = Math.max(1, Number(request.amount || 0));
+    const challengerName = String(request.challengerName || 'Player A');
+    const targetName = String(request.targetName || 'Player B');
+    const didWin = Number(request.winnerId || 0) === Number(user.id || 0);
+    const winnerName = didWin
+      ? 'You'
+      : Number(request.winnerId || 0) === Number(request.challengerId || 0)
+        ? challengerName
+        : targetName;
+    launchDiceReveal({
+      mode: 'pvp',
+      accent: 'rose',
+      title: 'PVP Dice Duel',
+      subtitle: `${challengerName} vs ${targetName} ? ${amount}G`,
+      soloRoll: 1,
+      challengerRoll: Math.max(1, Number(request.challengerRoll || 1)),
+      targetRoll: Math.max(1, Number(request.targetRoll || 1)),
+      resultText: didWin ? `You won ${amount}G.` : `${winnerName} won ${amount}G.`
+    });
+  };
+
+  const processRecentGambleEvents = (rows: DemonGambleRequest[]) => {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!demonGambleBootstrappedRef.current) {
+      list.forEach((row) => seenGambleEventKeysRef.current.add(buildGambleEventKey(row)));
+      demonGambleBootstrappedRef.current = true;
+      return;
+    }
+
+    let shouldRefreshGlobal = false;
+    [...list].reverse().forEach((row) => {
+      const key = buildGambleEventKey(row);
+      if (seenGambleEventKeysRef.current.has(key)) return;
+      seenGambleEventKeysRef.current.add(key);
+
+      if (String(row.status || '') === 'resolved') {
+        openPvpDiceReveal(row);
+        shouldRefreshGlobal = true;
+        return;
+      }
+
+      if (String(row.status || '') === 'rejected') {
+        if (Number(row.challengerId || 0) === Number(user.id || 0)) {
+          showToast(`${String(row.targetName || 'The other player')} rejected your bet request`);
+        } else {
+          showToast(`You rejected ${String(row.challengerName || 'the challenger')}`);
+        }
+        return;
+      }
+
+      if (String(row.status || '') === 'cancelled') {
+        showToast('The bet request was cancelled because one side can no longer start the game');
+      }
+    });
+
+    if (shouldRefreshGlobal) fetchGlobalData();
+  };
+
   const fetchDemonState = async () => {
     try {
-      const res = await fetch(`/api/demon/state?userId=${user.id}`);
-      const data = await res.json();
+      const res = await fetch(`/api/demon/state?userId=${user.id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) return;
       setDemonDailySkill({
         max: Number(data.dailySkill?.max || 3),
@@ -231,11 +397,16 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
       setDemonCasinoGold(Number(data.gold || 0));
       const nearby = Array.isArray(data.nearbyPlayers) ? data.nearbyPlayers : [];
       setDemonNearbyPlayers(nearby);
+      const incoming = Array.isArray(data.incomingGambleRequests) ? data.incomingGambleRequests : [];
+      const outgoing = Array.isArray(data.outgoingGambleRequests) ? data.outgoingGambleRequests : [];
+      setIncomingGambleRequests(incoming);
+      setOutgoingGambleRequests(outgoing);
+      processRecentGambleEvents(Array.isArray(data.recentGambleEvents) ? data.recentGambleEvents : []);
       if (!nearby.some((x: any) => Number(x.id || 0) === Number(pvpTargetId || 0))) {
         setPvpTargetId(nearby.length > 0 ? Number(nearby[0].id || 0) : 0);
       }
     } catch {
-      // 忽略状态面板拉取失败，不阻塞其他交互
+      // ignore demon state poll failures
     }
   };
 
@@ -267,14 +438,14 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
-        showToast(data.message || '单人赌局失败');
+        showToast(data.message || 'Solo bet failed');
         return;
       }
-      showToast(data.message || '赌局已结算');
+      openSoloDiceReveal(amount, soloGuess, data);
       fetchGlobalData();
       fetchDemonState();
     } catch {
-      showToast('网络异常，单人赌局失败');
+      showToast('Network error while rolling the dice');
     } finally {
       setCasinoBusy(false);
     }
@@ -284,7 +455,7 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
     const amount = Math.max(1, Math.trunc(Number(pvpBetAmount || 0)));
     const targetId = Number(pvpTargetId || 0);
     if (!targetId) {
-      showToast('请选择对赌对象');
+      showToast('Pick a player first');
       return;
     }
     setCasinoBusy(true);
@@ -300,14 +471,52 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
-        showToast(data.message || '玩家对赌失败');
+        showToast(data.message || 'Failed to send the PVP bet request');
         return;
       }
-      showToast(data.message || '对赌已结算');
-      fetchGlobalData();
+      showToast(data.message || 'Bet request sent');
       fetchDemonState();
     } catch {
-      showToast('网络异常，玩家对赌失败');
+      showToast('Network error while sending the PVP bet request');
+    } finally {
+      setCasinoBusy(false);
+    }
+  };
+
+  const handleRespondPvpGamble = async (requestId: number, accept: boolean) => {
+    if (!requestId) return;
+    setCasinoBusy(true);
+    try {
+      const res = await fetch(`/api/demon/gamble/request/${requestId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          accept
+        })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || 'Failed to handle the PVP bet request');
+        fetchDemonState();
+        return;
+      }
+
+      const request = data.request as DemonGambleRequest | undefined;
+      if (request) {
+        seenGambleEventKeysRef.current.add(buildGambleEventKey(request));
+      }
+
+      if (accept && request?.status === 'resolved') {
+        openPvpDiceReveal(request);
+        fetchGlobalData();
+      } else {
+        showToast(data.message || (accept ? 'Request accepted' : 'Request rejected'));
+      }
+
+      fetchDemonState();
+    } catch {
+      showToast('Network error while handling the PVP bet request');
     } finally {
       setCasinoBusy(false);
     }
@@ -549,14 +758,21 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                   {selectedBuilding.id === 'casino' && (
                     <div className="space-y-8">
                       <div className="text-left bg-black/50 p-5 border border-yellow-800/40 rounded-sm">
-                        <h4 className="text-sm font-black text-yellow-300 uppercase tracking-wide mb-3">赌场主桌（系统结算）</h4>
-                        <p className="text-[11px] text-yellow-100/80 mb-3">
-                          当前筹码：{Math.max(0, Number(demonCasinoGold || 0))}G
-                        </p>
+                        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                          <div>
+                            <h4 className="text-sm font-black text-yellow-300 uppercase tracking-wide">Casino main desk</h4>
+                            <p className="text-[11px] text-yellow-100/80 mt-1">Current chips: {Math.max(0, Number(demonCasinoGold || 0))}G</p>
+                          </div>
+                          {hasPendingPvpRequest && (
+                            <span className="px-3 py-1 rounded-full bg-rose-900/40 border border-rose-600/40 text-[10px] font-black uppercase tracking-[0.2em] text-rose-200">
+                              Pending duel
+                            </span>
+                          )}
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="p-3 border border-yellow-800/40 rounded bg-yellow-900/10 space-y-2">
-                            <p className="text-[11px] text-yellow-200 font-bold">单人比大小</p>
+                          <div className="p-3 border border-yellow-800/40 rounded bg-yellow-900/10 space-y-3">
+                            <p className="text-[11px] text-yellow-200 font-bold uppercase tracking-wide">Big / Small</p>
                             <input
                               type="number"
                               min={1}
@@ -567,15 +783,15 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                             <div className="grid grid-cols-2 gap-2">
                               <button
                                 onClick={() => setSoloGuess('big')}
-                                className={`py-2 text-xs font-black rounded border ${soloGuess === 'big' ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-stone-900 text-stone-300 border-stone-700'}`}
+                                className={`${soloGuess === 'big' ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-stone-900 text-stone-300 border-stone-700'} py-2 text-xs font-black rounded border`}
                               >
-                                压大(4-6)
+                                Big (4-6)
                               </button>
                               <button
                                 onClick={() => setSoloGuess('small')}
-                                className={`py-2 text-xs font-black rounded border ${soloGuess === 'small' ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-stone-900 text-stone-300 border-stone-700'}`}
+                                className={`${soloGuess === 'small' ? 'bg-yellow-600 text-black border-yellow-300' : 'bg-stone-900 text-stone-300 border-stone-700'} py-2 text-xs font-black rounded border`}
                               >
-                                压小(1-3)
+                                Small (1-3)
                               </button>
                             </div>
                             <button
@@ -583,21 +799,21 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                               disabled={casinoBusy}
                               className="w-full py-2 bg-yellow-700 text-black text-xs font-black rounded hover:bg-yellow-600 disabled:opacity-60"
                             >
-                              开局
+                              Roll now
                             </button>
                           </div>
 
-                          <div className="p-3 border border-rose-800/40 rounded bg-rose-900/10 space-y-2">
-                            <p className="text-[11px] text-rose-200 font-bold">玩家对赌</p>
+                          <div className="p-3 border border-rose-800/40 rounded bg-rose-900/10 space-y-3">
+                            <p className="text-[11px] text-rose-200 font-bold uppercase tracking-wide">PVP bet request</p>
                             <select
                               value={pvpTargetId}
                               onChange={(e) => setPvpTargetId(Number(e.target.value || 0))}
                               className="w-full bg-stone-900 border border-stone-700 rounded px-3 py-2 text-xs text-stone-100"
                             >
-                              <option value={0}>选择同场玩家</option>
+                              <option value={0}>Pick a nearby player</option>
                               {demonNearbyPlayers.map((p: any) => (
                                 <option key={`demon-pvp-${p.id}`} value={Number(p.id || 0)}>
-                                  {String(p.name || `玩家#${p.id}`)} · 持有 {Math.max(0, Number(p.gold || 0))}G
+                                  {String(p.name || `Player#${p.id}`)} / {Math.max(0, Number(p.gold || 0))}G
                                 </option>
                               ))}
                             </select>
@@ -610,13 +826,69 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                             />
                             <button
                               onClick={handlePvpGamble}
-                              disabled={casinoBusy}
+                              disabled={casinoBusy || hasPendingPvpRequest}
                               className="w-full py-2 bg-rose-700 text-white text-xs font-black rounded hover:bg-rose-600 disabled:opacity-60"
                             >
-                              发起对赌
+                              Send request
                             </button>
+                            {demonNearbyPlayers.length === 0 && (
+                              <p className="text-[10px] text-stone-400">No nearby players in the casino.</p>
+                            )}
+                            {hasPendingPvpRequest && (
+                              <p className="text-[10px] text-rose-100/80">Finish the current request before sending another duel.</p>
+                            )}
                           </div>
                         </div>
+
+                        {(incomingGambleRequests.length > 0 || outgoingGambleRequests.length > 0) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <div className="p-3 rounded border border-emerald-700/40 bg-emerald-950/20 space-y-2">
+                              <p className="text-[11px] font-black uppercase tracking-wide text-emerald-200">Incoming requests</p>
+                              {incomingGambleRequests.length === 0 ? (
+                                <p className="text-[10px] text-stone-400">No one is challenging you right now.</p>
+                              ) : (
+                                incomingGambleRequests.map((row) => (
+                                  <div key={`incoming-gamble-${row.id}`} className="rounded border border-emerald-800/30 bg-black/30 p-3 space-y-2">
+                                    <div>
+                                      <div className="text-xs font-black text-stone-100">{row.challengerName || 'Unknown player'}</div>
+                                      <div className="text-[10px] text-stone-400 mt-1">Bet amount: {Math.max(1, Number(row.amount || 0))}G</div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button
+                                        onClick={() => handleRespondPvpGamble(Number(row.id || 0), true)}
+                                        disabled={casinoBusy}
+                                        className="py-2 rounded bg-emerald-600 text-black text-[11px] font-black hover:bg-emerald-500 disabled:opacity-60"
+                                      >
+                                        Accept
+                                      </button>
+                                      <button
+                                        onClick={() => handleRespondPvpGamble(Number(row.id || 0), false)}
+                                        disabled={casinoBusy}
+                                        className="py-2 rounded bg-stone-800 text-stone-100 text-[11px] font-black hover:bg-stone-700 disabled:opacity-60"
+                                      >
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div className="p-3 rounded border border-sky-700/40 bg-sky-950/20 space-y-2">
+                              <p className="text-[11px] font-black uppercase tracking-wide text-sky-200">Outgoing requests</p>
+                              {outgoingGambleRequests.length === 0 ? (
+                                <p className="text-[10px] text-stone-400">You have no pending duel request.</p>
+                              ) : (
+                                outgoingGambleRequests.map((row) => (
+                                  <div key={`outgoing-gamble-${row.id}`} className="rounded border border-sky-800/30 bg-black/30 p-3">
+                                    <div className="text-xs font-black text-stone-100">Waiting for {row.targetName || 'the other player'}</div>
+                                    <div className="text-[10px] text-stone-400 mt-1">Bet amount: {Math.max(1, Number(row.amount || 0))}G</div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="text-center bg-stone-900/80 p-6 border border-yellow-900/30 rounded-sm shadow-inner">
@@ -771,6 +1043,64 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                   )}
 
                 </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {diceReveal.visible && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                clearDiceRevealTimers();
+                setDiceReveal((prev) => ({ ...prev, visible: false }));
+              }}
+              className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 18 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 18 }}
+              className="fixed inset-0 z-[80] flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div className={`w-full max-w-md rounded-2xl border bg-stone-950/95 px-6 py-7 text-center shadow-[0_0_45px_rgba(0,0,0,0.55)] pointer-events-auto ${diceReveal.accent === 'rose' ? 'border-rose-500/60 text-rose-100' : 'border-yellow-500/60 text-yellow-100'}`}>
+                <motion.div
+                  animate={diceReveal.phase === 'rolling' ? { rotate: [0, 180, 360], scale: [1, 1.08, 1] } : { rotate: 0, scale: 1 }}
+                  transition={diceReveal.phase === 'rolling' ? { duration: 0.7, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+                  className={`mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border ${diceReveal.accent === 'rose' ? 'border-rose-400/60 bg-rose-950/40 text-rose-300' : 'border-yellow-400/60 bg-yellow-950/40 text-yellow-300'}`}
+                >
+                  <Dices size={50} />
+                </motion.div>
+
+                <h3 className="text-2xl font-black uppercase tracking-wide">{diceReveal.title}</h3>
+                <p className="mt-2 text-xs text-stone-400 uppercase tracking-[0.25em]">{diceReveal.subtitle}</p>
+
+                {diceReveal.mode === 'solo' ? (
+                  <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 px-4 py-5">
+                    <div className="text-[10px] font-black uppercase tracking-[0.35em] text-stone-400">Dice</div>
+                    <div className="mt-3 text-5xl font-black text-white">{diceReveal.phase === 'rolling' ? '?' : diceReveal.soloRoll}</div>
+                  </div>
+                ) : (
+                  <div className="mt-6 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Challenger</div>
+                      <div className="mt-3 text-4xl font-black text-white">{diceReveal.phase === 'rolling' ? '?' : diceReveal.challengerRoll}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-stone-400">Target</div>
+                      <div className="mt-3 text-4xl font-black text-white">{diceReveal.phase === 'rolling' ? '?' : diceReveal.targetRoll}</div>
+                    </div>
+                  </div>
+                )}
+
+                <p className="mt-5 text-sm font-black text-white">
+                  {diceReveal.phase === 'rolling' ? 'Rolling...' : diceReveal.resultText}
+                </p>
               </div>
             </motion.div>
           </>

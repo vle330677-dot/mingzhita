@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 
 type NodeType = 'spawn' | 'town' | 'wild' | 'dungeon' | 'shop' | 'custom';
 
@@ -439,7 +439,7 @@ export function CreatorMapEditor({ value, dropValue, onChange }: Props) {
   );
 }
 
-function ListCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ListCard({ title, children }: { key?: React.Key; title: string; children: React.ReactNode }) {
   return (
     <div className="bg-slate-900/80 border border-slate-700 rounded-2xl p-4">
       <h4 className="font-black text-white mb-2">{title}</h4>
@@ -448,6 +448,7 @@ function ListCard({ title, children }: { title: string; children: React.ReactNod
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
+function Row({ children }: { key?: React.Key; children: React.ReactNode }) {
   return <div className="flex items-center gap-2">{children}</div>;
 }
+

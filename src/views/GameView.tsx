@@ -9,6 +9,8 @@ import { NpcInteractionUI } from './NpcInteractionUI';
 import { CharacterHUD } from './CharacterHUD';
 import { RoleplayWindow } from './RoleplayWindow';
 import { GroupRoleplayWindow } from './GroupRoleplayWindow';
+import { TradeWindow } from './TradeWindow';
+import { TradeRequestPanel, TradeRequestRow } from './TradeRequestPanel';
 
 import { TowerOfLifeView } from './TowerOfLifeView';
 import { LondonTowerView } from './LondonTowerView';
@@ -134,6 +136,21 @@ interface GuardArrestCaseSummary {
   resultMessage?: string;
 }
 
+interface PairRoleplaySessionSummary {
+  sessionId: string;
+  userAId: number;
+  userAName: string;
+  userBId: number;
+  userBName: string;
+  locationId: string;
+  locationName: string;
+  status: 'active' | 'closed' | 'mediating';
+  createdAt: string | null;
+  updatedAt: string | null;
+  lastMessageAt?: string | null;
+  memberCount?: number;
+}
+
 function hashNum(input: string | number) {
   const s = String(input);
   let h = 0;
@@ -145,6 +162,41 @@ function buildPairSessionId(a: number, b: number, locationId: string) {
   const min = Math.min(a, b);
   const max = Math.max(a, b);
   return `rp-${locationId || 'unknown'}-${min}-${max}-${Date.now()}`;
+}
+
+function normalizeRoleplaySessionSummary(raw: any): PairRoleplaySessionSummary | null {
+  const sessionId = String(raw?.sessionId || '').trim();
+  if (!sessionId) return null;
+  return {
+    sessionId,
+    userAId: Number(raw?.userAId || 0),
+    userAName: String(raw?.userAName || ''),
+    userBId: Number(raw?.userBId || 0),
+    userBName: String(raw?.userBName || ''),
+    locationId: String(raw?.locationId || 'unknown'),
+    locationName: String(raw?.locationName || '未知区域'),
+    status: String(raw?.status || 'active') as PairRoleplaySessionSummary['status'],
+    createdAt: raw?.createdAt ? String(raw.createdAt) : null,
+    updatedAt: raw?.updatedAt ? String(raw.updatedAt) : null,
+    lastMessageAt: raw?.lastMessageAt ? String(raw.lastMessageAt) : null,
+    memberCount: Number(raw?.memberCount || 0),
+  };
+}
+
+function getRPPeerName(session: PairRoleplaySessionSummary | null | undefined, currentUserId: number) {
+  if (!session) return '';
+  return Number(session.userAId || 0) === Number(currentUserId || 0)
+    ? String(session.userBName || '')
+    : String(session.userAName || '');
+}
+
+function sortRoleplaySessions(sessions: PairRoleplaySessionSummary[]) {
+  return [...sessions].sort((a, b) => {
+    const aTime = Date.parse(String(a.lastMessageAt || a.updatedAt || a.createdAt || '')) || 0;
+    const bTime = Date.parse(String(b.lastMessageAt || b.updatedAt || b.createdAt || '')) || 0;
+    if (aTime !== bTime) return bTime - aTime;
+    return String(b.sessionId || '').localeCompare(String(a.sessionId || ''));
+  });
 }
 
 // ✅ 统一头像地址解析 + 版本戳
@@ -192,6 +244,7 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [activeView, setActiveView] = useState<string | null>(null);
 
   const [localPlayers, setLocalPlayers] = useState<any[]>([]);
+  const [worldPresence, setWorldPresence] = useState<any[]>([]);
   const [showPlayersPanel, setShowPlayersPanel] = useState(true);
   const [annQueue, setAnnQueue] = useState<any[]>([]);
   const [activeAnn, setActiveAnn] = useState<any | null>(null);
@@ -203,6 +256,9 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [interactTarget, setInteractTarget] = useState<any>(null);
   const [worldNpcs, setWorldNpcs] = useState<any[]>([]);
   const [interactNpc, setInteractNpc] = useState<any>(null);
+  const [activeTradeSessionId, setActiveTradeSessionId] = useState<string | null>(null);
+  const [pendingTradeRequests, setPendingTradeRequests] = useState<TradeRequestRow[]>([]);
+  const [respondingTradeRequestId, setRespondingTradeRequestId] = useState<number | null>(null);
   const [showNpcPanel, setShowNpcPanel] = useState(true);
   const [showAreaPanel, setShowAreaPanel] = useState(true);
   const [desktopContextCollapsed, setDesktopContextCollapsed] = useState(true);
@@ -210,9 +266,9 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
 
 
   // ===== RP 状态 =====
+  const [rpSessions, setRPSessions] = useState<PairRoleplaySessionSummary[]>([]);
   const [rpSessionId, setRPSessionId] = useState<string | null>(null);
   const [rpWindowOpen, setRPWindowOpen] = useState(false);
-  const [rpPeerName, setRPPeerName] = useState<string>('');
   const [rpNearbyHint, setRPNearbyHint] = useState('');
   const [rpPing, setRPPing] = useState(false);
   const [isCreatingRP, setIsCreatingRP] = useState(false);
@@ -237,7 +293,9 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const handledEntanglementPromptSignaturesRef = useRef<Set<string>>(new Set());
   const handledLondonCompatPromptUserIdsRef = useRef<Set<number>>(new Set());
   const interactionEventCursorRef = useRef<number>(0);
-  const lastIncomingRPSessionIdRef = useRef<string>('');
+  const knownRPSessionIdsRef = useRef<Set<string>>(new Set());
+  const rpSessionListReadyRef = useRef(false);
+  const dismissedTradeSessionIdRef = useRef<string>('');
   const backgroundFileRef = useRef<HTMLInputElement | null>(null);
   const customCssFileRef = useRef<HTMLInputElement | null>(null);
 
@@ -295,6 +353,111 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [runtimeUser, setRuntimeUser] = useState(user);
   const actor = runtimeUser || user;
   const effectiveLocationId = activeView || actor.currentLocation;
+  const worldPresenceByLocation = useMemo(() => {
+    const grouped: Record<string, any[]> = {};
+    const seenIds = new Set<number>();
+
+    const pushPlayer = (row: any) => {
+      const id = Number(row?.id || 0);
+      const locationId = String(row?.currentLocation || '');
+      if (!id || !locationId || seenIds.has(id)) return;
+      seenIds.add(id);
+      if (!grouped[locationId]) grouped[locationId] = [];
+      grouped[locationId].push(row);
+    };
+
+    (Array.isArray(worldPresence) ? worldPresence : []).forEach((row) => {
+      const status = String(row?.status || '');
+      if (!['approved', 'ghost'].includes(status)) return;
+      pushPlayer(row);
+    });
+
+    pushPlayer({
+      id: actor.id,
+      name: actor.name,
+      role: actor.role,
+      job: actor.job,
+      currentLocation: actor.currentLocation,
+      status: actor.status,
+      avatarUrl: (actor as any).avatarUrl || '',
+      avatarUpdatedAt: (actor as any).avatarUpdatedAt || null
+    });
+
+    return grouped;
+  }, [worldPresence, actor]);
+
+  const onlinePlayerCount = useMemo(() => {
+    const ids = new Set<number>();
+    (Array.isArray(worldPresence) ? worldPresence : []).forEach((row) => {
+      const id = Number(row?.id || 0);
+      const status = String(row?.status || '');
+      if (id && ['approved', 'ghost'].includes(status)) ids.add(id);
+    });
+    const actorId = Number(actor?.id || 0);
+    if (actorId) ids.add(actorId);
+    return ids.size;
+  }, [worldPresence, actor?.id]);
+
+  const activeRPSession = useMemo(
+    () => rpSessions.find((session) => session.sessionId === rpSessionId) || rpSessions[0] || null,
+    [rpSessions, rpSessionId]
+  );
+  const rpPeerName = useMemo(() => getRPPeerName(activeRPSession, actor.id), [activeRPSession, actor.id]);
+  const rpSessionCount = rpSessions.length;
+
+  const upsertRPSession = (sessionLike: any) => {
+    const normalized = normalizeRoleplaySessionSummary(sessionLike);
+    if (!normalized) return;
+    knownRPSessionIdsRef.current.add(normalized.sessionId);
+    setRPSessions((prev) => sortRoleplaySessions([...prev.filter((row) => row.sessionId !== normalized.sessionId), normalized]));
+    setRPSessionId(normalized.sessionId);
+  };
+
+  const applyRPSessionList = (rawSessions: any[], notifyNew = true) => {
+    const next = sortRoleplaySessions(
+      (Array.isArray(rawSessions) ? rawSessions : [])
+        .map((row) => normalizeRoleplaySessionSummary(row))
+        .filter(Boolean) as PairRoleplaySessionSummary[]
+    );
+    const nextIds = new Set(next.map((session) => session.sessionId));
+
+    setRPSessions(next);
+
+    if (next.length === 0) {
+      knownRPSessionIdsRef.current = nextIds;
+      rpSessionListReadyRef.current = true;
+      if (!isCreatingRP) {
+        setRPSessionId(null);
+        setRPWindowOpen(false);
+        setRPPing(false);
+      }
+      return;
+    }
+
+    if (notifyNew && rpSessionListReadyRef.current) {
+      const newcomers = next.filter((session) => !knownRPSessionIdsRef.current.has(session.sessionId));
+      if (newcomers.length > 0) {
+        const peerName = getRPPeerName(newcomers[0], actor.id);
+        showToast(`${peerName || '有玩家'} 向你发起了对戏，点击左下角“对戏聊天”查看`);
+        if (!rpWindowOpen) setRPPing(true);
+      }
+    }
+
+    knownRPSessionIdsRef.current = nextIds;
+    rpSessionListReadyRef.current = true;
+    setRPSessionId((current) => (current && nextIds.has(current) ? current : next[0].sessionId));
+  };
+
+  const refreshRPSessionList = async (notifyNew = true) => {
+    try {
+      const res = await fetch(`/api/rp/session/list/${actor.id}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) return;
+      applyRPSessionList(data.sessions || [], notifyNew);
+    } catch {
+      // ignore
+    }
+  };
 
   const roleText = String(actor.role || '');
   const isSentinel = roleText === '哨兵' || roleText.toLowerCase() === 'sentinel';
@@ -396,7 +559,7 @@ useEffect(() => {
     } catch {}
   };
   pull();
-  const t = setInterval(pull, 3000);
+  const t = setInterval(pull, 8000);
   return () => { alive = false; clearInterval(t); };
 }, [actor.id]);
 
@@ -459,7 +622,7 @@ useEffect(() => {
   };
 
   pullPrisonState();
-  const timer = setInterval(pullPrisonState, 2500);
+  const timer = setInterval(pullPrisonState, 6000);
   return () => {
     alive = false;
     clearInterval(timer);
@@ -479,7 +642,7 @@ useEffect(() => {
     }
   };
   pullGuardPrisonState();
-  const timer = setInterval(pullGuardPrisonState, 2500);
+  const timer = setInterval(pullGuardPrisonState, 6000);
   return () => {
     alive = false;
     clearInterval(timer);
@@ -537,7 +700,7 @@ useEffect(() => {
   };
 
   pollGuardArrestInbox();
-  const timer = setInterval(pollGuardArrestInbox, 2500);
+  const timer = setInterval(pollGuardArrestInbox, 6000);
   return () => {
     alive = false;
     clearInterval(timer);
@@ -662,6 +825,82 @@ useEffect(() => {
   }, [effectiveLocationId, actor.id]);
 
   useEffect(() => {
+    let alive = true;
+
+    const fetchWorldPresence = async () => {
+      try {
+        const res = await fetch('/api/world/presence', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({} as any));
+        if (!alive || !res.ok || data.success === false) return;
+        setWorldPresence(Array.isArray(data.players) ? data.players : []);
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchWorldPresence();
+    const timer = setInterval(fetchWorldPresence, 10000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+
+    const pollTradeRequests = async () => {
+      try {
+        const res = await fetch('/api/trade/request/pending/' + actor.id, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({} as any));
+        if (!alive || !res.ok || data.success === false) return;
+        const rows = Array.isArray(data.requests) ? data.requests : [];
+        setPendingTradeRequests(rows);
+      } catch {
+        // ignore
+      }
+    };
+
+    pollTradeRequests();
+    const timer = setInterval(pollTradeRequests, 4000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id]);
+
+  useEffect(() => {
+    if (!actor?.id) return;
+    let alive = true;
+
+    const pollActiveTradeSession = async () => {
+      try {
+        const res = await fetch('/api/trade/session/active/' + actor.id, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({} as any));
+        if (!alive || !res.ok || data.success === false) return;
+        const nextSessionId = data.sessionId ? String(data.sessionId) : '';
+        if (!nextSessionId) {
+          dismissedTradeSessionIdRef.current = '';
+          setActiveTradeSessionId(null);
+          return;
+        }
+        if (dismissedTradeSessionIdRef.current === nextSessionId) return;
+        setActiveTradeSessionId(nextSessionId);
+      } catch {
+        // ignore
+      }
+    };
+
+    pollActiveTradeSession();
+    const timer = setInterval(pollActiveTradeSession, 4000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [actor.id]);
+
+  useEffect(() => {
     if (!actor?.id) return;
     let alive = true;
 
@@ -742,7 +981,7 @@ useEffect(() => {
     };
 
     pollSkipRequests();
-    const timer = setInterval(pollSkipRequests, 1800);
+    const timer = setInterval(pollSkipRequests, 5000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -790,7 +1029,7 @@ useEffect(() => {
     let timer: number | null = null;
     const beginPolling = () => {
       pollInteractionEvents();
-      timer = window.setInterval(pollInteractionEvents, 1800);
+      timer = window.setInterval(pollInteractionEvents, 4000);
     };
 
     const bootstrapCursor = async () => {
@@ -869,7 +1108,7 @@ useEffect(() => {
     };
 
     pollEntanglements();
-    const timer = setInterval(pollEntanglements, 2200);
+    const timer = setInterval(pollEntanglements, 6000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -933,7 +1172,7 @@ useEffect(() => {
     };
 
     pollPartyRequests();
-    const timer = setInterval(pollPartyRequests, 1800);
+    const timer = setInterval(pollPartyRequests, 5000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -976,7 +1215,7 @@ useEffect(() => {
               setRPSessionId(String(rData.sessionId));
               setRPWindowOpen(true);
               setRPPing(false);
-              setRPPeerName('评理会话');
+              await refreshRPSessionList(false);
             }
           } catch {
             showToast('处理评理邀请失败');
@@ -988,7 +1227,7 @@ useEffect(() => {
     };
 
     pollMediationInvites();
-    const timer = setInterval(pollMediationInvites, 2200);
+    const timer = setInterval(pollMediationInvites, 6000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -999,49 +1238,28 @@ useEffect(() => {
   useEffect(() => {
     let alive = true;
 
-    const pollIncoming = async () => {
+    const pollIncoming = async (notifyNew = true) => {
       try {
-        const res = await fetch(`/api/rp/session/active/${actor.id}`);
-        const data = await res.json();
+        const res = await fetch(`/api/rp/session/list/${actor.id}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({} as any));
 
-        if (!alive || !res.ok || !data.success) return;
-
-        if (data.sessionId) {
-          const sid = String(data.sessionId);
-          const s = data.session || {};
-          const peer = Number(s.userAId) === Number(actor.id) ? s.userBName || '' : s.userAName || '';
-
-          setRPSessionId(sid);
-          setRPPeerName(peer);
-
-          // 只提示，不自动打开窗口
-          if (sid !== lastIncomingRPSessionIdRef.current && sid !== rpSessionId) {
-            showToast(`${peer || '有玩家'} 向你发起了对戏，点击左下角“对戏聊天”查看`);
-            if (!rpWindowOpen) setRPPing(true);
-          }
-
-          lastIncomingRPSessionIdRef.current = sid;
-        } else {
-          if (isCreatingRP) return;
-          setRPSessionId(null);
-          setRPPeerName('');
-          setRPWindowOpen(false);
-          setRPPing(false);
-          lastIncomingRPSessionIdRef.current = '';
-        }
+        if (!alive || !res.ok || data.success === false) return;
+        applyRPSessionList(data.sessions || [], notifyNew);
       } catch {
         // ignore
       }
     };
 
-    pollIncoming();
-    const t = setInterval(pollIncoming, 1500);
+    pollIncoming(false);
+    const t = setInterval(() => {
+      pollIncoming(true);
+    }, 4000);
 
     return () => {
       alive = false;
       clearInterval(t);
     };
-  }, [actor.id, showToast, rpSessionId, rpWindowOpen, isCreatingRP]);
+  }, [actor.id, showToast, rpWindowOpen, isCreatingRP]);
 
   // ===== 对戏对象“在你身边”提示 =====
   useEffect(() => {
@@ -1160,11 +1378,21 @@ useEffect(() => {
       }
 
       const finalSid = String(data.sessionId || sid);
-      setRPSessionId(finalSid);
-      setRPPeerName(target.name || '');
+      upsertRPSession({
+        sessionId: finalSid,
+        userAId: actor.id,
+        userAName: actor.name,
+        userBId: target.id,
+        userBName: target.name,
+        locationId: effectiveLocationId || 'unknown',
+        locationName,
+        status: 'active',
+        createdAt: null,
+        updatedAt: null,
+        lastMessageAt: new Date().toISOString(),
+      });
       setRPWindowOpen(true);
       setRPPing(false);
-      lastIncomingRPSessionIdRef.current = finalSid;
       showToast(`已向 ${target.name} 发起对戏连接`);
       return { ok: true, sessionId: finalSid };
     } catch (e: any) {
@@ -1176,6 +1404,68 @@ useEffect(() => {
     } finally {
       if (timer !== null) window.clearTimeout(timer);
       setIsCreatingRP(false);
+    }
+  };
+
+  const requestTradeWithUser = async (target: User) => {
+    if (!target?.id || Number(target.id) === Number(actor.id)) {
+      showToast('目标玩家无效');
+      return false;
+    }
+
+    try {
+      const res = await fetch('/api/trade/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromUserId: actor.id,
+          toUserId: target.id,
+        }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '发起交易请求失败');
+        return false;
+      }
+
+      if (data.sessionId) {
+        dismissedTradeSessionIdRef.current = '';
+        setActiveTradeSessionId(String(data.sessionId));
+      }
+      showToast(data.message || '交易请求已发出');
+      return true;
+    } catch {
+      showToast('发起交易请求失败');
+      return false;
+    }
+  };
+
+  const respondTradeRequest = async (requestId: number, accept: boolean) => {
+    if (!requestId || respondingTradeRequestId) return;
+    setRespondingTradeRequestId(requestId);
+    try {
+      const res = await fetch(`/api/trade/request/${requestId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: actor.id, accept }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '处理交易请求失败');
+        return;
+      }
+
+      setPendingTradeRequests((current) => current.filter((row) => Number(row.id || 0) !== requestId));
+      if (accept && data.sessionId) {
+        dismissedTradeSessionIdRef.current = '';
+        setActiveTradeSessionId(String(data.sessionId));
+      }
+      showToast(data.message || (accept ? '已接受交易请求' : '已拒绝交易请求'));
+      fetchGlobalData();
+    } catch {
+      showToast('处理交易请求失败');
+    } finally {
+      setRespondingTradeRequestId(null);
     }
   };
 
@@ -1856,7 +2146,13 @@ const closeAnnouncement = () => {
       </div>
 
       {/* HUD */}
-      <CharacterHUD user={runtimeUser} onLogout={onLogout} onRefresh={fetchGlobalData} />
+      <CharacterHUD
+        user={actor}
+        onLogout={onLogout}
+        onRefresh={fetchGlobalData}
+        currentLocationName={resolveLocationName(String(actor.currentLocation || effectiveLocationId || ''))}
+        onlineCount={onlinePlayerCount}
+      />
 
       {/* 对戏对象在附近提示 */}
       {rpNearbyHint && (
@@ -1883,6 +2179,9 @@ const closeAnnouncement = () => {
                     : loc.x >= 86
                       ? 'right-0 left-auto translate-x-0'
                       : 'left-1/2 -translate-x-1/2';
+                const playersHere = worldPresenceByLocation[String(loc.id)] || [];
+                const visiblePlayers = playersHere.slice(0, 4);
+                const extraPlayers = Math.max(0, playersHere.length - visiblePlayers.length);
 
                 return (
                   <div
@@ -1897,12 +2196,40 @@ const closeAnnouncement = () => {
                     >
                       <MapPin size={14} />
                     </div>
+                    {playersHere.length > 0 && (
+                      <div className={`absolute bottom-8 md:bottom-10 ${labelAnchorClass} flex items-center`}>
+                        {visiblePlayers.map((player: any, idx: number) => {
+                          const avatarSrc = resolveAvatarSrc(player.avatarUrl, player.avatarUpdatedAt);
+                          return (
+                            <div
+                              key={`world-presence-${loc.id}-${player.id}`}
+                              className={`relative overflow-hidden rounded-full border border-white/70 bg-slate-900 shadow-lg ${Number(player.id || 0) === Number(actor.id || 0) ? 'ring-2 ring-sky-300/80' : ''}`}
+                              style={{ width: 24, height: 24, marginLeft: idx === 0 ? 0 : -6 }}
+                              title={String(player.name || 'Player')}
+                            >
+                              {avatarSrc ? (
+                                <img src={avatarSrc} alt={String(player.name || 'avatar')} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-[10px] font-black text-white">
+                                  {String(player.name || '?').slice(0, 1)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {extraPlayers > 0 && (
+                          <span className="ml-1 rounded-full border border-slate-500 bg-slate-900/90 px-1.5 py-0.5 text-[9px] font-black text-slate-200">
+                            +{extraPlayers}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div
                       className={`absolute top-8 ${labelAnchorClass} whitespace-nowrap px-3 py-1.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 rounded-lg text-[10px] md:text-xs font-bold text-slate-200 transition-all duration-300 shadow-xl
                       ${selectedLocation?.id === loc.id ? 'opacity-100 scale-110 z-20 border-sky-500/50 text-white' : 'opacity-0 hover:opacity-100 translate-y-2 hover:translate-y-0'}
                     `}
                     >
-                      {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(loc.id) ? '迷雾区域' : loc.name}
+                      {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(loc.id) ? 'Fog Zone' : loc.name}
                     </div>
                   </div>
                 );
@@ -2585,6 +2912,25 @@ const closeAnnouncement = () => {
         )}
       </AnimatePresence>
 
+      <TradeRequestPanel
+        requests={!isAnyPrisonLocked ? pendingTradeRequests : []}
+        busyRequestId={respondingTradeRequestId}
+        onRespond={respondTradeRequest}
+      />
+
+      {activeTradeSessionId && !isAnyPrisonLocked && (
+        <TradeWindow
+          sessionId={activeTradeSessionId}
+          currentUser={actor}
+          showToast={showToast}
+          fetchGlobalData={fetchGlobalData}
+          onClose={() => {
+            dismissedTradeSessionIdRef.current = String(activeTradeSessionId || '');
+            setActiveTradeSessionId(null);
+          }}
+        />
+      )}
+
       {/* 玩家交互弹窗 */}
       <AnimatePresence>
         {interactTarget && !isAnyPrisonLocked && (
@@ -2599,6 +2945,7 @@ const closeAnnouncement = () => {
             onOpenGroupRoleplay={async () => {
               return await openGroupRoleplayFromInteraction();
             }}
+            onRequestTrade={requestTradeWithUser}
           />
         )}
       </AnimatePresence>
@@ -2798,19 +3145,20 @@ const closeAnnouncement = () => {
         </button>
         <button
           onClick={() => {
-            if (!rpSessionId) {
+            if (!rpSessionCount) {
               showToast('当前没有活跃对戏会话');
               return;
             }
+            if (!rpSessionId && rpSessions[0]) setRPSessionId(rpSessions[0].sessionId);
             setRPWindowOpen((v) => !v);
             setRPPing(false);
           }}
           className={`relative shrink-0 px-3 md:px-4 py-2.5 md:py-3 rounded-2xl font-black text-[11px] md:text-xs shadow-xl transition-all ${
-            rpSessionId ? 'bg-sky-600 text-white hover:bg-sky-500' : 'bg-slate-700 text-slate-300'
+            rpSessionCount ? 'bg-sky-600 text-white hover:bg-sky-500' : 'bg-slate-700 text-slate-300'
           }`}
         >
-          <span className="md:hidden">对戏{rpPeerName ? `·${rpPeerName}` : ''}</span>
-          <span className="hidden md:inline">对戏聊天{rpPeerName ? ` · ${rpPeerName}` : ''}</span>
+          <span className="md:hidden">对戏{rpSessionCount > 1 ? `·${rpSessionCount}` : rpPeerName ? `·${rpPeerName}` : ""}</span>
+          <span className="hidden md:inline">对戏聊天{rpPeerName ? ` · ${rpPeerName}` : ""}{rpSessionCount > 1 ? ` 等${rpSessionCount}场` : ""}</span>
           {rpPing && !rpWindowOpen && (
             <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-rose-500 border border-white" />
           )}
@@ -3125,6 +3473,16 @@ const closeAnnouncement = () => {
           <RoleplayWindow
             sessionId={rpSessionId}
             currentUser={actor}
+            sessions={rpSessions.map((session) => ({
+              sessionId: session.sessionId,
+              peerName: getRPPeerName(session, actor.id),
+              locationName: session.locationName,
+              status: session.status,
+            }))}
+            onSelectSession={(sessionId) => {
+              setRPSessionId(sessionId);
+              setRPPing(false);
+            }}
             onClose={() => setRPWindowOpen(false)}
           />
         )}
@@ -3273,4 +3631,15 @@ const closeAnnouncement = () => {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
 

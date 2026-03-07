@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type UserLite = {
   id: number;
@@ -256,7 +256,8 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
     if (!canControl) return;
     const parsed = safeJsonParse(mapPatchText);
     if (!parsed.ok) {
-      setErr(`地图补丁配置错误: ${parsed.err}`);
+      const errMessage = 'err' in parsed ? parsed.err : '配置文本解析失败';
+      setErr(`地图补丁配置错误: ${errMessage}`);
       return;
     }
     setBusy(true);
@@ -677,3 +678,5 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
 };
 
 export default CustomGameRunView;
+
+

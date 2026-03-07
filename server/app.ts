@@ -17,6 +17,9 @@ import { createCatalogRouter } from './routes/catalog.routes';
 import { createGameplayRouter } from './routes/gameplay.routes';
 import { createGuildRouter } from './routes/guild.routes';
 import { createRpRouter } from './rp.routes';
+import { createGhostRouter } from './routes/ghost.routes';
+import { createArmyRouter } from './routes/army.routes';
+import { createConfirmationRouter } from './routes/confirmation.routes';
 import type { AppContext } from './types';
 
 dotenv.config();
@@ -48,6 +51,9 @@ export async function startServer() {
   app.use('/api', createCatalogRouter(ctx));
   app.use('/api', createGameplayRouter(ctx));
   app.use('/api', createGuildRouter(ctx));
+  app.use('/api', createGhostRouter(ctx));
+  app.use('/api', createArmyRouter(ctx));
+  app.use('/api', createConfirmationRouter(ctx));
   app.use('/api', createCompatRouter(ctx));
   app.use('/api', createAnnouncementsRouter(ctx));
   app.use('/api', createRoomsRouter(ctx));

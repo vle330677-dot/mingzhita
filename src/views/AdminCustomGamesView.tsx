@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../utils/http';
 
 type AnyGame = Record<string, any>;
@@ -14,7 +14,7 @@ export function AdminCustomGamesView() {
 
   const showMsg = (msg: string) => {
     setResultMsg(msg);
-    setTimeout(() => setResultMsg(''), 4000);
+    window.setTimeout(() => setResultMsg(''), 4000);
   };
 
   const formatReviewStatus = (raw: unknown) => {
@@ -37,6 +37,8 @@ export function AdminCustomGamesView() {
       start_pending: '开局待审',
       start_rejected: '开局驳回',
       ready_for_vote: '待全服投票',
+      running: '运行中',
+      vote_failed: '投票失败',
     };
     return map[key] || String(raw || '-');
   };
@@ -46,9 +48,10 @@ export function AdminCustomGamesView() {
     const map: Record<string, string> = {
       open: '进行中',
       closed: '已结束',
-      pending: '待开始',
+      pending: '待开启',
       passed: '已通过',
-      rejected: '未通过'
+      rejected: '未通过',
+      none: '未开启',
     };
     return map[key] || String(raw || '-');
   };
@@ -58,7 +61,7 @@ export function AdminCustomGamesView() {
       mapList.map((m) => ({
         ...m,
         title: `${String(m.game_title || '未命名灾厄局')} · 地图v${Number(m.version || 1)}`,
-        creatorLabel: `地图#${Number(m.id || 0)} / 游戏#${Number(m.game_id || 0)}`
+        creatorLabel: `地图#${Number(m.id || 0)} / 游戏#${Number(m.game_id || 0)}`,
       })),
     [mapList]
   );
@@ -69,7 +72,7 @@ export function AdminCustomGamesView() {
       const [ideas, maps, starts] = await Promise.all([
         apiFetch<any[]>('/api/custom-games/admin/review/ideas/pending', { auth: 'admin' }),
         apiFetch<any[]>('/api/custom-games/admin/review/maps/pending', { auth: 'admin' }),
-        apiFetch<any[]>('/api/custom-games/admin/review/start/pending', { auth: 'admin' })
+        apiFetch<any[]>('/api/custom-games/admin/review/start/pending', { auth: 'admin' }),
       ]);
       setIdeaList(Array.isArray(ideas) ? ideas : []);
       setMapList(Array.isArray(maps) ? maps : []);
@@ -85,21 +88,37 @@ export function AdminCustomGamesView() {
     loadAll();
   }, []);
 
+  const deleteGame = async (gameId: number, title: string) => {
+    if (!gameId) return;
+    const ok = window.confirm(`确定删除这条灾厄申请吗？\n${title || `游戏#${gameId}`}\n\n这会连同地图、审核票和残留申请一起删除。`);
+    if (!ok) return;
+    try {
+      const data = await apiFetch<any>(`/api/custom-games/admin/review/game/${gameId}`, {
+        method: 'DELETE',
+        auth: 'admin',
+      });
+      showMsg(data?.message || `已删除 ${title || `游戏#${gameId}`}`);
+      await loadAll();
+    } catch (e: any) {
+      showMsg(e?.message || '删除灾厄申请失败');
+    }
+  };
+
   const reviewIdea = async (id: number, decision: 'approved' | 'rejected') => {
     try {
       const data = await apiFetch<any>(`/api/custom-games/admin/review/idea/${id}`, {
         method: 'POST',
         auth: 'admin',
-        body: { approve: decision === 'approved', comment }
+        body: { approve: decision === 'approved', comment },
       });
       if (data?.pending) {
         showMsg(`已记录审核票（${data.approveCount}/${data.required} 通过，${data.rejectCount}/${data.required} 驳回），等待其他管理员会签`);
       } else {
-        showMsg(decision === 'approved' ? '✅ 创意审核通过，设计者现在可以绘制地图' : '❌ 创意已驳回');
+        showMsg(decision === 'approved' ? '创意审核通过，设计者现在可以绘制地图' : '创意已驳回');
       }
       await loadAll();
     } catch (e: any) {
-      showMsg('创意审核失败：' + (e?.message || '未知错误'));
+      showMsg(`创意审核失败：${e?.message || '未知错误'}`);
     }
   };
 
@@ -108,16 +127,16 @@ export function AdminCustomGamesView() {
       const data = await apiFetch<any>(`/api/custom-games/admin/review/map/${mapId}`, {
         method: 'POST',
         auth: 'admin',
-        body: { approve: decision === 'approved', comment }
+        body: { approve: decision === 'approved', comment },
       });
       if (data?.pending) {
         showMsg(`已记录审核票（${data.approveCount}/${data.required} 通过，${data.rejectCount}/${data.required} 驳回），等待其他管理员会签`);
       } else {
-        showMsg(decision === 'approved' ? '✅ 地图审核通过，游戏已进入可开局状态' : '❌ 地图已驳回，设计者需重新提交');
+        showMsg(decision === 'approved' ? '地图审核通过，游戏已进入可开局状态' : '地图已驳回，设计者需重新提交');
       }
       await loadAll();
     } catch (e: any) {
-      showMsg('地图审核失败：' + (e?.message || '未知错误'));
+      showMsg(`地图审核失败：${e?.message || '未知错误'}`);
     }
   };
 
@@ -126,16 +145,16 @@ export function AdminCustomGamesView() {
       const data = await apiFetch<any>(`/api/custom-games/admin/review/start/${gameId}`, {
         method: 'POST',
         auth: 'admin',
-        body: { approve: decision === 'approved', comment }
+        body: { approve: decision === 'approved', comment },
       });
       if (data?.pending) {
         showMsg(`已记录审核票（${data.approveCount}/${data.required} 通过，${data.rejectCount}/${data.required} 驳回），等待其他管理员会签`);
       } else {
-        showMsg(decision === 'approved' ? '✅ 开局审核通过，现在可开启全服投票' : '❌ 开局申请已驳回');
+        showMsg(decision === 'approved' ? '开局审核通过，现在可开启全服投票' : '开局申请已驳回');
       }
       await loadAll();
     } catch (e: any) {
-      showMsg('开局审核失败：' + (e?.message || '未知错误'));
+      showMsg(`开局审核失败：${e?.message || '未知错误'}`);
     }
   };
 
@@ -143,12 +162,12 @@ export function AdminCustomGamesView() {
     try {
       const data = await apiFetch<any>(`/api/custom-games/${id}/vote/open`, {
         method: 'POST',
-        auth: 'admin'
+        auth: 'admin',
       });
-      showMsg(`✅ 全服投票已开启，截止：${data?.voteEndsAt || '未知'}`);
+      showMsg(`全服投票已开启，截止时间：${data?.voteEndsAt || '未知'}`);
       await loadAll();
     } catch (e: any) {
-      showMsg('开启投票失败：' + (e?.message || '未知错误'));
+      showMsg(`开启投票失败：${e?.message || '未知错误'}`);
     }
   };
 
@@ -157,7 +176,7 @@ export function AdminCustomGamesView() {
       const data = await apiFetch<any>(`/api/custom-games/${id}/vote/status`, { auth: 'admin' });
       setVoteStats((prev) => ({ ...prev, [id]: data }));
     } catch (e: any) {
-      showMsg('查询票数失败：' + (e?.message || '未知错误'));
+      showMsg(`查询票数失败：${e?.message || '未知错误'}`);
     }
   };
 
@@ -167,12 +186,12 @@ export function AdminCustomGamesView() {
     try {
       const data = await apiFetch<any>(`/api/custom-games/${id}/vote/close-and-judge`, {
         method: 'POST',
-        auth: 'admin'
+        auth: 'admin',
       });
-      showMsg(data?.passed ? '✅ 投票通过，灾厄副本已开启！' : '❌ 投票未通过，未满足半数同意');
+      showMsg(data?.passed ? '投票通过，灾厄副本已开启' : '投票未通过，未满足半数同意');
       await loadAll();
     } catch (e: any) {
-      showMsg('判定失败：' + (e?.message || '未知错误'));
+      showMsg(`判定失败：${e?.message || '未知错误'}`);
     }
   };
 
@@ -184,7 +203,7 @@ export function AdminCustomGamesView() {
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           className="w-full p-2 border rounded"
-          placeholder="驳回原因或说明（可留空）"
+          placeholder="填写驳回原因或说明"
         />
         {resultMsg && (
           <div className="px-3 py-2 rounded-lg bg-slate-100 border border-slate-300 text-sm font-bold text-slate-700">
@@ -197,19 +216,25 @@ export function AdminCustomGamesView() {
       <Block
         title="创意待审"
         list={ideaList}
-        subtitle={(g) => `创建者#${Number(g.creator_user_id || 0)} · ${formatReviewStatus(g.status)}`}
-        body={(g) => g.idea_text ? <p className="text-xs text-slate-500 mt-1 line-clamp-2">{String(g.idea_text)}</p> : null}
+        subtitle={(g) => `创建者 #${Number(g.creator_user_id || 0)} · ${formatReviewStatus(g.status)}`}
+        body={(g) =>
+          g.idea_text ? <p className="text-xs text-slate-500 mt-1 line-clamp-3">{String(g.idea_text)}</p> : null
+        }
         onApprove={(id) => reviewIdea(id, 'approved')}
         onReject={(id) => reviewIdea(id, 'rejected')}
+        onDelete={(item) => deleteGame(Number(item.id || 0), String(item.title || `游戏#${Number(item.id || 0)}`))}
       />
 
       <Block
         title="地图待审"
         list={normalizedMapList}
-        subtitle={(g) => `${g.creatorLabel} · ${formatReviewStatus(g.status)}`}
-        body={() => null}
+        subtitle={(g) => `${String(g.creatorLabel || '')} · ${formatReviewStatus(g.status)}`}
+        body={(g) => (
+          <p className="text-xs text-slate-500 mt-1">创建者 #{Number(g.game_creator_user_id || 0)}</p>
+        )}
         onApprove={(id) => reviewMap(id, 'approved')}
         onReject={(id) => reviewMap(id, 'rejected')}
+        onDelete={(item) => deleteGame(Number(item.game_id || 0), String(item.game_title || item.title || `游戏#${Number(item.game_id || 0)}`))}
       />
 
       <div className="bg-white border rounded-2xl p-4">
@@ -223,24 +248,32 @@ export function AdminCustomGamesView() {
               const vote = voteStats[gameId];
               return (
                 <div key={gameId} className="border rounded p-3 space-y-2">
-                  <div>
-                    <div className="font-bold">{String(g.title || `游戏#${gameId}`)}</div>
-                    <div className="text-xs text-slate-500">
-                      创建者#{Number(g.creator_user_id || 0)} · {formatReviewStatus(g.status)}
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold">{String(g.title || `游戏#${gameId}`)}</div>
+                      <div className="text-xs text-slate-500">
+                        创建者 #{Number(g.creator_user_id || 0)} · {formatReviewStatus(g.status)}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => deleteGame(gameId, String(g.title || `游戏#${gameId}`))}
+                      className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded font-bold text-sm hover:bg-slate-300"
+                    >
+                      删除申请
+                    </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => reviewStart(gameId, 'approved')}
                       className="px-3 py-1.5 bg-emerald-600 text-white rounded font-bold text-sm"
                     >
-                      ✓ 通过开局
+                      通过开局
                     </button>
                     <button
                       onClick={() => reviewStart(gameId, 'rejected')}
                       className="px-3 py-1.5 bg-rose-600 text-white rounded font-bold text-sm"
                     >
-                      ✗ 驳回开局
+                      驳回开局
                     </button>
                     <button
                       onClick={() => openVote(gameId)}
@@ -250,12 +283,12 @@ export function AdminCustomGamesView() {
                     </button>
                     <button
                       onClick={() => closeAndJudge(gameId)}
-                      className="px-3 py-1.5 bg-purple-600 text-white rounded font-bold text-sm"
+                      className="px-3 py-1.5 bg-violet-600 text-white rounded font-bold text-sm"
                     >
                       关票并判定
                     </button>
                   </div>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex gap-2 items-center flex-wrap">
                     <button onClick={() => fetchVoteStatus(gameId)} className="px-3 py-1 bg-slate-700 text-white rounded text-sm font-bold">
                       查看票数
                     </button>
@@ -285,7 +318,8 @@ function Block({
   subtitle,
   body,
   onApprove,
-  onReject
+  onReject,
+  onDelete,
 }: {
   title: string;
   list: any[];
@@ -293,6 +327,7 @@ function Block({
   body: (item: any) => React.ReactNode;
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
+  onDelete?: (item: any) => void;
 }) {
   return (
     <div className="bg-white border rounded-2xl p-4">
@@ -311,13 +346,18 @@ function Block({
                     <div className="text-xs text-slate-500">{subtitle(g)}</div>
                     {body(g)}
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex gap-2 shrink-0 flex-wrap justify-end">
                     <button onClick={() => onApprove(id)} className="px-3 py-1.5 bg-emerald-600 text-white rounded font-bold text-sm">
-                      ✓ 通过
+                      通过
                     </button>
                     <button onClick={() => onReject(id)} className="px-3 py-1.5 bg-rose-600 text-white rounded font-bold text-sm">
-                      ✗ 驳回
+                      驳回
                     </button>
+                    {onDelete && (
+                      <button onClick={() => onDelete(g)} className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded font-bold text-sm hover:bg-slate-300">
+                        删除申请
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -328,4 +368,3 @@ function Block({
     </div>
   );
 }
-

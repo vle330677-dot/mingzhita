@@ -1,4 +1,4 @@
-import { Router, Request, Response, NextFunction } from "express";
+﻿import { Router, Request, Response, NextFunction } from "express";
 
 type DB = any;
 
@@ -78,6 +78,85 @@ function now() {
   return new Date().toISOString();
 }
 
+function runDeleteByIds(db: DB, table: string, column: string, ids: Array<number | string>) {
+  const clean = ids
+    .map((x) => (typeof x === "number" ? x : String(x).trim()))
+    .filter((x) => x !== "" && x !== 0);
+  if (!clean.length) return 0;
+  const placeholders = clean.map(() => "?").join(", ");
+  const info = db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...clean) as any;
+  return Number(info?.changes || 0);
+}
+
+function deleteCustomGameCascade(db: DB, gameId: number, opts?: { allowRunning?: boolean }) {
+  const allowRunning = !!opts?.allowRunning;
+  const game = db.prepare(`SELECT id, title, status FROM custom_games WHERE id = ? LIMIT 1`).get(gameId) as any;
+  if (!game) return { found: false, deleted: false, blocked: false, title: "", mapCount: 0, runCount: 0 };
+
+  const activeRun = db.prepare(`
+    SELECT id
+    FROM custom_game_runs
+    WHERE game_id = ? AND status = 'running'
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(gameId) as any;
+  if (activeRun && !allowRunning) {
+    return { found: true, deleted: false, blocked: true, title: String(game.title || ""), mapCount: 0, runCount: 0 };
+  }
+
+  const mapIds = (db.prepare(`SELECT id FROM custom_game_maps WHERE game_id = ?`).all(gameId) as any[])
+    .map((row) => Number(row.id || 0))
+    .filter((id) => id > 0);
+  const runIds = (db.prepare(`SELECT id FROM custom_game_runs WHERE game_id = ?`).all(gameId) as any[])
+    .map((row) => Number(row.id || 0))
+    .filter((id) => id > 0);
+
+  const gameTaskIds = (db.prepare(`
+    SELECT id
+    FROM review_tasks
+    WHERE target_type = 'game'
+      AND target_id = ?
+      AND module_key IN ('custom_idea', 'custom_start')
+  `).all(String(gameId)) as any[])
+    .map((row) => Number(row.id || 0))
+    .filter((id) => id > 0);
+  const mapTaskIds = mapIds.length
+    ? (db.prepare(`
+        SELECT id
+        FROM review_tasks
+        WHERE target_type = 'map'
+          AND module_key = 'custom_map'
+          AND target_id IN (${mapIds.map(() => "?").join(", ")})
+      `).all(...mapIds.map(String)) as any[])
+        .map((row) => Number(row.id || 0))
+        .filter((id) => id > 0)
+    : [];
+  const taskIds = [...gameTaskIds, ...mapTaskIds];
+
+  const tx = db.transaction(() => {
+    runDeleteByIds(db, "review_votes", "task_id", taskIds);
+    runDeleteByIds(db, "review_tasks", "id", taskIds);
+    db.prepare(`DELETE FROM custom_game_reviews WHERE game_id = ?`).run(gameId);
+    runDeleteByIds(db, "custom_game_reviews", "map_id", mapIds);
+    db.prepare(`DELETE FROM custom_game_votes WHERE game_id = ?`).run(gameId);
+    runDeleteByIds(db, "custom_game_run_events", "run_id", runIds);
+    runDeleteByIds(db, "custom_game_run_players", "run_id", runIds);
+    db.prepare(`DELETE FROM custom_game_runs WHERE game_id = ?`).run(gameId);
+    db.prepare(`DELETE FROM custom_game_maps WHERE game_id = ?`).run(gameId);
+    db.prepare(`DELETE FROM custom_games WHERE id = ?`).run(gameId);
+  });
+  tx();
+
+  return {
+    found: true,
+    deleted: true,
+    blocked: false,
+    title: String(game.title || ""),
+    mapCount: mapIds.length,
+    runCount: runIds.length,
+  };
+}
+
 /** -------------------- Auth Helpers -------------------- */
 function getBearerToken(req: any) {
   const h = req.headers?.authorization || "";
@@ -87,7 +166,7 @@ function getBearerToken(req: any) {
 
 function getReqUserFactory(db: DB) {
   return function getReqUser(req: any): AuthUser | null {
-    // 1) 兼容已有 req.user / session
+    // 1) 鍏煎宸叉湁 req.user / session
     const u = req.user || req.session?.user;
     if (u?.id) {
       return {
@@ -98,7 +177,7 @@ function getReqUserFactory(db: DB) {
       };
     }
 
-    // 2) bearer token（对接你现在 user_sessions）
+    // 2) bearer token锛堝鎺ヤ綘鐜板湪 user_sessions锛?
     const token = getBearerToken(req);
     if (token) {
       try {
@@ -123,7 +202,7 @@ function getReqUserFactory(db: DB) {
       }
     }
 
-    // 3) header 兜底（调试）
+    // 3) header 鍏滃簳锛堣皟璇曪級
     const id = Number(req.headers["x-user-id"]);
     if (!id) return null;
     return {
@@ -165,7 +244,7 @@ async function createAnnouncement(
   payload: any
 ) {
   const payloadJson = toJson(payload, {});
-  // 兼容不同 announcements 表结构
+  // 鍏煎涓嶅悓 announcements 琛ㄧ粨鏋?
   try {
     await dbRun(
       db,
@@ -231,8 +310,8 @@ async function ensureReviewQuorumTables(db: DB) {
   ];
   for (const x of ddl) await dbRun(db, x);
 
-  // 单管理员即可决议（required_approvals = 1）
-  // 使用 UPSERT 确保已有旧记录（值为 2）也会被更新
+  // 鍗曠鐞嗗憳鍗冲彲鍐宠锛坮equired_approvals = 1锛?
+  // 浣跨敤 UPSERT 纭繚宸叉湁鏃ц褰曪紙鍊间负 2锛変篃浼氳鏇存柊
   const defaults: Array<[ReviewModule, number]> = [
     ["custom_idea", 1],
     ["custom_map", 1],
@@ -308,9 +387,10 @@ async function voteAndJudge(db: DB, opts: {
   comment?: string;
 }) {
   const task = await ensureReviewTask(db, opts);
+  const required = await getRequiredApprovals(db, opts.moduleKey);
 
   if (task.status !== "pending") {
-    const required = await getRequiredApprovals(db, opts.moduleKey);
+
     return {
       taskId: Number(task.id),
       done: true,
@@ -321,7 +401,7 @@ async function voteAndJudge(db: DB, opts: {
     };
   }
 
-  // 发起人不能自审（required > 1 时才限制，required = 1 时管理员可直接决议自己提交的游戏）
+  // 鍙戣捣浜轰笉鑳借嚜瀹★紙required > 1 鏃舵墠闄愬埗锛宺equired = 1 鏃剁鐞嗗憳鍙洿鎺ュ喅璁嚜宸辨彁浜ょ殑娓告垙锛?
   if (required > 1 && task.creator_user_id && Number(task.creator_user_id) === Number(opts.adminId)) {
     throw new Error("creator cannot self-review");
   }
@@ -349,7 +429,6 @@ async function voteAndJudge(db: DB, opts: {
 
   const approveCount = Number(c?.approve_count || 0);
   const rejectCount = Number(c?.reject_count || 0);
-  const required = await getRequiredApprovals(db, opts.moduleKey);
 
   let finalStatus: "pending" | "approved" | "rejected" = "pending";
   if (approveCount >= required) finalStatus = "approved";
@@ -506,7 +585,7 @@ export function createCustomGameRouter(db: DB) {
   ensureTables(db).catch((e) => console.error("[customGame] ensureTables error:", e));
   ensureReviewQuorumTables(db).catch((e) => console.error("[customGame] ensureReviewQuorumTables error:", e));
 
-  /** ---------- 审核门槛配置 ---------- */
+  /** ---------- 瀹℃牳闂ㄦ閰嶇疆 ---------- */
   router.get("/admin/review-rules", requireAdmin, async (_req, res) => {
     try {
       const rows = await dbAll(
@@ -536,7 +615,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 玩家基础 -------------------- */
+  /** -------------------- 鐜╁鍩虹 -------------------- */
   router.post("/", requireAuth, async (req, res) => {
     try {
       const user = (req as any).authUser as AuthUser;
@@ -552,7 +631,7 @@ export function createCustomGameRouter(db: DB) {
         [title, ideaText, user.id, ts, ts]
       );
 
-      // 创建会签任务（创意）
+      // 鍒涘缓浼氱浠诲姟锛堝垱鎰忥級
       await ensureReviewTask(db, {
         moduleKey: "custom_idea",
         targetType: "game",
@@ -581,7 +660,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 审核池 -------------------- */
+  /** -------------------- 瀹℃牳姹?-------------------- */
   router.get("/admin/review/ideas/pending", requireAdmin, async (_req, res) => {
     try {
       const rows = await dbAll(db, `SELECT * FROM custom_games WHERE status = 'idea_pending' ORDER BY id ASC`);
@@ -591,7 +670,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  // 创意会签
+  // 鍒涙剰浼氱
   router.post("/admin/review/idea/:gameId", requireAdmin, async (req, res) => {
     try {
       const admin = (req as any).authUser as AuthUser;
@@ -623,7 +702,7 @@ export function createCustomGameRouter(db: DB) {
 
       if (!result.done) {
         return res.json({
-          message: `已记录审核票：${result.approveCount}/${result.required} 通过，${result.rejectCount}/${result.required} 驳回`,
+          message: `宸茶褰曞鏍哥エ锛?{result.approveCount}/${result.required} 閫氳繃锛?{result.rejectCount}/${result.required} 椹冲洖`,
           pending: true,
           ...result,
         });
@@ -658,7 +737,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  // 地图会签
+  // 鍦板浘浼氱
   router.post("/admin/review/map/:mapId", requireAdmin, async (req, res) => {
     try {
       const admin = (req as any).authUser as AuthUser;
@@ -697,7 +776,7 @@ export function createCustomGameRouter(db: DB) {
 
       if (!result.done) {
         return res.json({
-          message: `已记录审核票：${result.approveCount}/${result.required} 通过，${result.rejectCount}/${result.required} 驳回`,
+          message: `宸茶褰曞鏍哥エ锛?{result.approveCount}/${result.required} 閫氳繃锛?{result.rejectCount}/${result.required} 椹冲洖`,
           pending: true,
           ...result,
         });
@@ -743,7 +822,25 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  // 开局会签（达到门槛后只进入 ready_for_vote；真正开局仍走 vote/open + close-and-judge）
+  router.delete("/admin/review/game/:gameId", requireAdmin, async (req, res) => {
+    try {
+      const gameId = Number(req.params.gameId || 0);
+      if (!gameId) return res.status(400).json({ success: false, message: "invalid gameId" });
+
+      const result = deleteCustomGameCascade(db, gameId, { allowRunning: false });
+      if (!result.found) return res.status(404).json({ success: false, message: "game not found" });
+      if (result.blocked) {
+        return res.status(409).json({ success: false, message: "game is running and cannot be deleted now" });
+      }
+
+      return res.json({ success: true, message: "custom game deleted" });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || "delete custom game failed" });
+    }
+  });
+
+
+  // 寮€灞€浼氱锛堣揪鍒伴棬妲涘悗鍙繘鍏?ready_for_vote锛涚湡姝ｅ紑灞€浠嶈蛋 vote/open + close-and-judge锛?
   router.post("/admin/review/start/:gameId", requireAdmin, async (req, res) => {
     try {
       const admin = (req as any).authUser as AuthUser;
@@ -778,7 +875,7 @@ export function createCustomGameRouter(db: DB) {
 
       if (!result.done) {
         return res.json({
-          message: `已记录审核票：${result.approveCount}/${result.required} 通过，${result.rejectCount}/${result.required} 驳回`,
+          message: `宸茶褰曞鏍哥エ锛?{result.approveCount}/${result.required} 閫氳繃锛?{result.rejectCount}/${result.required} 椹冲洖`,
           pending: true,
           ...result,
         });
@@ -797,7 +894,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 地图提交/读取 -------------------- */
+  /** -------------------- 鍦板浘鎻愪氦/璇诲彇 -------------------- */
   router.post("/:id/map", requireAuth, async (req, res) => {
     try {
       const user = (req as any).authUser as AuthUser;
@@ -828,7 +925,7 @@ export function createCustomGameRouter(db: DB) {
         [ts, gameId]
       );
 
-      // 建任务
+      // 寤轰换鍔?
       await ensureReviewTask(db, {
         moduleKey: "custom_map",
         targetType: "map",
@@ -859,7 +956,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 开局申请 -------------------- */
+  /** -------------------- 寮€灞€鐢宠 -------------------- */
   router.post("/:id/start-request", requireAuth, async (req, res) => {
     try {
       const user = (req as any).authUser as AuthUser;
@@ -876,7 +973,7 @@ export function createCustomGameRouter(db: DB) {
         [now(), gameId]
       );
 
-      // 建任务
+      // 寤轰换鍔?
       await ensureReviewTask(db, {
         moduleKey: "custom_start",
         targetType: "game",
@@ -891,7 +988,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 投票 -------------------- */
+  /** -------------------- 鎶曠エ -------------------- */
   router.post("/:id/vote/open", requireAdmin, async (req, res) => {
     try {
       const gameId = Number(req.params.id);
@@ -900,7 +997,7 @@ export function createCustomGameRouter(db: DB) {
       const game = await dbGet(db, `SELECT * FROM custom_games WHERE id = ?`, [gameId]);
       if (!game) return res.status(404).json({ message: "game not found" });
 
-      // 只允许会签通过后进入开票
+      // 鍙厑璁镐細绛鹃€氳繃鍚庤繘鍏ュ紑绁?
       if (!["ready_for_vote", "ready_for_start"].includes(String(game.status))) {
         return res.status(400).json({ message: "game not in ready_for_vote/ready_for_start" });
       }
@@ -922,241 +1019,30 @@ export function createCustomGameRouter(db: DB) {
       await createAnnouncement(
         db,
         "vote_open",
-        `【开票】灾厄游戏 #${gameId}`,
-        `《${game.title}》灾厄开局投票已开启，${durationMinutes}分钟后关票。`,
-        { gameId, durationMinutes, voteEndsAt: endAt }
+        `副本 ${String(game.title || `#${gameId}`)} 已开启投票`,
+        `请在 ${durationMinutes} 分钟内完成投票，结束后由管理员结算结果。`,
+        { gameId, voteEndsAt: endAt, durationMinutes }
       );
 
       res.json({ message: "vote opened", voteEndsAt: endAt });
-    } catch (e: any) {
-      res.status(500).json({ message: e?.message || "open vote failed" });
-    }
-  });
-
-  router.get("/:id/vote/status", requireAuth, async (req, res) => {
-    try {
-      const user = (req as any).authUser as AuthUser;
-      const gameId = Number(req.params.id);
-
-      const game = await dbGet(db, `SELECT id, vote_status, vote_opened_at, vote_ends_at FROM custom_games WHERE id = ?`, [gameId]);
-      if (!game) return res.status(404).json({ message: "game not found" });
-
-      const agg = await dbGet(
-        db,
-        `SELECT
-           SUM(CASE WHEN vote = 1 THEN 1 ELSE 0 END) AS yesCount,
-           SUM(CASE WHEN vote = 0 THEN 1 ELSE 0 END) AS noCount,
-           COUNT(*) AS total
-         FROM custom_game_votes
-         WHERE game_id = ?`,
-        [gameId]
-      );
-
-      const my = await dbGet(
-        db,
-        `SELECT vote FROM custom_game_votes WHERE game_id = ? AND user_id = ?`,
-        [gameId, user.id]
-      );
-
-      res.json({
-        voteStatus: game.vote_status || "none",
-        voteOpenedAt: game.vote_opened_at,
-        voteEndsAt: game.vote_ends_at,
-        yesCount: Number(agg?.yesCount || 0),
-        noCount: Number(agg?.noCount || 0),
-        total: Number(agg?.total || 0),
-        myVote: my ? Number(my.vote) : null,
-      });
-    } catch (e: any) {
-      res.status(500).json({ message: e?.message || "vote status failed" });
-    }
-  });
-
-  router.post("/:id/vote/cast", requireAuth, async (req, res) => {
-    try {
-      const user = (req as any).authUser as AuthUser;
-      const gameId = Number(req.params.id);
-      const vote = Number(req.body?.vote) === 1 ? 1 : 0;
-
-      const game = await dbGet(db, `SELECT id, vote_status, vote_ends_at FROM custom_games WHERE id = ?`, [gameId]);
-      if (!game) return res.status(404).json({ message: "game not found" });
-      if (game.vote_status !== "open") return res.status(400).json({ message: "vote not open" });
-
-      if (game.vote_ends_at && Date.now() > new Date(game.vote_ends_at).getTime()) {
-        return res.status(400).json({ message: "vote already ended, wait admin close" });
-      }
-
-      const existing = await dbGet(
-        db,
-        `SELECT id FROM custom_game_votes WHERE game_id = ? AND user_id = ?`,
-        [gameId, user.id]
-      );
-
-      const ts = now();
-      if (existing) {
-        await dbRun(
-          db,
-          `UPDATE custom_game_votes SET vote = ?, updated_at = ? WHERE game_id = ? AND user_id = ?`,
-          [vote, ts, gameId, user.id]
-        );
-      } else {
-        await dbRun(
-          db,
-          `INSERT INTO custom_game_votes(game_id, user_id, vote, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?)`,
-          [gameId, user.id, vote, ts, ts]
-        );
-      }
-
-      res.json({ message: "vote casted", vote });
-    } catch (e: any) {
-      res.status(500).json({ message: e?.message || "cast vote failed" });
-    }
-  });
-
-  router.post("/:id/vote/close-and-judge", requireAdmin, async (req, res) => {
-    try {
-      const admin = (req as any).authUser as AuthUser;
-      const gameId = Number(req.params.id);
-      const minYes = Math.max(1, Number(req.body?.minYes || 1));
-      const defaultTotalStages = Math.max(1, Number(req.body?.totalStages || 3));
-
-      const game = await dbGet(db, `SELECT * FROM custom_games WHERE id = ?`, [gameId]);
-      if (!game) return res.status(404).json({ message: "game not found" });
-      if (game.vote_status !== "open") return res.status(400).json({ message: "vote not open" });
-
-      const agg = await dbGet(
-        db,
-        `SELECT
-          SUM(CASE WHEN vote = 1 THEN 1 ELSE 0 END) AS yesCount,
-          SUM(CASE WHEN vote = 0 THEN 1 ELSE 0 END) AS noCount
-         FROM custom_game_votes
-         WHERE game_id = ?`,
-        [gameId]
-      );
-      const yes = Number(agg?.yesCount || 0);
-      const no = Number(agg?.noCount || 0);
-      const passed = yes >= minYes && yes > no;
-
-      await dbRun(
-        db,
-        `UPDATE custom_games SET vote_status = ?, updated_at = ? WHERE id = ?`,
-        [passed ? "closed_pass" : "closed_fail", now(), gameId]
-      );
-
-      if (!passed) {
-        await dbRun(db, `UPDATE custom_games SET status = 'vote_failed', updated_at = ? WHERE id = ?`, [now(), gameId]);
-        return res.json({ message: "vote closed", passed: false, yes, no });
-      }
-
-      let mapRow: any = null;
-      if (game.current_map_id) {
-        mapRow = await dbGet(db, `SELECT * FROM custom_game_maps WHERE id = ?`, [game.current_map_id]);
-      }
-      if (!mapRow) {
-        mapRow = await dbGet(
-          db,
-          `SELECT * FROM custom_game_maps
-            WHERE game_id = ? AND status = 'approved'
-            ORDER BY version DESC, id DESC
-            LIMIT 1`,
-          [gameId]
-        );
-      }
-      const mapSnapshot = fromJson(mapRow?.map_data, { points: [], rules: {} });
-
-      const ts = now();
-      const runRet = await dbRun(
-        db,
-        `INSERT INTO custom_game_runs(
-          game_id, status, current_stage, total_stages, stage_configs, map_snapshot, creator_user_id,
-          started_at, created_at, updated_at
-        ) VALUES (?, 'running', 1, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          gameId,
-          defaultTotalStages,
-          toJson(
-            Array.from({ length: defaultTotalStages }).map((_, i) => ({
-              index: i + 1,
-              name: `阶段${i + 1}`,
-              desc: "",
-            })),
-            []
-          ),
-          toJson(mapSnapshot, {}),
-          Number(game.creator_user_id),
-          ts,
-          ts,
-          ts,
-        ]
-      );
-      const runId = Number(runRet.lastID || 0);
-
-      await dbRun(db, `UPDATE custom_games SET status = 'running', updated_at = ? WHERE id = ?`, [ts, gameId]);
-
-      await dbRun(
-        db,
-        `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
-         VALUES (?, ?, 'run_start', ?, ?, ?)`,
-        [runId, admin.id, "灾厄游戏已开启", toJson({ gameId, yes, no }, {}), ts]
-      );
-
-      // 开局时自动将全服可参与玩家投入本局（强制切换到创作者地图）
-      const globalPlayers = await dbAll(
-        db,
-        `SELECT id, name
-           FROM users
-          WHERE status IN ('approved', 'ghost')
-          ORDER BY id ASC`
-      );
-      let forcedCount = 0;
-      for (const p of globalPlayers) {
-        const uid = Number(p?.id || 0);
-        if (!uid) continue;
-        const uname = String(p?.name || `U${uid}`);
-        const ins = await dbRun(
-          db,
-          `INSERT OR IGNORE INTO custom_game_run_players(
-             run_id, user_id, name, hp, energy, score, alive, joined_at, updated_at
-           ) VALUES (?, ?, ?, 100, 100, 0, 1, ?, ?)`,
-          [runId, uid, uname, ts, ts]
-        );
-        forcedCount += Number(ins?.changes || 0) > 0 ? 1 : 0;
-      }
-      await dbRun(
-        db,
-        `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
-         VALUES (?, ?, 'system', ?, ?, ?)`,
-        [runId, admin.id, `灾厄降临：已投送 ${forcedCount} 名玩家进入灾厄地图`, toJson({ forcedCount }, {}), ts]
-      );
-
-      await createAnnouncement(
-        db,
-        "game_start",
-        `【灾厄降临】灾厄游戏 #${gameId}`,
-        `灾厄降临了`,
-        { gameId, runId, yes, no, forcedCount, forceSwitch: true }
-      );
-
-      res.json({ message: "vote closed & game started", passed: true, yes, no, runId });
     } catch (e: any) {
       res.status(500).json({ message: e?.message || "close vote failed" });
     }
   });
 
-  /** -------------------- 运行中 API -------------------- */
+  /** -------------------- 杩愯涓?API -------------------- */
   router.get("/run/active/global", requireAuth, async (_req, res) => {
     try {
       const run = await getLatestRunningRun(db);
       if (!run) return res.json({ hasActive: false, runId: null, gameId: null });
 
       const mapSnapshot = fromJson(run.map_snapshot, {});
-      const mapName = String((mapSnapshot as any)?.mapName || "创作者地图");
+      const mapName = String((mapSnapshot as any)?.mapName || "?????");
       res.json({
         hasActive: true,
         runId: Number(run.id),
         gameId: Number(run.game_id),
-        gameTitle: String(run.game_title || `灾厄游戏#${run.game_id}`),
+        gameTitle: String(run.game_title || `????#${run.game_id}`),
         mapName,
       });
     } catch (e: any) {
@@ -1205,7 +1091,7 @@ export function createCustomGameRouter(db: DB) {
           db,
           `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
            VALUES (?, ?, 'join', ?, ?, ?)`,
-          [run.id, user.id, `${name} 加入副本`, toJson({ userId: user.id }, {}), ts]
+          [run.id, user.id, `${name} ????`, toJson({ userId: user.id }, {}), ts]
         );
       }
 
@@ -1297,13 +1183,13 @@ export function createCustomGameRouter(db: DB) {
 
       switch (actionType) {
         case "explore":
-          addScore = 1; energyCost = 5; msg = `${me.name} 进行了探索（+1分）`; break;
+          addScore = 1; energyCost = 5; msg = `${me.name} 杩涜浜嗘帰绱紙+1鍒嗭級`; break;
         case "collect":
-          addScore = 2; energyCost = 8; msg = `${me.name} 进行了采集（+2分）`; break;
+          addScore = 2; energyCost = 8; msg = `${me.name} 杩涜浜嗛噰闆嗭紙+2鍒嗭級`; break;
         case "attack":
-          addScore = 3; energyCost = 10; msg = `${me.name} 发起攻击（+3分）`; break;
+          addScore = 3; energyCost = 10; msg = `${me.name} 鍙戣捣鏀诲嚮锛?3鍒嗭級`; break;
         default:
-          addScore = 0; energyCost = 3; msg = `${me.name} 执行动作 ${actionType}`; break;
+          addScore = 0; energyCost = 3; msg = `${me.name} 鎵ц鍔ㄤ綔 ${actionType}`; break;
       }
 
       const nextEnergy = Math.max(0, Number(me.energy || 0) - energyCost);
@@ -1367,7 +1253,7 @@ export function createCustomGameRouter(db: DB) {
 
       const normalized = Array.from({ length: totalStages }).map((_, i) => {
         const x = stages[i] || {};
-        return { index: i + 1, name: String(x.name || `阶段${i + 1}`), desc: String(x.desc || "") };
+        return { index: i + 1, name: String(x.name || `闃舵${i + 1}`), desc: String(x.desc || "") };
       });
 
       await dbRun(
@@ -1413,7 +1299,7 @@ export function createCustomGameRouter(db: DB) {
         db,
         `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
          VALUES (?, ?, 'stage_next', ?, ?, ?)`,
-        [run.id, user.id, `推进到第${next}阶段`, toJson({ from: cur, to: next }, {}), now()]
+        [run.id, user.id, `鎺ㄨ繘鍒扮${next}闃舵`, toJson({ from: cur, to: next }, {}), now()]
       );
 
       res.json({ message: "ok", currentStage: next });
@@ -1441,7 +1327,7 @@ export function createCustomGameRouter(db: DB) {
         db,
         `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
          VALUES (?, ?, 'map_update', ?, ?, ?)`,
-        [run.id, user.id, "运行中地图已更新", toJson({ mapPatch }, {}), now()]
+        [run.id, user.id, "杩愯涓湴鍥惧凡鏇存柊", toJson({ mapPatch }, {}), now()]
       );
 
       res.json({ message: "ok" });
@@ -1456,7 +1342,7 @@ export function createCustomGameRouter(db: DB) {
       const gameId = Number(req.params.id);
       const targetUserId = Number(req.body?.userId || 0);
       const points = Number(req.body?.points || 0);
-      const reason = String(req.body?.reason || "阶段奖励");
+      const reason = String(req.body?.reason || "闃舵濂栧姳");
       const stage = Number(req.body?.stage || 1);
 
       if (!targetUserId || !points) return res.status(400).json({ message: "userId/points required" });
@@ -1481,7 +1367,7 @@ export function createCustomGameRouter(db: DB) {
         db,
         `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
          VALUES (?, ?, 'score_grant', ?, ?, ?)`,
-        [run.id, user.id, `向 ${target.name} 发放积分 ${points}`, toJson({ targetUserId, points, reason, stage }, {}), now()]
+        [run.id, user.id, `鍚?${target.name} 鍙戞斁绉垎 ${points}`, toJson({ targetUserId, points, reason, stage }, {}), now()]
       );
 
       res.json({ message: "ok", targetUserId, score: newScore });
@@ -1571,3 +1457,5 @@ export function createCustomGameRouter(db: DB) {
 
   return router;
 }
+
+

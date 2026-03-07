@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import HomeRoomView, { deriveInitialHomeLocation } from './HomeRoomView';
-
 import {
-  ArrowLeft, X,
-  HandHeart, Coffee,
-  Utensils, Castle, GraduationCap,
-  BookOpen, HeartPulse, Sparkles,
+  ArrowLeft,
+  BookOpen,
+  Castle,
+  Coffee,
+  GraduationCap,
+  HandHeart,
+  HeartPulse,
+  Home,
+  Sparkles,
+  Utensils,
+  X
 } from 'lucide-react';
 import { User } from '../types';
 import FactionMemberPanel from './shared/FactionMemberPanel';
@@ -43,14 +49,14 @@ interface RoomDetail {
   visible?: boolean;
 }
 
-const buildings = [
-  { id: 'admin', name: '行政接待处', x: 22, y: 75, icon: <HandHeart />, desc: '入园登记、入职应聘与领养意向登记。' },
-  { id: 'clinic', name: '圣所诊所', x: 82, y: 50, icon: <HeartPulse />, desc: '消耗10金币回满血量，并可研习【治疗系】技能。' },
-  { id: 'library', name: '内部绘本馆', x: 68, y: 28, icon: <BookOpen />, desc: '【内部专属】每日3次随机获取低阶技能书。' },
-  { id: 'playground', name: '中心游乐场', x: 50, y: 55, icon: <Castle />, desc: '玩耍是幼崽的天性，职工的噩梦。' },
-  { id: 'canteen', name: '阳光食堂', x: 78, y: 78, icon: <Utensils />, desc: '按时吃饭才能长得高。' },
-  { id: 'dorm', name: '幼年宿舍楼', x: 28, y: 35, icon: <Coffee />, desc: '午睡时间！（生命/精神全满恢复）' },
-];
+interface MapBuilding {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  icon: React.ReactElement;
+  desc: string;
+}
 
 const ROLES = {
   CUB: '圣所幼崽',
@@ -59,91 +65,152 @@ const ROLES = {
 };
 
 const RANK_SCORES: Record<string, number> = {
-  '无': 0, 'F': 1, 'E': 2, 'D': 3, 'D+': 3.5, 'C': 4, 'C+': 5, 'B': 6, 'B+': 7,
-  'A': 8, 'A+': 9, 'S': 10, 'S+': 11, 'SS': 12, 'SS+': 13, 'SSS': 14
+  '无': 0,
+  F: 1,
+  E: 2,
+  D: 3,
+  'D+': 3.5,
+  C: 4,
+  'C+': 5,
+  B: 6,
+  'B+': 7,
+  A: 8,
+  'A+': 9,
+  S: 10,
+  'S+': 11,
+  SS: 12,
+  'SS+': 13,
+  SSS: 14
 };
 
+const BUILDINGS: MapBuilding[] = [
+  { id: 'admin', name: '行政接待厅', x: 20, y: 74, icon: <HandHeart size={24} />, desc: '入园登记、职位申请与成员事务。' },
+  { id: 'residents', name: '圣所住屋', x: 29, y: 35, icon: <Home size={24} />, desc: '查看成员房间，回家或拜访。' },
+  { id: 'library', name: '内部绘本馆', x: 68, y: 26, icon: <BookOpen size={24} />, desc: '每日可随机领取 1 本低阶技能书。' },
+  { id: 'playground', name: '中心游乐场', x: 50, y: 54, icon: <Castle size={24} />, desc: '幼崽玩耍，职工照看，也能获得当日收益。' },
+  { id: 'clinic', name: '圣所诊所', x: 81, y: 48, icon: <HeartPulse size={24} />, desc: '恢复生命、清除流血，并可学习治疗系技能。' },
+  { id: 'canteen', name: '阳光食堂', x: 78, y: 78, icon: <Utensils size={24} />, desc: '吃饭或值班都会消耗每日行动次数。' },
+  { id: 'dorm', name: '年幼宿舍楼', x: 26, y: 58, icon: <Coffee size={24} />, desc: '午睡或小憩可恢复状态。' }
+];
+
 const GENTLE_CLINIC_NPC = {
-  name: '白棠',
-  role: '温柔系角色·诊疗护士',
+  name: '白栀',
+  role: '圣所诊疗护士',
   quote: '别怕，慢慢呼吸。你会好起来的。'
 };
 
+const BOOK_REWARDS = [
+  '低阶技能书·物理系',
+  '低阶技能书·元素系',
+  '低阶技能书·精神系',
+  '低阶技能书·感知系',
+  '低阶技能书·信息系',
+  '低阶技能书·治疗系',
+  '低阶技能书·强化系',
+  '低阶技能书·炼金系'
+];
+
+function hasJob(job?: string) {
+  const value = String(job || '').trim();
+  return !!value && value !== '无';
+}
+
 export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
-  const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
+  const [selectedBuilding, setSelectedBuilding] = useState<MapBuilding | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [healSkills, setHealSkills] = useState<any[]>([]);
-
-  // 房间入口
   const [roomEntrances, setRoomEntrances] = useState<RoomEntrance[]>([]);
   const [selectedEntrance, setSelectedEntrance] = useState<RoomEntrance | null>(null);
-
-  // 独立房间页
   const [enteredRoom, setEnteredRoom] = useState<RoomDetail | null>(null);
 
-  const isMember = Object.values(ROLES).includes(user.job || '');
+  const isMember = Object.values(ROLES).includes(String(user.job || ''));
   const isSchoolSupervisor = ['圣子', '圣女', '守塔会会长'].includes(String(user.job || ''));
   const isCub = user.job === ROLES.CUB;
-  const isAdult = (user.age || 0) >= 16;
-  const getScore = (rank?: string) => RANK_SCORES[rank || '无'] || 0;
+  const isAdult = Number(user.age || 0) >= 16;
   const bleedingLevel = Math.max(0, Number((user as any).bleedingLevel ?? 0));
+  const isSelectedEntranceMine = Number(selectedEntrance?.ownerId || 0) === Number(user.id);
+
+  const dailyActionLeft = Math.max(0, 3 - Number(user.workCount || 0));
+  const visibleRoomCount = roomEntrances.length;
+
+  const sortedEntrances = useMemo(() => {
+    return [...roomEntrances].sort((a, b) => {
+      if (Number(a.ownerId) === Number(user.id)) return -1;
+      if (Number(b.ownerId) === Number(user.id)) return 1;
+      return String(a.ownerName || '').localeCompare(String(b.ownerName || ''), 'zh-Hans-CN');
+    });
+  }, [roomEntrances, user.id]);
 
   const authHeaders = () => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}`
   });
 
-  // ✅ 仅保留这一处 rooms/init（去重）
+  const getScore = (rank?: string) => RANK_SCORES[String(rank || '无')] || 0;
+
   useEffect(() => {
     fetch('/api/rooms/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: user.id,
-        suggestedHomeLocation: deriveInitialHomeLocation(user as any),
+        suggestedHomeLocation: deriveInitialHomeLocation(user as any)
       })
-    }).catch(() => void 0);
+    }).catch(() => undefined);
   }, [user.id, user.age, user.gold, user.role]);
 
   useEffect(() => {
-    if (selectedBuilding?.id === 'clinic') fetchHealSkills();
-  }, [selectedBuilding]);
+    if (selectedBuilding?.id === 'clinic') {
+      fetchHealSkills();
+    }
+  }, [selectedBuilding?.id]);
 
   useEffect(() => {
-    let alive = true;
-    const pull = async () => {
+    let active = true;
+    const pullEntrances = async () => {
       try {
         const res = await fetch(`/api/rooms/entrances?locationId=sanctuary&viewerId=${user.id}`);
-        const data = await res.json();
-        if (!alive) return;
-        if (data.success) setRoomEntrances(data.rows || []);
-      } catch {}
+        const data = await res.json().catch(() => ({} as any));
+        if (!active) return;
+        if (data.success) {
+          setRoomEntrances(Array.isArray(data.rows) ? data.rows : []);
+        }
+      } catch {
+        // ignore polling failures
+      }
     };
-    pull();
-    const t = setInterval(pull, 4000);
+
+    pullEntrances();
+    const timer = window.setInterval(pullEntrances, 4000);
     return () => {
-      alive = false;
-      clearInterval(t);
+      active = false;
+      window.clearInterval(timer);
     };
   }, [user.id]);
 
-  const checkQualifications = (targetRank: string) => {
-    const pScore = getScore(user.physicalRank);
-    const mScore = getScore(user.mentalRank);
+  const checkQualifications = (targetRole: string) => {
+    const physicalScore = getScore(user.physicalRank);
+    const mentalScore = getScore(user.mentalRank);
 
-    if (targetRank === ROLES.CUB) return !isAdult;
-    if (targetRank === ROLES.STAFF) return isAdult && mScore >= RANK_SCORES['D+'] && pScore >= RANK_SCORES['D+'];
-    if (targetRank === ROLES.KEEPER) return isAdult && mScore >= RANK_SCORES['C+'] && pScore >= RANK_SCORES['D+'];
-
+    if (targetRole === ROLES.CUB) return !isAdult;
+    if (targetRole === ROLES.STAFF) return isAdult && mentalScore >= RANK_SCORES['D+'] && physicalScore >= RANK_SCORES['D+'];
+    if (targetRole === ROLES.KEEPER) return isAdult && mentalScore >= RANK_SCORES['C+'] && physicalScore >= RANK_SCORES['D+'];
     return false;
   };
 
   const handleJoin = async (jobName: string) => {
-    if (user.job && user.job !== '无') return showToast(`请先办理当前职务的离职手续：${user.job}`);
+    if (hasJob(user.job)) {
+      showToast(`请先退出当前职位：${user.job}`);
+      return;
+    }
 
     if (!checkQualifications(jobName)) {
-      if (jobName === ROLES.CUB) return showToast('行政处：你已经是个大孩子了(≥16岁)，这里不适合你。');
-      return showToast(`面试官：抱歉，你的精神力或肉体等级未达标，无法胜任 ${jobName}。`);
+      if (jobName === ROLES.CUB) {
+        showToast('你已经满 16 岁，不能登记为圣所幼崽。');
+        return;
+      }
+      showToast(`当前精神或肉体等级不足，无法担任 ${jobName}。`);
+      return;
     }
 
     const res = await fetch('/api/tower/join', {
@@ -151,48 +218,68 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: user.id, jobName })
     });
+    const data = await res.json().catch(() => ({} as any));
 
-    const data = await res.json();
-    if (data.success) {
-      showToast(jobName === ROLES.CUB ? '欢迎入园，小家伙！家园已锁定在圣所。' : `手续办妥，欢迎入职 ${jobName}。`);
-      fetchGlobalData();
-    } else {
-      showToast(data.message || '操作失败');
+    if (!res.ok || data.success === false) {
+      showToast(data.message || '加入圣所失败');
+      return;
     }
+
+    showToast(jobName === ROLES.CUB ? '欢迎来到圣所，已为你分配房间。' : `入职成功：${jobName}`);
+    fetchGlobalData();
   };
 
   const fetchHealSkills = async () => {
-    const res = await fetch(`/api/skills/available/${user.id}`);
-    const data = await res.json();
-    if (data.success) {
-      setHealSkills(data.skills.filter((s: any) => s.faction === '治疗系'));
+    try {
+      const res = await fetch(`/api/skills/available/${user.id}`);
+      const data = await res.json().catch(() => ({} as any));
+      if (data.success) {
+        setHealSkills((Array.isArray(data.skills) ? data.skills : []).filter((skill: any) => skill.faction === '治疗系'));
+      }
+    } catch (error) {
+      console.error(error);
     }
   };
 
   const learnSkill = async (skillName: string) => {
-    const res = await fetch(`/api/users/${user.id}/skills`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: skillName })
-    });
-    if (res.ok) showToast(`在医务室的观摩中，你学会了：${skillName}`);
+    try {
+      const res = await fetch(`/api/users/${user.id}/skills`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: skillName })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      showToast(data.message || `你学会了：${skillName}`);
+      fetchGlobalData();
+    } catch (error) {
+      console.error(error);
+      showToast('学习技能失败');
+    }
   };
 
   const handleClaimBook = async () => {
-    if (!isMember) return showToast('绘本馆阿姨：非本园人员禁止入内借阅哦。');
-    if ((user.workCount || 0) >= 3) return showToast('今天借书的次数用完啦，去外面玩一会儿吧。');
+    if (!isMember) {
+      showToast('绘本馆只对圣所内部成员开放。');
+      return;
+    }
+    if (dailyActionLeft <= 0) {
+      showToast('今天已经领过足够多的书了，明天再来。');
+      return;
+    }
 
-    const res = await fetch('/api/tower/work', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id })
-    });
-    const data = await res.json();
+    try {
+      const res = await fetch('/api/tower/work', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '领取失败');
+        return;
+      }
 
-    if (data.success) {
-      const books = ['物理系低阶技巧', '元素系低阶火花', '精神系低阶入门', '感知系低阶盲杖', '信息系低阶频段', '治疗系低阶绷带', '强化系低阶蛋白', '炼金系低阶扳手'];
-      const book = books[Math.floor(Math.random() * books.length)];
-
+      const book = BOOK_REWARDS[Math.floor(Math.random() * BOOK_REWARDS.length)];
       await fetch(`/api/users/${user.id}/inventory/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,42 +287,68 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
       });
 
       setIsPlaying(true);
-      setTimeout(() => setIsPlaying(false), 2000);
-      showToast(`翻阅绘本时，你发现并获得了：【${book}】！`);
+      window.setTimeout(() => setIsPlaying(false), 1800);
+      showToast(`你在绘本馆找到了：${book}`);
       fetchGlobalData();
+    } catch (error) {
+      console.error(error);
+      showToast('领取绘本失败');
     }
   };
 
   const handleAction = async (type: 'play' | 'eat' | 'work') => {
-    if ((user.workCount || 0) >= 3) return showToast(isCub ? '今天玩得太累了，去睡一觉吧。' : '今日排班已满，辛苦了。');
+    if (dailyActionLeft <= 0) {
+      showToast(isCub ? '今天已经玩累了，先去休息吧。' : '今日排班已满，明天再来。');
+      return;
+    }
 
-    const res = await fetch('/api/tower/work', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id })
-    });
-    const data = await res.json();
+    try {
+      const res = await fetch('/api/tower/work', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '行动失败');
+        return;
+      }
 
-    if (data.success) {
-      const msg = type === 'work' ? '照顾了一群调皮的小鬼。' : '开心！拿到了零花钱。';
-      showToast(`${msg} (+${data.reward}G)`);
-      if (type === 'play' || type === 'eat') {
+      if (type === 'play') {
+        showToast(`你开心地玩了一会，获得 ${data.reward || 0}G 零花钱。`);
+      } else if (type === 'eat') {
+        showToast(`你在食堂吃得很满足，获得 ${data.reward || 0}G 补贴。`);
+      } else {
+        showToast(`你完成了一轮照看与值班，获得 ${data.reward || 0}G。`);
+      }
+
+      if (type !== 'work') {
         setIsPlaying(true);
-        setTimeout(() => setIsPlaying(false), 2000);
+        window.setTimeout(() => setIsPlaying(false), 1800);
       }
       fetchGlobalData();
+    } catch (error) {
+      console.error(error);
+      showToast('行动失败');
     }
   };
 
   const handleRest = async () => {
-    const res = await fetch('/api/tower/rest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id })
-    });
-    if (res.ok) {
-      showToast('午睡醒来，精力充沛，状态已回满！');
+    try {
+      const res = await fetch('/api/tower/rest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      if (!res.ok) {
+        showToast('休息失败');
+        return;
+      }
+      showToast('你在圣所好好休息了一会，状态已恢复。');
       fetchGlobalData();
+    } catch (error) {
+      console.error(error);
+      showToast('休息失败');
     }
   };
 
@@ -251,11 +364,11 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
         showToast(data.message || '诊疗失败');
         return;
       }
-      showToast(data.message || '诊疗完成，血量已回满。');
+      showToast(data.message || '诊疗完成，生命值已回满。');
       fetchGlobalData();
-    } catch (e) {
-      console.error(e);
-      showToast('网络错误，诊疗中断');
+    } catch (error) {
+      console.error(error);
+      showToast('诊疗失败');
     }
   };
 
@@ -271,51 +384,60 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
         showToast(data.message || '止血失败');
         return;
       }
-      showToast(data.message || '止血成功');
+      showToast(data.message || '止血完成');
       fetchGlobalData();
-    } catch (e) {
-      console.error(e);
-      showToast('网络错误，止血中断');
+    } catch (error) {
+      console.error(error);
+      showToast('止血失败');
     }
   };
 
   const handleGraduate = async () => {
-    if (!isAdult) return showToast('还没到 16 岁，不能去伦敦塔哦。');
-    if (!confirm('确定申请升学去伦敦塔吗？这将清除当前的幼崽档案。')) return;
+    if (!isAdult) {
+      showToast('未满 16 岁，暂时不能离开圣所。');
+      return;
+    }
+    if (!window.confirm('确定要办理升学手续前往伦敦塔吗？这会退出当前圣所职位。')) return;
 
     await fetch('/api/tower/quit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: user.id })
-    });
-    showToast('手续办理完成，请前往大地图的【伦敦塔】报到。');
+    }).catch(() => undefined);
+
+    showToast('升学手续已办理，请前往大地图中的伦敦塔报到。');
     fetchGlobalData();
     setSelectedBuilding(null);
   };
 
   const enterPersonalRoom = async () => {
     if (!selectedEntrance) return;
+
     try {
       let roomPassword = '';
       const detailRes = await fetch(`/api/rooms/${selectedEntrance.ownerId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}` }
       });
-      const detailData = await detailRes.json().catch(() => ({}));
+      const detailData = await detailRes.json().catch(() => ({} as any));
       if (!detailRes.ok || detailData.success === false) {
-        return showToast(detailData.message || '读取房间信息失败');
+        showToast(detailData.message || '读取房间信息失败');
+        return;
       }
 
       if (selectedEntrance.locked && Number(selectedEntrance.ownerId) !== Number(user.id)) {
-        const pwd = window.prompt('该房间已上锁，请输入房间密码：') || '';
-        if (!pwd) return;
-        const vr = await fetch(`/api/rooms/${selectedEntrance.ownerId}/verify-password`, {
+        const password = window.prompt('这个房间已上锁，请输入密码：') || '';
+        if (!password) return;
+        const verifyRes = await fetch(`/api/rooms/${selectedEntrance.ownerId}/verify-password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pwd })
+          body: JSON.stringify({ password })
         });
-        const vd = await vr.json().catch(() => ({}));
-        if (!vd.pass) return showToast('密码错误，无法进入');
-        roomPassword = pwd;
+        const verifyData = await verifyRes.json().catch(() => ({} as any));
+        if (!verifyData.pass) {
+          showToast('密码错误，无法进入房间');
+          return;
+        }
+        roomPassword = password;
       }
 
       const enterRes = await fetch(`/api/rooms/${selectedEntrance.ownerId}/enter`, {
@@ -323,15 +445,17 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
         headers: authHeaders(),
         body: JSON.stringify({ password: roomPassword })
       });
-      const enterData = await enterRes.json().catch(() => ({}));
-      if (!enterRes.ok || enterData.success === false) return showToast(enterData.message || '进入房间失败');
+      const enterData = await enterRes.json().catch(() => ({} as any));
+      if (!enterRes.ok || enterData.success === false) {
+        showToast(enterData.message || '进入房间失败');
+        return;
+      }
 
-      const room = detailData.room as RoomDetail;
-      setEnteredRoom(room);
+      setEnteredRoom(detailData.room as RoomDetail);
       setSelectedEntrance(null);
-    } catch (e) {
-      console.error(e);
-      showToast('网络错误，进入失败');
+    } catch (error) {
+      console.error(error);
+      showToast('进入房间失败');
     }
   };
 
@@ -349,15 +473,240 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
           setEnteredRoom(null);
           onNavigateLocation?.(locationId);
         }}
-        onExitToWorld={() => { setEnteredRoom(null); onExit(); }}
+        onExitToWorld={() => {
+          setEnteredRoom(null);
+          onExit();
+        }}
       />
     );
   }
 
+  const renderResidents = () => (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-800 leading-7">
+        圣所当前共有 <span className="font-black text-amber-950">{visibleRoomCount}</span> 间可见房间。
+        点击名字即可查看房主信息，再选择回家或拜访。
+      </div>
+      <div className="space-y-2 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+        {sortedEntrances.length === 0 ? (
+          <div className="text-center text-sm text-amber-500 py-6 border border-dashed border-amber-200 rounded-2xl">暂无房间记录</div>
+        ) : (
+          sortedEntrances.map((room) => {
+            const isMine = Number(room.ownerId) === Number(user.id);
+            return (
+              <button
+                key={room.ownerId}
+                onClick={() => setSelectedEntrance(room)}
+                className="w-full flex items-center gap-3 rounded-2xl border border-amber-100 bg-white px-3 py-3 text-left hover:border-amber-300 hover:shadow-sm transition-all"
+              >
+                <div className="w-10 h-10 rounded-full border border-amber-200 bg-amber-50 overflow-hidden shrink-0 flex items-center justify-center text-amber-700 font-black text-sm">
+                  {room.avatarUrl ? <img src={room.avatarUrl} className="w-full h-full object-cover" alt="avatar" /> : (room.ownerName?.[0] || '?')}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black text-amber-950 truncate">{room.ownerName}</div>
+                  <div className="text-[11px] text-amber-700/80 truncate">{room.job || room.role || '自由住户'}</div>
+                </div>
+                <span className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 ${isMine ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-900'}`}>
+                  {isMine ? '回家' : '拜访'}
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  const renderAdmin = () => (
+    <div className="space-y-4">
+      {!isMember && !isSchoolSupervisor ? (
+        <>
+          <div className="p-4 bg-amber-50 rounded-2xl text-sm text-amber-800 leading-7 border border-amber-100">
+            圣所负责照护未分化者与年幼角色。成年人也可以在这里应聘保育员或职工职位。
+          </div>
+          <div className="space-y-3">
+            <RoleBtn title="登记入园（圣所幼崽）" sub="年龄小于 16 岁" qualified={checkQualifications(ROLES.CUB)} onClick={() => handleJoin(ROLES.CUB)} />
+            <RoleBtn title="应聘圣所保育员" sub="精神 C+ / 肉体 D+" qualified={checkQualifications(ROLES.KEEPER)} onClick={() => handleJoin(ROLES.KEEPER)} />
+            <RoleBtn title="应聘圣所职工" sub="精神 D+ / 肉体 D+" qualified={checkQualifications(ROLES.STAFF)} onClick={() => handleJoin(ROLES.STAFF)} />
+          </div>
+          {isAdult && (
+            <div className="rounded-2xl border border-dashed border-amber-200 bg-white p-4 text-center">
+              <h4 className="font-black text-amber-800 mb-2">领养登记</h4>
+              <p className="text-sm text-amber-700/80 mb-4 leading-7">
+                若你希望照顾圣所中的孩子，可以先留下登记信息，再到游乐场或大厅与他们互动。
+              </p>
+              <button
+                onClick={() => showToast('已记录你的领养意向，请继续在圣所内建立关系。')}
+                className="w-full py-3 rounded-xl bg-amber-100 text-amber-800 font-black hover:bg-amber-200 transition-colors"
+              >
+                提交领养意向
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-3">
+          <div className="p-6 bg-amber-50 rounded-2xl text-center border border-amber-100 shadow-sm">
+            <p className="text-xs font-bold text-amber-600 mb-2 tracking-widest uppercase">当前职位</p>
+            <p className="text-2xl font-black text-amber-900">{user.job}</p>
+          </div>
+
+          <FactionMemberPanel
+            user={user}
+            locationId="sanctuary"
+            showToast={showToast}
+            fetchGlobalData={fetchGlobalData}
+            title="圣所职位房间"
+          />
+
+          {!isMember && isSchoolSupervisor && (
+            <div className="p-3 rounded-xl border border-sky-100 bg-sky-50 text-sm text-sky-700 leading-7">
+              你当前以三塔监管身份访问，可直接查看并管理圣所成员信息。
+            </div>
+          )}
+
+          {isMember && isCub && isAdult && (
+            <button
+              onClick={handleGraduate}
+              className="w-full py-4 rounded-2xl bg-indigo-500 text-white font-black hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200"
+            >
+              <GraduationCap size={20} /> 申请升学（前往伦敦塔）
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderClinic = () => (
+    <div className="space-y-6">
+      <div className="text-center bg-rose-50 p-6 rounded-2xl border border-rose-100">
+        <HeartPulse size={40} className="mx-auto text-rose-500 mb-2" />
+        <p className="text-sm text-rose-800 font-bold">圣所诊所可提供急救：消耗 10 金币即可回满生命值。</p>
+        <p className="text-xs text-rose-600 mt-2">诊疗完成后，还可以在这里学习治疗系技能。</p>
+      </div>
+
+      <div className="p-4 bg-white border border-rose-100 rounded-2xl shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-black">医护</div>
+          <div className="flex-1">
+            <p className="text-xs text-rose-700 font-black">{GENTLE_CLINIC_NPC.role}</p>
+            <h4 className="text-lg font-black text-slate-800">{GENTLE_CLINIC_NPC.name}</h4>
+            <p className="text-xs text-slate-600 mt-1">“{GENTLE_CLINIC_NPC.quote}”</p>
+          </div>
+        </div>
+
+        <button onClick={handleClinicHeal} className="w-full mt-4 py-3 bg-rose-500 text-white font-black rounded-xl hover:bg-rose-600 transition-colors">
+          诊疗一次（消耗 10 金币，HP 回满）
+        </button>
+
+        <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 p-3">
+          <p className="text-xs text-rose-700 font-bold">当前流血程度：{bleedingLevel.toFixed(1)}%</p>
+          <button onClick={handleCureBleeding} className="w-full mt-2 py-2.5 bg-rose-100 text-rose-700 font-black rounded-xl hover:bg-rose-200 transition-colors">
+            止血治疗（清除流血）
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {healSkills.length === 0 ? (
+          <div className="text-center text-xs text-slate-400 py-4 font-bold border border-slate-100 rounded-xl">当前没有可学习的治疗系技能。</div>
+        ) : (
+          healSkills.map((skill) => (
+            <div key={skill.id} className="p-4 border border-rose-100 bg-white rounded-xl flex justify-between items-center gap-3 hover:border-rose-300 transition-colors shadow-sm">
+              <div>
+                <h4 className="font-black text-slate-800 text-sm">{skill.name}</h4>
+                <p className="text-[10px] text-slate-500 mt-1">{skill.description}</p>
+              </div>
+              <button onClick={() => learnSkill(skill.name)} className="px-4 py-1.5 bg-rose-100 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-200">
+                学习
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const renderLibrary = () => (
+    <div className="text-center space-y-6">
+      <BookOpen size={64} className="mx-auto text-sky-400 mb-2" />
+      <h3 className="text-xl font-black text-slate-800">内部绘本馆</h3>
+      <p className="text-sm text-slate-500 max-w-xs mx-auto leading-7">
+        书架上放着带有分化启蒙与基础技能知识的绘本。圣所成员每天都能来这里抽取一本低阶技能书。
+      </p>
+
+      {isMember ? (
+        <div className="p-4 border-2 border-sky-100 bg-sky-50 rounded-2xl">
+          <p className="text-sm font-bold text-sky-700 mb-4">今日可领取次数：<span className="text-lg font-black">{dailyActionLeft} / 3</span></p>
+          <button onClick={handleClaimBook} disabled={dailyActionLeft <= 0} className="w-full py-4 bg-sky-500 text-white font-black rounded-xl hover:bg-sky-600 disabled:bg-slate-300 transition-all shadow-lg shadow-sky-200">
+            随机领取 1 本低阶技能书
+          </button>
+        </div>
+      ) : (
+        <div className="p-4 bg-slate-100 text-slate-500 font-bold rounded-xl text-sm border border-slate-200">
+          绘本馆只对圣所内部成员开放。
+        </div>
+      )}
+    </div>
+  );
+
+  const renderActivity = (buildingId: string) => (
+    <div className="space-y-4 text-center">
+      {isMember ? (
+        <>
+          <div className="p-6 bg-amber-50 rounded-3xl border border-amber-100">
+            <div className="text-center text-xs font-bold text-amber-600 mb-4 tracking-widest uppercase">
+              Daily Actions: {dailyActionLeft} / 3
+            </div>
+            <button
+              onClick={() => handleAction(isCub ? (buildingId === 'playground' ? 'play' : 'eat') : 'work')}
+              disabled={dailyActionLeft <= 0}
+              className="w-full py-5 rounded-2xl bg-amber-500 text-white text-lg font-black hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-xl shadow-amber-200 active:scale-95"
+            >
+              {isCub ? (buildingId === 'playground' ? '去玩滑梯和秋千' : '开开心心吃饭') : '开始照看与值班'}
+            </button>
+          </div>
+          {!isCub && <p className="text-xs text-slate-400">照看幼崽和后勤值班都会获得一笔固定报酬。</p>}
+        </>
+      ) : (
+        <div className="text-center text-amber-500 font-bold py-6 border border-amber-100 bg-amber-50 rounded-2xl">
+          这里目前不对外开放。
+        </div>
+      )}
+    </div>
+  );
+
+  const renderDorm = () => (
+    <div className="space-y-4">
+      {isMember ? (
+        <button onClick={handleRest} className="w-full py-5 rounded-2xl bg-teal-500 text-white text-lg font-black hover:bg-teal-600 transition-all shadow-xl shadow-teal-200 flex items-center justify-center gap-3">
+          <Coffee size={24} />
+          {isCub ? '盖好小被子睡午觉' : '在值班室小憩片刻'}
+        </button>
+      ) : (
+        <div className="text-center text-amber-500 font-bold py-6 border border-amber-100 bg-amber-50 rounded-2xl">
+          宿舍区域不对外开放。
+        </div>
+      )}
+    </div>
+  );
+
+  const renderBuildingContent = () => {
+    if (!selectedBuilding) return null;
+    if (selectedBuilding.id === 'admin') return renderAdmin();
+    if (selectedBuilding.id === 'residents') return renderResidents();
+    if (selectedBuilding.id === 'clinic') return renderClinic();
+    if (selectedBuilding.id === 'library') return renderLibrary();
+    if (selectedBuilding.id === 'playground' || selectedBuilding.id === 'canteen') return renderActivity(selectedBuilding.id);
+    if (selectedBuilding.id === 'dorm') return renderDorm();
+    return null;
+  };
+
   return (
     <div className="absolute inset-0 bg-amber-50 overflow-hidden font-sans select-none">
       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/圣所.jpg')" }}>
-        <div className="absolute inset-0 bg-orange-100/20 mix-blend-multiply pointer-events-none"></div>
+        <div className="absolute inset-0 bg-orange-100/20 mix-blend-multiply pointer-events-none" />
       </div>
 
       <div className="absolute top-8 left-8 z-50">
@@ -366,73 +715,97 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
         </button>
       </div>
 
-      {/* 房间入口点 */}
-      <div className="absolute inset-0 z-20 pointer-events-none">
-        {roomEntrances.map((r) => (
+      {BUILDINGS.map((building) => {
+        const isResidents = building.id === 'residents';
+        return (
           <button
-            key={r.ownerId}
-            className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
-            style={{ left: `${r.x}%`, top: `${r.y}%` }}
-            onClick={() => setSelectedEntrance(r)}
+            key={building.id}
+            className="absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer group"
+            style={{ left: `${building.x}%`, top: `${building.y}%` }}
+            onClick={() => setSelectedBuilding(building)}
           >
-            <div className="w-9 h-9 rounded-full bg-white/95 border border-amber-400 text-amber-700 flex items-center justify-center shadow-lg hover:scale-110 transition-all">
-              🏠
+            <div className="relative flex flex-col items-center">
+              <div className="w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center text-amber-500 border-4 border-white group-hover:scale-110 transition-all group-hover:bg-amber-400 group-hover:text-white group-hover:border-amber-200">
+                {building.icon}
+              </div>
+              {isResidents && visibleRoomCount > 0 && (
+                <div className="absolute -top-2 -right-2 min-w-6 h-6 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg border-2 border-white">
+                  {visibleRoomCount}
+                </div>
+              )}
+              <div className="mt-2 bg-white/90 backdrop-blur text-amber-900 text-[10px] font-black px-3 py-1 rounded-full shadow-lg border border-amber-100 opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap">
+                {building.name}
+              </div>
             </div>
           </button>
-        ))}
-      </div>
+        );
+      })}
 
-      {/* 地图交互点 */}
-      {buildings.map(b => (
-        <div key={b.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10 cursor-pointer group" style={{ left: `${b.x}%`, top: `${b.y}%` }} onClick={() => setSelectedBuilding(b)}>
-          <div className="relative flex flex-col items-center">
-            <div className="w-14 h-14 bg-white rounded-full shadow-2xl flex items-center justify-center text-amber-500 border-4 border-white group-hover:scale-110 transition-all group-hover:bg-amber-400 group-hover:text-white group-hover:border-amber-200">
-              {b.icon}
-            </div>
-            <div className="mt-2 bg-white/90 backdrop-blur text-amber-900 text-[10px] font-black px-3 py-1 rounded-full shadow-lg border border-amber-100 opacity-0 group-hover:opacity-100 transition-all">
-              {b.name}
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {/* 房间入口弹窗 */}
       <AnimatePresence>
         {selectedEntrance && (
-          <motion.div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4 mobile-portrait-safe-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-4 text-slate-100 mobile-portrait-safe-card mobile-contrast-surface-dark">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-black text-lg">{selectedEntrance.ownerName} 的房间</h3>
-                <button onClick={() => setSelectedEntrance(null)} className="p-1 rounded bg-slate-800"><X size={14} /></button>
+          <motion.div
+            className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4 mobile-portrait-safe-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 20, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 text-slate-100 mobile-portrait-safe-card mobile-contrast-surface-dark"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-black text-lg">{selectedEntrance.ownerName} 的房间</h3>
+                  <p className="text-xs text-slate-400 mt-1">{selectedEntrance.job || selectedEntrance.role || '自由住户'}</p>
+                </div>
+                <button onClick={() => setSelectedEntrance(null)} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
+                  <X size={14} />
+                </button>
               </div>
-              <p className="text-xs text-slate-400 mb-2">{selectedEntrance.job || selectedEntrance.role || '自由人'}</p>
-              <p className="text-sm bg-slate-800 border border-slate-700 rounded-xl p-3 min-h-[72px]">
-                {selectedEntrance.intro || '房主还没有写房间介绍。'}
-              </p>
-              <button onClick={enterPersonalRoom} className="w-full mt-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 font-bold">
-                进入房间
-              </button>
-            </div>
+
+              <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-3 text-sm leading-7 min-h-[88px]">
+                {selectedEntrance.intro || '房主暂时还没有填写房间介绍。'}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                <button onClick={enterPersonalRoom} className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-black transition-colors">
+                  {isSelectedEntranceMine ? '回家' : '拜访房间'}
+                </button>
+                <button onClick={() => setSelectedEntrance(null)} className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-black transition-colors">
+                  关闭
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 玩耍/领书特效 */}
       <AnimatePresence>
         {isPlaying && (
-          <motion.div initial={{ opacity: 0, scale: 0.5, y: 20 }} animate={{ opacity: 1, scale: 1.2, y: 0 }} exit={{ opacity: 0 }} className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+            animate={{ opacity: 1, scale: 1.15, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
+          >
             <div className="text-amber-500 font-black text-6xl drop-shadow-[0_5px_15px_rgba(245,158,11,0.5)] flex flex-col items-center gap-4">
               <Sparkles size={80} className="animate-spin-slow" />
-              <span className="tracking-widest">开心！</span>
+              <span className="tracking-widest">开心时刻</span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 建筑详情弹窗 */}
       <AnimatePresence>
         {selectedBuilding && (
-          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-amber-900/30 backdrop-blur-sm mobile-portrait-safe-overlay">
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-amber-900/30 backdrop-blur-sm mobile-portrait-safe-overlay"
+          >
             <div className="bg-white rounded-[48px] p-8 w-full max-w-md shadow-2xl relative border-8 border-amber-100 flex flex-col max-h-[85vh] mobile-portrait-safe-card mobile-contrast-surface-light">
               <button onClick={() => setSelectedBuilding(null)} className="absolute top-6 right-6 p-2 bg-amber-50 rounded-full text-amber-400 hover:bg-amber-100 transition-colors z-20">
                 <X size={20} />
@@ -443,198 +816,11 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
                   {React.cloneElement(selectedBuilding.icon, { size: 36 })}
                 </div>
                 <h2 className="text-2xl font-black text-amber-900">{selectedBuilding.name}</h2>
-                <p className="text-xs font-bold text-amber-600 mt-1">{selectedBuilding.desc}</p>
+                <p className="text-xs font-bold text-amber-600 mt-1 leading-6">{selectedBuilding.desc}</p>
               </div>
 
               <div className="overflow-y-auto pr-2 custom-scrollbar flex-1">
-                {selectedBuilding.id === 'admin' && (
-                  <div className="space-y-4">
-                    {!isMember && !isSchoolSupervisor ? (
-                      <>
-                        <div className="p-4 bg-amber-50 rounded-2xl text-xs text-amber-800 mb-4 leading-relaxed border border-amber-100">
-                          这里是未分化者的避风港。<br />
-                          大人可以在此登记领养，幼崽在此获得庇护。
-                        </div>
-                        <div className="space-y-3">
-                          <RoleBtn title="登记入园 (幼崽)" sub="< 16岁" qualified={checkQualifications(ROLES.CUB)} onClick={() => handleJoin(ROLES.CUB)} />
-                          <RoleBtn title="应聘保育员" sub="精神C+ 肉体D+" qualified={checkQualifications(ROLES.KEEPER)} onClick={() => handleJoin(ROLES.KEEPER)} />
-                          <RoleBtn title="应聘后勤职工" sub="精神D+ 肉体D+" qualified={checkQualifications(ROLES.STAFF)} onClick={() => handleJoin(ROLES.STAFF)} />
-                        </div>
-                        {isAdult && (
-                          <div className="mt-6 border-t-2 border-dashed border-amber-100 pt-6 text-center">
-                            <h4 className="font-black text-amber-700 mb-2">爱心领养意向墙</h4>
-                            <p className="text-xs text-amber-600/80 mb-4">如果您愿意为这些孩子提供一个家，请在这里登记意向。随后您可以去游乐场与他们培养感情。</p>
-                            <button onClick={() => showToast('已在名册上留下您的名字。去大厅发个消息寻找心仪的崽崽吧！')} className="w-full py-3 bg-amber-100 text-amber-800 font-bold rounded-xl hover:bg-amber-200">
-                              登记领养档案
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="p-6 bg-amber-50 rounded-2xl text-center border border-amber-100 shadow-sm">
-                          <p className="text-xs font-bold text-amber-600 mb-2 tracking-widest uppercase">身份卡</p>
-                          <p className="text-2xl font-black text-amber-900">{user.job}</p>
-                        </div>
-
-                        <FactionMemberPanel
-                          user={user}
-                          locationId="sanctuary"
-                          showToast={showToast}
-                          fetchGlobalData={fetchGlobalData}
-                          title="圣所职位房间"
-                        />
-
-                        {!isMember && isSchoolSupervisor && (
-                          <div className="p-3 rounded-xl border border-sky-100 bg-sky-50 text-[11px] text-sky-700">
-                            你当前以三塔监管身份访问，可直接查看并管理圣所成员。
-                          </div>
-                        )}
-
-                        {isMember && isCub && isAdult && (
-                          <button onClick={handleGraduate} className="w-full py-4 rounded-2xl bg-indigo-500 text-white font-black hover:bg-indigo-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200">
-                            <GraduationCap size={20} /> 申请升学 (去伦敦塔)
-                          </button>
-                        )}
-
-                        {isMember && (
-                          <button
-                            onClick={() => {
-                              if (confirm('确定要离开圣所吗？')) {
-                                fetch('/api/tower/quit', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ userId: user.id })
-                                }).then(() => {
-                                  showToast('已离校/离职。');
-                                  fetchGlobalData();
-                                  setSelectedBuilding(null);
-                                });
-                              }
-                            }}
-                            className="w-full py-4 rounded-2xl bg-slate-100 text-slate-500 font-black hover:bg-slate-200"
-                          >
-                            {isCub ? '办理退园' : '申请离职'}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {selectedBuilding.id === 'clinic' && (
-                  <div className="space-y-6">
-                    <div className="text-center bg-rose-50 p-6 rounded-2xl border border-rose-100">
-                      <HeartPulse size={40} className="mx-auto text-rose-500 mb-2" />
-                      <p className="text-sm text-rose-800 font-bold">圣所诊所可提供急救：消耗 10 金币将血量回满。</p>
-                      <p className="text-[10px] text-rose-600 mt-2">治疗后可继续在此研习【治疗系】基础法门。</p>
-                    </div>
-
-                    <div className="p-4 bg-white border border-rose-100 rounded-2xl shadow-sm">
-                      <div className="flex items-start gap-3">
-                        <div className="w-11 h-11 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-black">医护</div>
-                        <div className="flex-1">
-                          <p className="text-xs text-rose-700 font-black">{GENTLE_CLINIC_NPC.role}</p>
-                          <h4 className="text-lg font-black text-slate-800">{GENTLE_CLINIC_NPC.name}</h4>
-                          <p className="text-xs text-slate-600 mt-1">“{GENTLE_CLINIC_NPC.quote}”</p>
-                        </div>
-                      </div>
-                      <button onClick={handleClinicHeal} className="w-full mt-4 py-3 bg-rose-500 text-white font-black rounded-xl hover:bg-rose-600 transition-colors">
-                        诊疗一次（消耗10金币，HP回满）
-                      </button>
-                      <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 p-3">
-                        <p className="text-xs text-rose-700 font-bold">当前流血程度：{bleedingLevel.toFixed(1)}%</p>
-                        <button onClick={handleCureBleeding} className="w-full mt-2 py-2.5 bg-rose-100 text-rose-700 font-black rounded-xl hover:bg-rose-200 transition-colors">
-                          止血治疗（清除流血）
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      {healSkills.length === 0 ? (
-                        <div className="text-center text-xs text-slate-400 py-4 font-bold border border-slate-100 rounded-xl">导师外出了，暂时没有可学的医疗技能。</div>
-                      ) : (
-                        healSkills.map((s) => (
-                          <div key={s.id} className="p-4 border border-rose-100 bg-white rounded-xl flex justify-between items-center hover:border-rose-300 transition-colors shadow-sm">
-                            <div>
-                              <h4 className="font-black text-slate-800 text-sm">{s.name}</h4>
-                              <p className="text-[10px] text-slate-500 mt-1">{s.description}</p>
-                            </div>
-                            <button onClick={() => learnSkill(s.name)} className="px-4 py-1.5 bg-rose-100 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-200">
-                              学习
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {selectedBuilding.id === 'library' && (
-                  <div className="text-center space-y-6">
-                    <BookOpen size={64} className="mx-auto text-sky-400 mb-2" />
-                    <h3 className="text-xl font-black text-slate-800">奇妙绘本馆</h3>
-                    <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                      书架上摆满了画着各种神奇力量的图画书。这是给孩子们和职工的专属启蒙读物。
-                    </p>
-
-                    {isMember ? (
-                      <div className="p-4 border-2 border-sky-100 bg-sky-50 rounded-2xl">
-                        <p className="text-xs font-bold text-sky-700 mb-4">
-                          每日阅览次数：<span className="text-lg font-black">{3 - (user.workCount || 0)} / 3</span>
-                        </p>
-                        <button onClick={handleClaimBook} disabled={(user.workCount || 0) >= 3} className="w-full py-4 bg-sky-500 text-white font-black rounded-xl hover:bg-sky-600 disabled:bg-slate-300 transition-all shadow-lg shadow-sky-200">
-                          随机抽取 1 本【低阶技能书】
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="p-4 bg-slate-100 text-slate-500 font-bold rounded-xl text-sm border border-slate-200">
-                        抱歉，绘本馆仅对圣所内部人员开放。
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {['playground', 'canteen'].includes(selectedBuilding.id) && (
-                  <div className="space-y-4 text-center">
-                    {isMember ? (
-                      <>
-                        <div className="p-6 bg-amber-50 rounded-3xl border border-amber-100">
-                          <div className="text-center text-xs font-bold text-amber-600 mb-4 tracking-widest uppercase">
-                            Activity Points: {3 - (user.workCount || 0)} / 3
-                          </div>
-                          <button
-                            onClick={() => handleAction(isCub ? (selectedBuilding.id === 'playground' ? 'play' : 'eat') : 'work')}
-                            disabled={(user.workCount || 0) >= 3}
-                            className="w-full py-5 rounded-2xl bg-amber-500 text-white text-lg font-black hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 transition-all shadow-xl shadow-amber-200 active:scale-95"
-                          >
-                            {isCub ? (selectedBuilding.id === 'playground' ? '去玩滑滑梯！' : '大口吃饭！') : '开始巡视工作'}
-                          </button>
-                        </div>
-                        {!isCub && <p className="text-[10px] text-slate-400">照顾幼崽也能获得一笔不菲的工资奖励哦。</p>}
-                      </>
-                    ) : (
-                      <div className="text-center text-amber-500 font-bold py-6 border border-amber-100 bg-amber-50 rounded-2xl">
-                        游玩区和就餐区不对外开放。
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {selectedBuilding.id === 'dorm' && (
-                  <div className="space-y-4">
-                    {isMember ? (
-                      <button onClick={handleRest} className="w-full py-5 rounded-2xl bg-teal-500 text-white text-lg font-black hover:bg-teal-600 transition-all shadow-xl shadow-teal-200 flex items-center justify-center gap-3">
-                        <Coffee size={24} />
-                        {isCub ? '盖小被子睡午觉' : '在值班室小憩'}
-                      </button>
-                    ) : (
-                      <div className="text-center text-amber-500 font-bold py-6 border border-amber-100 bg-amber-50 rounded-2xl">
-                        宿舍重地，闲人免进。
-                      </div>
-                    )}
-                  </div>
-                )}
+                {renderBuildingContent()}
               </div>
             </div>
           </motion.div>
@@ -650,18 +836,18 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
   );
 }
 
-function RoleBtn({ title, sub, qualified, onClick }: any) {
+function RoleBtn({ title, sub, qualified, onClick }: { title: string; sub: string; qualified: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       disabled={!qualified}
-      className={`w-full p-4 rounded-2xl flex justify-between items-center transition-all border-2 relative overflow-hidden
-        ${qualified ? 'bg-white border-amber-100 text-amber-900 hover:border-amber-400 hover:shadow-md' : 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'}
-      `}
+      className={`w-full p-4 rounded-2xl flex justify-between items-center transition-all border-2 relative overflow-hidden ${
+        qualified ? 'bg-white border-amber-100 text-amber-900 hover:border-amber-400 hover:shadow-md' : 'bg-slate-50 border-slate-100 opacity-60 cursor-not-allowed'
+      }`}
     >
       <span className={`font-black text-sm ${qualified ? 'text-amber-900' : 'text-slate-500'}`}>{title}</span>
       <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${qualified ? 'bg-amber-100 text-amber-700' : 'text-slate-400'}`}>{sub}</span>
-      {!qualified && <span className="absolute top-4 right-4 text-[9px] font-bold text-rose-500 bg-rose-50 px-2 border border-rose-100 rounded">不符</span>}
+      {!qualified && <span className="absolute top-4 right-4 text-[9px] font-bold text-rose-500 bg-rose-50 px-2 border border-rose-100 rounded">条件不足</span>}
     </button>
   );
 }

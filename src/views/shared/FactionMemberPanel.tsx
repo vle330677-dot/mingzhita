@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { MapPin, RefreshCcw, ShieldAlert, UserMinus, Users } from 'lucide-react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
+import { LogOut, MapPin, RefreshCcw, ShieldAlert, UserMinus, Users } from 'lucide-react';
 import { User } from '../../types';
 
 interface FactionRosterRow {
@@ -38,9 +38,15 @@ function locationLabel(id?: string) {
   return LOCATION_LABEL[key] || key;
 }
 
+function isNoJob(value?: string) {
+  const normalized = String(value || '').trim();
+  return !normalized || normalized === '无' || normalized === '无职位' || normalized.toLowerCase() === 'none';
+}
+
 export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalData, title }: Props) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [quitting, setQuitting] = useState(false);
   const [rows, setRows] = useState<FactionRosterRow[]>([]);
   const [factionName, setFactionName] = useState('');
   const [leaderJob, setLeaderJob] = useState('');
@@ -77,14 +83,21 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
   }, [user.id, locationId]);
 
   const groupedRows = useMemo(() => {
-    const m = new Map<string, FactionRosterRow[]>();
+    const grouped = new Map<string, FactionRosterRow[]>();
     for (const row of rows) {
       const job = String(row.job || '无职位');
-      if (!m.has(job)) m.set(job, []);
-      m.get(job)!.push(row);
+      if (!grouped.has(job)) grouped.set(job, []);
+      grouped.get(job)!.push(row);
     }
-    return Array.from(m.entries());
+    return Array.from(grouped.entries());
   }, [rows]);
+
+  const selfRow = useMemo(
+    () => rows.find((row) => Number(row.id) === Number(user.id)) || null,
+    [rows, user.id]
+  );
+
+  const canQuitCurrentPost = !!selfRow && !isNoJob(selfRow.job);
 
   const handleKick = async (target: FactionRosterRow) => {
     if (!canManage || !kickEnabled) return;
@@ -106,10 +119,37 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
         return;
       }
       showToast(data.message || '辞退成功');
-      pullRoster(true);
-      if (fetchGlobalData) fetchGlobalData();
+      await pullRoster(true);
+      fetchGlobalData?.();
     } catch {
       showToast('网络异常，辞退失败');
+    }
+  };
+
+  const handleQuit = async () => {
+    if (!selfRow || isNoJob(selfRow.job) || quitting) return;
+    const currentJob = String(selfRow.job || user.job || '当前职位');
+    if (!window.confirm(`确定要退出当前职位「${currentJob}」吗？`)) return;
+
+    setQuitting(true);
+    try {
+      const res = await fetch('/api/tower/quit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '退出职位失败');
+        return;
+      }
+      showToast(data.message || '已退出当前职位');
+      await pullRoster(true);
+      fetchGlobalData?.();
+    } catch {
+      showToast('网络异常，退出职位失败');
+    } finally {
+      setQuitting(false);
     }
   };
 
@@ -124,17 +164,35 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
           <p className="text-[11px] text-slate-400 mt-1">
             阵营：{factionName || '未配置'} {leaderJob ? `| 最高职位：${leaderJob}` : ''}
           </p>
+          {canQuitCurrentPost && (
+            <p className="mt-1 text-[11px] text-emerald-300">
+              你当前在此担任：{selfRow?.job}
+            </p>
+          )}
         </div>
-        <button
-          onClick={() => {
-            setRefreshing(true);
-            pullRoster();
-          }}
-          className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700 transition-colors inline-flex items-center gap-1.5"
-        >
-          <RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} />
-          刷新
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {canQuitCurrentPost && (
+            <button
+              onClick={handleQuit}
+              disabled={quitting}
+              className="px-2.5 py-1.5 rounded-lg bg-rose-950/70 text-rose-200 text-xs font-bold hover:bg-rose-900 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+            >
+              <LogOut size={12} />
+              {quitting ? '退出中...' : '退出职位'}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setRefreshing(true);
+              pullRoster();
+            }}
+            className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700 transition-colors inline-flex items-center gap-1.5"
+          >
+            <RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} />
+            刷新
+          </button>
+        </div>
       </div>
 
       {canManage && kickEnabled && (
@@ -163,27 +221,27 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
                 <span className="text-[10px] text-slate-500">{members.length} 人</span>
               </div>
               <div className="p-2 space-y-2">
-                {members.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-800/80 px-2.5 py-2">
+                {members.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-800/80 px-2.5 py-2">
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-100 truncate">{m.name}</div>
+                      <div className="text-xs font-bold text-slate-100 truncate">{member.name}</div>
                       <div className="text-[10px] text-slate-400 flex items-center gap-1">
                         <MapPin size={11} />
-                        {locationLabel(m.currentLocation)}
+                        {locationLabel(member.currentLocation)}
                       </div>
                     </div>
                     {canManage &&
                       kickEnabled &&
-                      Number(m.id) !== Number(user.id) &&
-                      (locationId !== 'guild' || String(m.job || '') === '公会成员') && (
-                      <button
-                        onClick={() => handleKick(m)}
-                        className="px-2 py-1 rounded bg-rose-900/50 text-rose-300 text-[10px] font-black hover:bg-rose-800/70 transition-colors inline-flex items-center gap-1"
-                      >
-                        <UserMinus size={11} />
-                        辞退
-                      </button>
-                    )}
+                      Number(member.id) !== Number(user.id) &&
+                      (locationId !== 'guild' || String(member.job || '') === '公会成员') && (
+                        <button
+                          onClick={() => handleKick(member)}
+                          className="px-2 py-1 rounded bg-rose-900/50 text-rose-300 text-[10px] font-black hover:bg-rose-800/70 transition-colors inline-flex items-center gap-1"
+                        >
+                          <UserMinus size={11} />
+                          辞退
+                        </button>
+                      )}
                   </div>
                 ))}
               </div>

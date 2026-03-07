@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { AppContext } from '../types';
 
+const ONLINE_WINDOW_SECONDS = 90;
+
 export function createCompatRouter(ctx: AppContext) {
   const router = Router();
   const db = ctx.db;
@@ -10,15 +12,39 @@ export function createCompatRouter(ctx: AppContext) {
     res.json({ success: true, pong: true, ts: Date.now() });
   });
 
-  // 世界在线列表（推荐前端使用）
+  // ??????????????
   router.get('/world/presence', (_req, res) => {
     try {
-      const rows = db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as any[];
+      const rows = db.prepare(`
+        SELECT
+          u.id,
+          u.name,
+          u.userName,
+          u.role,
+          u.job,
+          u.currentLocation,
+          u.locationId,
+          u.status,
+          u.avatarUrl,
+          u.avatarUpdatedAt
+        FROM users u
+        WHERE u.status IN ('approved', 'ghost')
+          AND COALESCE(u.currentLocation, u.locationId, '') <> ''
+          AND EXISTS (
+            SELECT 1
+            FROM user_sessions s
+            WHERE s.userId = u.id
+              AND s.role = 'player'
+              AND s.revokedAt IS NULL
+              AND datetime(s.lastSeenAt) >= datetime('now', ?)
+          )
+        ORDER BY u.id DESC
+      `).all(`-${ONLINE_WINDOW_SECONDS} seconds`) as any[];
       const players = (rows || []).map((u) => ({
         id: Number(u.id),
         name: u.name || u.userName || '',
-        role: u.role || '未分化',
-        job: u.job || '无',
+        role: u.role || 'Unawakened',
+        job: u.job || 'None',
         currentLocation: u.currentLocation || u.locationId || '',
         status: u.status || '',
         avatarUrl: u.avatarUrl || '',
@@ -33,7 +59,6 @@ export function createCompatRouter(ctx: AppContext) {
       });
     }
   });
-
   // 兼容旧前端误用：admin/users 取玩家列表
   router.get('/admin/users', (_req, res) => {
     try {

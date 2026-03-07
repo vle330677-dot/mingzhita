@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { AppContext } from '../types';
 
 type AnyRow = Record<string, any>;
@@ -237,8 +237,8 @@ function normalizeCommissionKind(raw: any) {
   return COMMISSION_KIND_SET.has(kind) ? kind : 'normal';
 }
 
-function levelByScore(score: number) {
-  let picked = ADVENTURER_LEVELS[0];
+function levelByScore(score: number): (typeof ADVENTURER_LEVELS)[number] {
+  let picked: (typeof ADVENTURER_LEVELS)[number] = ADVENTURER_LEVELS[0];
   for (const row of ADVENTURER_LEVELS) {
     if (score >= row.minScore) picked = row;
   }
@@ -1018,7 +1018,7 @@ export function createGuildRouter(ctx: AppContext) {
       let itemType = '贵重物品';
       let itemTier = '中阶';
       let effectValue = 0;
-      let sourceType: 'player' | 'custom' = 'player';
+      let sourceType: 'player' | 'custom' = mode === 'custom' ? 'custom' : 'player';
 
       const tx = db.transaction(() => {
         if (mode === 'inventory') {
@@ -1712,3 +1712,5 @@ export function createGuildRouter(ctx: AppContext) {
 
   return r;
 }
+
+

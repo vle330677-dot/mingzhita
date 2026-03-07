@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Send, DoorOpen, Minimize2, Maximize2, Users } from 'lucide-react';
+import { DoorOpen, Maximize2, Minimize2, Send, Users, X } from 'lucide-react';
 import { User } from '../types';
 
 interface GroupMember {
@@ -41,9 +41,9 @@ function resolveAvatarSrc(raw: any, updatedAt?: any) {
   }
 
   if (/^data:image\//.test(base)) return base;
-  const v = updatedAt ? encodeURIComponent(String(updatedAt)) : '';
-  if (!v) return base;
-  return base.includes('?') ? `${base}&v=${v}` : `${base}?v=${v}`;
+  const version = updatedAt ? encodeURIComponent(String(updatedAt)) : '';
+  if (!version) return base;
+  return base.includes('?') ? `${base}&v=${version}` : `${base}?v=${version}`;
 }
 
 export function GroupRoleplayWindow({ currentUser, locationId, locationName, onClose, onLeave }: Props) {
@@ -57,16 +57,16 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
   const [minimized, setMinimized] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const title = useMemo(() => `${locationName || '未知地点'} · 群戏频道`, [locationName]);
+  const title = useMemo(() => `${locationName || '未知地点'} · 地区群戏`, [locationName]);
 
   const fetchSession = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
-      const q = new URLSearchParams({
+      const query = new URLSearchParams({
         userId: String(currentUser.id || 0),
-        locationId: String(locationId || '')
+        locationId: String(locationId || ''),
       });
-      const res = await fetch(`/api/rp/group/session?${q.toString()}`, { cache: 'no-store' });
+      const res = await fetch(`/api/rp/group/session?${query.toString()}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
         if (!silent) setHint(data.message || '读取群戏失败');
@@ -74,7 +74,7 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
       }
 
       if (!data.joined) {
-        setHint('你已退出该群戏');
+        setHint('你已退出该地区群戏。');
         setMembers([]);
         setMessages([]);
         return;
@@ -82,9 +82,9 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
 
       setMembers(Array.isArray(data.members) ? data.members : []);
       setMessages(Array.isArray(data.messages) ? data.messages : []);
-      setHint('');
+      if (!silent) setHint('');
     } catch {
-      if (!silent) setHint('网络异常，读取失败');
+      if (!silent) setHint('网络异常，读取群戏失败');
     } finally {
       if (!silent) setLoading(false);
     }
@@ -92,8 +92,8 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
 
   useEffect(() => {
     fetchSession(false);
-    const t = setInterval(() => fetchSession(true), 1500);
-    return () => clearInterval(t);
+    const timer = setInterval(() => fetchSession(true), 2500);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser.id, locationId]);
 
@@ -114,8 +114,8 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
           userName: currentUser.name,
           locationId,
           locationName,
-          content
-        })
+          content,
+        }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
@@ -151,7 +151,7 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
         minimized ? 'bottom-4' : 'bottom-4 md:bottom-6'
       } bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
     >
-      <div className="px-3 py-2.5 border-b border-slate-700 bg-slate-850/90 flex items-center justify-between gap-2">
+      <div className="px-3 py-2.5 border-b border-slate-700 bg-slate-900/95 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[13px] font-black text-white truncate">{title}</div>
           <div className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -159,9 +159,9 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
             在线 {members.length}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => setMinimized((v) => !v)}
+            onClick={() => setMinimized((value) => !value)}
             className="p-1.5 rounded-md text-slate-300 hover:text-white hover:bg-slate-800"
             title={minimized ? '展开' : '收起'}
           >
@@ -189,7 +189,7 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
         <>
           <div className="px-3 py-2 border-b border-slate-700/80">
             <div className="text-[10px] text-slate-400 truncate">
-              {members.length > 0 ? members.map((m) => m.userName).join('、') : '当前暂无在线成员'}
+              {members.length > 0 ? members.map((member) => member.userName).join('、') : '当前暂无在线成员'}
             </div>
           </div>
 
@@ -197,33 +197,33 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
             {loading ? (
               <div className="text-xs text-slate-500">读取群戏中...</div>
             ) : messages.length === 0 ? (
-              <div className="text-xs text-slate-500">还没有群戏内容</div>
+              <div className="text-xs text-slate-500">还没有群戏内容。</div>
             ) : (
-              messages.map((m) => {
-                const isSystem = String(m.type || '') === 'system';
-                const mine = !isSystem && Number(m.senderId || 0) === Number(currentUser.id || 0);
-                const avatar = resolveAvatarSrc(m.senderAvatar, m.senderAvatarUpdatedAt);
+              messages.map((message) => {
+                const isSystem = String(message.type || '') === 'system';
+                const mine = !isSystem && Number(message.senderId || 0) === Number(currentUser.id || 0);
+                const avatar = resolveAvatarSrc(message.senderAvatar, message.senderAvatarUpdatedAt);
                 return (
-                  <div key={`${m.id}-${m.createdAt}`} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                  <div key={`${message.id}-${message.createdAt}`} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     {isSystem ? (
                       <div className="px-2 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-[11px] text-slate-300">
-                        {m.content}
+                        {message.content}
                       </div>
                     ) : (
                       <div className={`max-w-[84%] rounded-xl px-3 py-2 border ${mine ? 'bg-sky-600/30 border-sky-500/40' : 'bg-slate-800 border-slate-700'}`}>
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-5 h-5 rounded-full overflow-hidden border border-slate-600 bg-slate-700 shrink-0">
                             {avatar ? (
-                              <img src={avatar} className="w-full h-full object-cover" alt={m.senderName || 'avatar'} />
+                              <img src={avatar} className="w-full h-full object-cover" alt={message.senderName || 'avatar'} />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-[9px] text-white font-black">
-                                {(m.senderName || '?')[0]}
+                                {(message.senderName || '?')[0]}
                               </div>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-300">{m.senderName || '未知'}</div>
+                          <div className="text-[10px] text-slate-300">{message.senderName || '未知玩家'}</div>
                         </div>
-                        <div className="text-xs text-slate-100 whitespace-pre-wrap break-words leading-relaxed">{m.content}</div>
+                        <div className="text-xs text-slate-100 whitespace-pre-wrap break-words leading-relaxed">{message.content}</div>
                       </div>
                     )}
                   </div>
@@ -237,10 +237,10 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
             <div className="flex items-center gap-2">
               <input
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
                     sendMessage();
                   }
                 }}
@@ -252,7 +252,8 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
                 disabled={sending}
                 className="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-black hover:bg-sky-500 disabled:opacity-60 inline-flex items-center gap-1"
               >
-                <Send size={12} /> 发送
+                <Send size={12} />
+                发送
               </button>
             </div>
             <AnimatePresence>

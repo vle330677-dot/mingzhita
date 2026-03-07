@@ -164,8 +164,8 @@ export default function App() {
     const nativeFetch = window.fetch.bind(window);
 
     const wrappedFetch: typeof window.fetch = async (input, init) => {
-      const url = typeof input === 'string' ? input : input.url;
-      const method = String(init?.method || (typeof input === 'string' ? 'GET' : input.method || 'GET')).toUpperCase();
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = String(init?.method || (typeof input === 'string' || input instanceof URL ? 'GET' : input.method || 'GET')).toUpperCase();
       const isTowerJoin = method === 'POST' && /\/api\/tower\/join(?:\?|$)/i.test(url);
       if (!isTowerJoin) return nativeFetch(input, init);
 
@@ -295,4 +295,5 @@ export default function App() {
     </div>
   );
 }
+
 

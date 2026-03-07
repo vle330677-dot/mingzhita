@@ -17,7 +17,22 @@ export function initDb() {
 
   const boot = () => {
     const db = new Database(dbPath);
+    // WAL 模式：读写并发，不互相阻塞
     db.pragma('journal_mode = WAL');
+    // WAL checkpoint：减少写放大
+    db.pragma('wal_autocheckpoint = 1000');
+    // 同步级别：WAL 模式下 NORMAL 足够安全，且比 FULL 快得多
+    db.pragma('synchronous = NORMAL');
+    // 内存缓存：20MB，减少磁盘 I/O
+    db.pragma('cache_size = -20000');
+    // 临时表放内存
+    db.pragma('temp_store = MEMORY');
+    // 外键约束
+    db.pragma('foreign_keys = ON');
+    // busy timeout：并发写时等待而不是立刻返回 SQLITE_BUSY
+    db.pragma('busy_timeout = 5000');
+    // mmap：让 OS 管理页缓存，多核友好
+    db.pragma('mmap_size = 67108864');
     runSchema(db);
     runMigrate(db);
     runSeed(db);

@@ -1,4 +1,4 @@
-// src/utils/http.ts
+﻿// src/utils/http.ts
 export const USER_TOKEN_KEY = 'USER_TOKEN';
 export const ADMIN_TOKEN_KEY = 'ADMIN_TOKEN';
 export const USER_NAME_KEY = 'USER_NAME';
@@ -6,10 +6,12 @@ export const ADMIN_NAME_KEY = 'ADMIN_NAME';
 const API_BASE = ((import.meta as any).env?.VITE_API_BASE || '').replace(/\/+$/, '');
 
 type AuthMode = 'user' | 'admin' | 'none';
-
-type ApiOptions = RequestInit & {
+type JsonLikeBody = Record<string, any> | any[];
+type ApiOptions = Omit<RequestInit, 'body' | 'headers'> & {
   auth?: AuthMode;
-  rawBody?: boolean; // true 时不自动 JSON.stringify
+  rawBody?: boolean;
+  headers?: HeadersInit;
+  body?: BodyInit | JsonLikeBody | null;
 };
 
 export function getUserToken() {
@@ -48,6 +50,17 @@ export function toApiUrl(url: string) {
   return `${API_BASE}/${url}`;
 }
 
+function shouldAutoJsonEncode(body: ApiOptions['body'], rawBody: boolean) {
+  if (rawBody || body === undefined || body === null) return false;
+  if (typeof body !== 'object') return false;
+  if (body instanceof FormData) return false;
+  if (body instanceof Blob) return false;
+  if (body instanceof URLSearchParams) return false;
+  if (body instanceof ArrayBuffer) return false;
+  if (ArrayBuffer.isView(body)) return false;
+  return true;
+}
+
 export async function apiFetch<T = any>(url: string, options: ApiOptions = {}): Promise<T> {
   const { auth = 'none', rawBody = false, headers, body, ...rest } = options;
 
@@ -55,7 +68,6 @@ export async function apiFetch<T = any>(url: string, options: ApiOptions = {}): 
     ...(headers as Record<string, string>),
   };
 
-  // 自动带 token
   if (auth === 'user') {
     const token = getUserToken();
     if (token) h.Authorization = `Bearer ${token}`;
@@ -64,8 +76,8 @@ export async function apiFetch<T = any>(url: string, options: ApiOptions = {}): 
     if (token) h.Authorization = `Bearer ${token}`;
   }
 
-  let finalBody = body as any;
-  if (!rawBody && body && typeof body === 'object' && !(body instanceof FormData)) {
+  let finalBody = body as BodyInit | null | undefined;
+  if (shouldAutoJsonEncode(body, rawBody)) {
     h['Content-Type'] = h['Content-Type'] || 'application/json';
     finalBody = JSON.stringify(body);
   }
@@ -83,7 +95,6 @@ export async function apiFetch<T = any>(url: string, options: ApiOptions = {}): 
     const message = (payload as any)?.message || `HTTP ${res.status}`;
     const code = (payload as any)?.code;
 
-    // 被顶号 / 会话失效统一广播
     if (res.status === 401 && (code === 'SESSION_KICKED' || code === 'SESSION_REVOKED')) {
       clearUserSession();
       window.dispatchEvent(

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { AppContext } from '../types';
 import { writeAdminLog } from '../utils/common';
 import { applyDefaultCatalogSeed } from '../db/seed';
@@ -365,6 +365,55 @@ export function createCatalogRouter(ctx: AppContext) {
     }
   });
 
+  r.put('/admin/items/:id', auth.requireAdminAuth, (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
+      const row = db.prepare(`SELECT id, name FROM items WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      if (!row) return res.status(404).json({ success: false, message: 'item not found' });
+
+      const body = req.body || {};
+      const name = String(body.name || '').trim();
+      if (!name) return res.status(400).json({ success: false, message: 'name required' });
+      const adminName = String(req.admin?.name || 'admin');
+      const tier = normalizeTier(body.tier);
+      const locationTag = normalizeItemLocationTag(body.locationTag || body.faction);
+      if (!locationTag) return res.status(400).json({ success: false, message: 'locationTag required' });
+      const faction = normalizeItemOrigin(locationTag, body.faction);
+      const itemType = normalizeItemType(body.itemType);
+
+      db.prepare(`
+        UPDATE items
+        SET name = ?,
+            description = ?,
+            locationTag = ?,
+            npcId = ?,
+            price = ?,
+            faction = ?,
+            tier = ?,
+            itemType = ?,
+            effectValue = ?
+        WHERE id = ?
+      `).run(
+        name,
+        String(body.description || ''),
+        locationTag,
+        body.npcId ?? null,
+        Number(body.price || 0),
+        faction,
+        tier,
+        itemType,
+        Number(body.effectValue || 0),
+        id
+      );
+
+      writeAdminLog(db, adminName, `编辑物品 ${name}`, 'item', String(id), { faction, tier, itemType, locationTag });
+      res.json({ success: true, message: `管理员 ${adminName} 更新了物品 ${name}` });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'update item failed' });
+    }
+  });
+
   r.delete('/admin/items/:id', auth.requireAdminAuth, (req: any, res) => {
     try {
       const id = Number(req.params.id);
@@ -409,6 +458,44 @@ export function createCatalogRouter(ctx: AppContext) {
     }
   });
 
+  r.put('/admin/skills/:id', auth.requireAdminAuth, (req: any, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
+      const row = db.prepare(`SELECT id, name FROM skills WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      if (!row) return res.status(404).json({ success: false, message: 'skill not found' });
+
+      const body = req.body || {};
+      const name = String(body.name || '').trim();
+      if (!name) return res.status(400).json({ success: false, message: 'name required' });
+      const adminName = String(req.admin?.name || 'admin');
+      const tier = normalizeTier(body.tier);
+      const faction = normalizeSkillFaction(body.faction);
+
+      db.prepare(`
+        UPDATE skills
+        SET name = ?,
+            faction = ?,
+            tier = ?,
+            description = ?,
+            npcId = ?
+        WHERE id = ?
+      `).run(
+        name,
+        faction,
+        tier,
+        String(body.description || ''),
+        body.npcId ?? null,
+        id
+      );
+
+      writeAdminLog(db, adminName, `编辑技能 ${name}`, 'skill', String(id), { faction, tier });
+      res.json({ success: true, message: `管理员 ${adminName} 更新了技能 ${name}` });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'update skill failed' });
+    }
+  });
+
   r.delete('/admin/skills/:id', auth.requireAdminAuth, (req: any, res) => {
     try {
       const id = Number(req.params.id);
@@ -438,3 +525,4 @@ export function createCatalogRouter(ctx: AppContext) {
 
   return r;
 }
+

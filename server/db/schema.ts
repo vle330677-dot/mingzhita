@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+﻿import Database from 'better-sqlite3';
 
 export function runSchema(db: Database.Database) {
   db.exec(`
@@ -277,6 +277,22 @@ export function runSchema(db: Database.Database) {
       UNIQUE(sessionId, userId)
     );
 
+    CREATE TABLE IF NOT EXISTS interaction_trade_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromUserId INTEGER NOT NULL,
+      toUserId INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      sessionId TEXT DEFAULT '',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_requests_to_status
+      ON interaction_trade_requests(toUserId, status, updatedAt);
+
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_requests_from_status
+      ON interaction_trade_requests(fromUserId, status, updatedAt);
+
     CREATE TABLE IF NOT EXISTS interaction_report_votes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reportId INTEGER NOT NULL,
@@ -344,5 +360,99 @@ export function runSchema(db: Database.Database) {
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(challengeId, voterId)
     );
+
+    CREATE TABLE IF NOT EXISTS city_prosperity (
+      cityId TEXT PRIMARY KEY,
+      mayorUserId INTEGER DEFAULT 0,
+      mayorName TEXT DEFAULT '',
+      prosperity INTEGER DEFAULT 0,
+      residentCount INTEGER DEFAULT 0,
+      shopCount INTEGER DEFAULT 0,
+      lastSettlementDate TEXT DEFAULT '',
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS city_shops (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cityId TEXT NOT NULL,
+      ownerUserId INTEGER NOT NULL,
+      ownerName TEXT DEFAULT '',
+      shopName TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      status TEXT DEFAULT 'active',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(cityId, ownerUserId)
+    );
+
+    CREATE TABLE IF NOT EXISTS ghost_materialization (
+      userId INTEGER PRIMARY KEY,
+      state TEXT DEFAULT 'ethereal',
+      lastToggleAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      mpCost INTEGER DEFAULT 0,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS mediation_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT NOT NULL,
+      requesterUserId INTEGER NOT NULL,
+      requesterName TEXT DEFAULT '',
+      targetUserId INTEGER NOT NULL,
+      targetName TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      mediatorUserId INTEGER DEFAULT 0,
+      mediatorName TEXT DEFAULT '',
+      reward INTEGER DEFAULT 1000,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mediation_requests_status
+      ON mediation_requests(status, createdAt);
+
+    CREATE TABLE IF NOT EXISTS army_arbitrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plaintiffUserId INTEGER NOT NULL,
+      plaintiffName TEXT DEFAULT '',
+      defendantUserId INTEGER NOT NULL,
+      defendantName TEXT DEFAULT '',
+      reason TEXT NOT NULL,
+      evidence TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      judgeUserId INTEGER DEFAULT 0,
+      judgeName TEXT DEFAULT '',
+      verdict TEXT DEFAULT '',
+      penalty TEXT DEFAULT '',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS army_arbitration_votes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      arbitrationId INTEGER NOT NULL,
+      voterUserId INTEGER NOT NULL,
+      voterName TEXT DEFAULT '',
+      vote TEXT NOT NULL,
+      comment TEXT DEFAULT '',
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(arbitrationId, voterUserId)
+    );
+
+    CREATE TABLE IF NOT EXISTS sensitive_operation_confirmations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      operationType TEXT NOT NULL,
+      operationData TEXT DEFAULT '{}',
+      status TEXT DEFAULT 'pending',
+      confirmedAt DATETIME,
+      expiresAt DATETIME NOT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sensitive_confirmations_user_status
+      ON sensitive_operation_confirmations(userId, status, expiresAt);
   `);
 }
+

@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { AppContext } from '../types';
 import { writeAdminLog } from '../utils/common';
 
@@ -372,6 +372,22 @@ function ensureTables(db: any) {
       UNIQUE(sessionId, userId)
     );
 
+    CREATE TABLE IF NOT EXISTS interaction_trade_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromUserId INTEGER NOT NULL,
+      toUserId INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      sessionId TEXT DEFAULT '',
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_requests_to_status
+      ON interaction_trade_requests(toUserId, status, updatedAt);
+
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_requests_from_status
+      ON interaction_trade_requests(fromUserId, status, updatedAt);
+
     CREATE TABLE IF NOT EXISTS interaction_report_votes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reportId INTEGER NOT NULL,
@@ -461,6 +477,28 @@ function ensureTables(db: any) {
       createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
       updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS demon_gamble_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      challengerId INTEGER NOT NULL,
+      challengerName TEXT DEFAULT '',
+      targetId INTEGER NOT NULL,
+      targetName TEXT DEFAULT '',
+      amount INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      responderId INTEGER DEFAULT 0,
+      challengerRoll INTEGER DEFAULT 0,
+      targetRoll INTEGER DEFAULT 0,
+      winnerId INTEGER DEFAULT 0,
+      loserId INTEGER DEFAULT 0,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_demon_gamble_target_status
+      ON demon_gamble_requests(targetId, status, updatedAt);
+    CREATE INDEX IF NOT EXISTS idx_demon_gamble_challenger_status
+      ON demon_gamble_requests(challengerId, status, updatedAt);
 
     CREATE TABLE IF NOT EXISTS legacy_commissions (
       id TEXT PRIMARY KEY,
@@ -714,6 +752,117 @@ function getOpenDemonLoan(db: any, userId: number) {
     status: 'open',
     createdAt: String(row.createdAt || ''),
     updatedAt: String(row.updatedAt || '')
+  };
+}
+
+function mapDemonGambleRequestRow(row: AnyRow | undefined | null, viewerId = 0) {
+  if (!row) return null;
+  const challengerId = Number(row.challengerId || 0);
+  const targetId = Number(row.targetId || 0);
+  const winnerId = Number(row.winnerId || 0);
+  const loserId = Number(row.loserId || 0);
+  const safeViewerId = Number(viewerId || 0);
+  const viewerRole = safeViewerId === challengerId ? 'challenger' : safeViewerId === targetId ? 'target' : '';
+  return {
+    id: Number(row.id || 0),
+    challengerId,
+    challengerName: String(row.challengerName || ''),
+    targetId,
+    targetName: String(row.targetName || ''),
+    amount: Math.max(1, Number(row.amount || 0)),
+    status: String(row.status || 'pending'),
+    responderId: Number(row.responderId || 0),
+    challengerRoll: Math.max(0, Number(row.challengerRoll || 0)),
+    targetRoll: Math.max(0, Number(row.targetRoll || 0)),
+    winnerId,
+    loserId,
+    viewerRole,
+    viewerWon: safeViewerId > 0 ? winnerId === safeViewerId : false,
+    createdAt: String(row.createdAt || ''),
+    updatedAt: String(row.updatedAt || '')
+  };
+}
+
+function cancelDemonGambleRequest(db: any, requestId: number) {
+  if (!requestId) return null;
+  const stamp = nowIso();
+  db.prepare(`
+    UPDATE demon_gamble_requests
+    SET status = 'cancelled',
+        updatedAt = ?
+    WHERE id = ?
+  `).run(stamp, requestId);
+  const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+  return mapDemonGambleRequestRow(row);
+}
+
+function settleDemonGambleRequest(db: any, requestId: number) {
+  const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+  if (!row) return { ok: false, message: 'request not found', request: null };
+  if (String(row.status || '') !== 'pending') {
+    return { ok: false, message: 'request already processed', request: mapDemonGambleRequestRow(row) };
+  }
+
+  const challengerId = Number(row.challengerId || 0);
+  const targetId = Number(row.targetId || 0);
+  const amount = Math.max(1, Number(row.amount || 0));
+  const challenger = getUser(db, challengerId);
+  const target = getUser(db, targetId);
+
+  if (!challenger || !target) {
+    const request = cancelDemonGambleRequest(db, requestId);
+    return { ok: false, message: 'One side no longer exists. The bet request was cancelled', request };
+  }
+
+  if (!['approved', 'ghost'].includes(String(challenger.status || '')) || !['approved', 'ghost'].includes(String(target.status || ''))) {
+    const request = cancelDemonGambleRequest(db, requestId);
+    return { ok: false, message: 'One side can no longer bet. The request was cancelled', request };
+  }
+
+  const bothInDemon = String(challenger.currentLocation || '') === DEMON_LOCATION && String(target.currentLocation || '') === DEMON_LOCATION;
+  if (!bothInDemon) {
+    const request = cancelDemonGambleRequest(db, requestId);
+    return { ok: false, message: 'One side left the demon casino. The request was cancelled', request };
+  }
+
+  if (Number(challenger.gold || 0) < amount || Number(target.gold || 0) < amount) {
+    const request = cancelDemonGambleRequest(db, requestId);
+    return { ok: false, message: 'One side no longer has enough gold. The request was cancelled', request };
+  }
+
+  let challengerRoll = Math.floor(Math.random() * 6) + 1;
+  let targetRoll = Math.floor(Math.random() * 6) + 1;
+  while (challengerRoll === targetRoll) {
+    challengerRoll = Math.floor(Math.random() * 6) + 1;
+    targetRoll = Math.floor(Math.random() * 6) + 1;
+  }
+
+  const winnerId = challengerRoll > targetRoll ? challengerId : targetId;
+  const loserId = winnerId === challengerId ? targetId : challengerId;
+  const stamp = nowIso();
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(amount, stamp, loserId);
+    db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(amount, stamp, winnerId);
+    db.prepare(`
+      UPDATE demon_gamble_requests
+      SET status = 'resolved',
+          responderId = ?,
+          challengerRoll = ?,
+          targetRoll = ?,
+          winnerId = ?,
+          loserId = ?,
+          updatedAt = ?
+      WHERE id = ?
+    `).run(targetId, challengerRoll, targetRoll, winnerId, loserId, stamp, requestId);
+  });
+  tx();
+
+  const fresh = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+  const winnerName = winnerId === challengerId ? String(challenger.name || row.challengerName || 'Someone') : String(target.name || row.targetName || 'Someone');
+  return {
+    ok: true,
+    request: mapDemonGambleRequestRow(fresh),
+    message: `${winnerName} won the duel and took ${amount}G`
   };
 }
 
@@ -1119,19 +1268,43 @@ function applyWildDebuff(db: any, userId: number) {
   };
 }
 
-function buildWildEncounter(db: any) {
+function getWildEncounterLevelCap(user?: AnyRow) {
+  const rankPower = getRankPower(user);
+  if (rankPower <= 0) return 3;
+  if (rankPower <= 4) return 4;
+  if (rankPower <= 7) return 6;
+  if (rankPower <= 10) return 8;
+  if (rankPower <= 13) return 10;
+  if (rankPower <= 16) return 12;
+  return 14 + Math.min(4, Math.floor((rankPower - 16) / 2));
+}
+
+function buildWildEncounter(db: any, user?: AnyRow) {
   const eventRoll = Math.random();
   if (eventRoll < 0.25) {
     return { eventType: 'item' as const };
   }
 
-  const monster = db.prepare(`
+  const encounterCap = getWildEncounterLevelCap(user);
+
+  let monster = db.prepare(`
     SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance
     FROM wild_monsters
     WHERE enabled = 1
-    ORDER BY RANDOM()
+      AND minLevel <= ?
+    ORDER BY ABS(minLevel - ?) ASC, RANDOM()
     LIMIT 1
-  `).get() as AnyRow | undefined;
+  `).get(encounterCap + 2, encounterCap) as AnyRow | undefined;
+
+  if (!monster) {
+    monster = db.prepare(`
+      SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance
+      FROM wild_monsters
+      WHERE enabled = 1
+      ORDER BY minLevel ASC, RANDOM()
+      LIMIT 1
+    `).get() as AnyRow | undefined;
+  }
 
   if (!monster) {
     return { eventType: 'item' as const };
@@ -1139,15 +1312,22 @@ function buildWildEncounter(db: any) {
 
   const minLevel = Math.max(1, Number(monster.minLevel || 1));
   const maxLevel = Math.max(minLevel, Number(monster.maxLevel || minLevel));
-  const level = Math.floor(minLevel + Math.random() * (maxLevel - minLevel + 1));
-  const power = Number(monster.basePower || 10) + level * 1.6 + Math.random() * 2.5;
-  const hp = Math.max(40, Math.round(Number(monster.baseHp || 100) + level * 6));
+  const spawnMaxLevel = Math.max(minLevel, Math.min(maxLevel, encounterCap + 1));
+  const lowBandMax = Math.max(
+    minLevel,
+    Math.min(spawnMaxLevel, minLevel + Math.max(1, Math.ceil((spawnMaxLevel - minLevel) * 0.6)))
+  );
+  const level = Math.random() < 0.78
+    ? Math.floor(minLevel + Math.random() * (lowBandMax - minLevel + 1))
+    : Math.floor(lowBandMax + Math.random() * (spawnMaxLevel - lowBandMax + 1));
+  const power = Number(monster.basePower || 10) + level * 1.35 + Math.random() * 1.8;
+  const hp = Math.max(40, Math.round(Number(monster.baseHp || 100) + level * 5));
 
   return {
     eventType: 'monster' as const,
     monster: {
       id: Number(monster.id),
-      name: String(monster.name || '未知魔物'),
+      name: String(monster.name || '????'),
       description: String(monster.description || ''),
       level,
       power: Number(power.toFixed(2)),
@@ -1280,6 +1460,41 @@ function normalizeTradePair(a: number, b: number) {
   return a <= b ? { userAId: a, userBId: b } : { userAId: b, userBId: a };
 }
 
+const TRADE_SKILL_PREFIX = '__skill__:';
+
+function encodeTradeSkillOffer(userSkillId: number, skillName: string) {
+  return `${TRADE_SKILL_PREFIX}${Math.max(0, Number(userSkillId || 0))}:${String(skillName || '').trim()}`;
+}
+
+function parseTradeSkillOffer(raw: any) {
+  const itemName = String(raw || '').trim();
+  if (!itemName.startsWith(TRADE_SKILL_PREFIX)) {
+    return { isSkill: false, userSkillId: 0, skillName: '', rawItemName: itemName };
+  }
+  const rest = itemName.slice(TRADE_SKILL_PREFIX.length);
+  const sep = rest.indexOf(':');
+  if (sep < 0) {
+    return { isSkill: true, userSkillId: Math.max(0, Number(rest || 0)), skillName: '', rawItemName: itemName };
+  }
+  return {
+    isSkill: true,
+    userSkillId: Math.max(0, Number(rest.slice(0, sep) || 0)),
+    skillName: rest.slice(sep + 1).trim(),
+    rawItemName: itemName
+  };
+}
+
+function pickTradeSkillEntry(db: any, userId: number, userSkillId: number) {
+  if (!userId || !userSkillId) return undefined;
+  return db.prepare(`
+    SELECT us.id AS userSkillId, us.level, s.id AS skillId, s.name, s.faction
+    FROM user_skills us
+    JOIN skills s ON s.id = us.skillId
+    WHERE us.userId = ? AND us.id = ?
+    LIMIT 1
+  `).get(userId, userSkillId) as AnyRow | undefined;
+}
+
 function loadTradeSessionPayload(db: any, sessionRow: AnyRow | undefined) {
   if (!sessionRow) return null;
   const userAId = Number(sessionRow.userAId || 0);
@@ -1372,10 +1587,13 @@ function consumeInventoryByName(db: any, userId: number, itemName: string, qty: 
 
 function formatTradeOfferLabel(offer: { itemName: string; qty: number; gold: number }) {
   const parts: string[] = [];
-  const itemName = String(offer.itemName || '').trim();
+  const parsed = parseTradeSkillOffer(offer.itemName);
+  const itemName = parsed.isSkill ? '' : String(offer.itemName || '').trim();
+  const skillName = parsed.isSkill ? String(parsed.skillName || '').trim() : '';
   const qty = Math.max(0, Number(offer.qty || 0));
   const gold = Math.max(0, Number(offer.gold || 0));
   if (itemName && qty > 0) parts.push(`「${itemName}」x${qty}`);
+  if (skillName) parts.push(`技能「${skillName}」`);
   if (gold > 0) parts.push(`${gold}G`);
   return parts.length ? parts.join(' + ') : '空报价';
 }
@@ -1420,26 +1638,49 @@ function completeTradeSession(db: any, sessionId: string) {
   if (Number(userA.gold || 0) < offerA.gold) return { success: false, message: `${String(userA.name || '玩家A')} 金币不足` };
   if (Number(userB.gold || 0) < offerB.gold) return { success: false, message: `${String(userB.name || '玩家B')} 金币不足` };
 
-  if (offerA.itemName && offerA.qty > 0 && inventoryTotalQty(db, userAId, offerA.itemName) < offerA.qty) {
+  const skillOfferA = parseTradeSkillOffer(offerA.itemName);
+  const skillOfferB = parseTradeSkillOffer(offerB.itemName);
+  const normalItemA = skillOfferA.isSkill ? '' : offerA.itemName;
+  const normalItemB = skillOfferB.isSkill ? '' : offerB.itemName;
+
+  if (normalItemA && offerA.qty > 0 && inventoryTotalQty(db, userAId, normalItemA) < offerA.qty) {
     return { success: false, message: `${String(userA.name || '玩家A')} 的物品库存不足` };
   }
-  if (offerB.itemName && offerB.qty > 0 && inventoryTotalQty(db, userBId, offerB.itemName) < offerB.qty) {
+  if (normalItemB && offerB.qty > 0 && inventoryTotalQty(db, userBId, normalItemB) < offerB.qty) {
     return { success: false, message: `${String(userB.name || '玩家B')} 的物品库存不足` };
   }
 
+  const skillRowA = skillOfferA.isSkill ? pickTradeSkillEntry(db, userAId, skillOfferA.userSkillId) : undefined;
+  const skillRowB = skillOfferB.isSkill ? pickTradeSkillEntry(db, userBId, skillOfferB.userSkillId) : undefined;
+  if (skillOfferA.isSkill && !skillRowA) {
+    return { success: false, message: `${String(userA.name || '玩家A')} 不再持有报价中的技能` };
+  }
+  if (skillOfferB.isSkill && !skillRowB) {
+    return { success: false, message: `${String(userB.name || '玩家B')} 不再持有报价中的技能` };
+  }
+  if (skillRowA) {
+    const targetHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(userBId, Number(skillRowA.skillId || 0));
+    if (targetHas) return { success: false, message: `${String(userB.name || '玩家B')} 已掌握技能「${String(skillRowA.name || '')}」` };
+  }
+  if (skillRowB) {
+    const targetHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(userAId, Number(skillRowB.skillId || 0));
+    if (targetHas) return { success: false, message: `${String(userA.name || '玩家A')} 已掌握技能「${String(skillRowB.name || '')}」` };
+  }
+
+  const extraNotes: string[] = [];
   const tx = db.transaction(() => {
     if (offerA.gold > 0) db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(offerA.gold, nowIso(), userAId);
     if (offerB.gold > 0) db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(offerB.gold, nowIso(), userBId);
     if (offerB.gold > 0) db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(offerB.gold, nowIso(), userAId);
     if (offerA.gold > 0) db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(offerA.gold, nowIso(), userBId);
 
-    if (offerA.itemName && offerA.qty > 0) {
-      const metaA = pickInventoryMeta(db, userAId, offerA.itemName);
-      consumeInventoryByName(db, userAId, offerA.itemName, offerA.qty);
+    if (normalItemA && offerA.qty > 0) {
+      const metaA = pickInventoryMeta(db, userAId, normalItemA);
+      consumeInventoryByName(db, userAId, normalItemA, offerA.qty);
       addItem(
         db,
         userBId,
-        offerA.itemName,
+        normalItemA,
         String(metaA?.itemType || 'consumable'),
         offerA.qty,
         String(metaA?.description || ''),
@@ -1447,18 +1688,44 @@ function completeTradeSession(db: any, sessionId: string) {
       );
     }
 
-    if (offerB.itemName && offerB.qty > 0) {
-      const metaB = pickInventoryMeta(db, userBId, offerB.itemName);
-      consumeInventoryByName(db, userBId, offerB.itemName, offerB.qty);
+    if (normalItemB && offerB.qty > 0) {
+      const metaB = pickInventoryMeta(db, userBId, normalItemB);
+      consumeInventoryByName(db, userBId, normalItemB, offerB.qty);
       addItem(
         db,
         userAId,
-        offerB.itemName,
+        normalItemB,
         String(metaB?.itemType || 'consumable'),
         offerB.qty,
         String(metaB?.description || ''),
         Number(metaB?.effectValue || 0)
       );
+    }
+
+    if (skillRowA) {
+      db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(skillRowA.userSkillId || 0));
+      const granted = grantSkillOrBook(
+        db,
+        userBId,
+        { id: Number(skillRowA.skillId || 0), name: String(skillRowA.name || ''), faction: String(skillRowA.faction || '通用') },
+        Math.max(1, Number(skillRowA.level || 1))
+      );
+      if (granted.converted) {
+        extraNotes.push(`${String(userB.name || '玩家B')} 因派系限制收到技能书「${String(skillRowA.name || '')}」`);
+      }
+    }
+
+    if (skillRowB) {
+      db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(skillRowB.userSkillId || 0));
+      const granted = grantSkillOrBook(
+        db,
+        userAId,
+        { id: Number(skillRowB.skillId || 0), name: String(skillRowB.name || ''), faction: String(skillRowB.faction || '通用') },
+        Math.max(1, Number(skillRowB.level || 1))
+      );
+      if (granted.converted) {
+        extraNotes.push(`${String(userA.name || '玩家A')} 因派系限制收到技能书「${String(skillRowB.name || '')}」`);
+      }
     }
 
     db.prepare(`
@@ -1497,12 +1764,11 @@ function completeTradeSession(db: any, sessionId: string) {
 
   return {
     success: true,
-    message: '双方确认完成，交易已结算',
+    message: extraNotes.length ? `双方确认完成，交易已结算（${extraNotes.join('；')}）` : '双方确认完成，交易已结算',
     offerA,
     offerB
   };
 }
-
 function resolveCombat(db: any, attackerId: number, defenderId: number, attackerScore?: number, defenderScore?: number) {
   const attacker = getUser(db, attackerId);
   const defender = getUser(db, defenderId);
@@ -3413,6 +3679,33 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 80
       `).all(DEMON_LOCATION, userId) as AnyRow[];
 
+      const incomingGambleRequests = db.prepare(`
+        SELECT *
+        FROM demon_gamble_requests
+        WHERE targetId = ?
+          AND status = 'pending'
+        ORDER BY id DESC
+        LIMIT 12
+      `).all(userId) as AnyRow[];
+
+      const outgoingGambleRequests = db.prepare(`
+        SELECT *
+        FROM demon_gamble_requests
+        WHERE challengerId = ?
+          AND status = 'pending'
+        ORDER BY id DESC
+        LIMIT 12
+      `).all(userId) as AnyRow[];
+
+      const recentGambleEvents = db.prepare(`
+        SELECT *
+        FROM demon_gamble_requests
+        WHERE (challengerId = ? OR targetId = ?)
+          AND status IN ('resolved', 'rejected', 'cancelled')
+        ORDER BY id DESC
+        LIMIT 20
+      `).all(userId, userId) as AnyRow[];
+
       const used = Math.max(0, Number(me.demonSkillCount || 0));
       const left = Math.max(0, DEMON_DAILY_SKILL_MAX - used);
       return res.json({
@@ -3444,7 +3737,10 @@ export function createGameplayRouter(ctx: AppContext) {
           role: String(x.role || ''),
           job: String(x.job || ''),
           gold: Number(x.gold || 0)
-        }))
+        })),
+        incomingGambleRequests: incomingGambleRequests.map((x) => mapDemonGambleRequestRow(x, userId)),
+        outgoingGambleRequests: outgoingGambleRequests.map((x) => mapDemonGambleRequestRow(x, userId)),
+        recentGambleEvents: recentGambleEvents.map((x) => mapDemonGambleRequestRow(x, userId))
       });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'load demon state failed' });
@@ -3600,51 +3896,125 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  // 恶魔会：玩家对赌
+  // ??????????
   r.post('/demon/gamble/pvp', (req, res) => {
     try {
       const challengerId = Number(req.body?.challengerId || 0);
       const targetId = Number(req.body?.targetId || 0);
       const amount = Math.max(1, Math.trunc(Number(req.body?.amount || 0)));
       if (!challengerId || !targetId || !amount) return res.status(400).json({ success: false, message: 'invalid params' });
-      if (challengerId === targetId) return res.status(400).json({ success: false, message: '不能和自己对赌' });
+      if (challengerId === targetId) return res.status(400).json({ success: false, message: 'You cannot bet against yourself' });
 
-      const a = getUser(db, challengerId);
-      const b = getUser(db, targetId);
-      if (!a || !b) return res.status(404).json({ success: false, message: 'player not found' });
+      const challenger = getUser(db, challengerId);
+      const target = getUser(db, targetId);
+      if (!challenger || !target) return res.status(404).json({ success: false, message: 'player not found' });
 
-      const bothInDemon = String(a.currentLocation || '') === DEMON_LOCATION && String(b.currentLocation || '') === DEMON_LOCATION;
-      if (!bothInDemon) return res.status(403).json({ success: false, message: '双方必须都在恶魔会赌场' });
-      if (!['approved', 'ghost'].includes(String(a.status || '')) || !['approved', 'ghost'].includes(String(b.status || ''))) {
-        return res.status(403).json({ success: false, message: '当前状态无法参与对赌' });
+      const bothInDemon = String(challenger.currentLocation || '') === DEMON_LOCATION && String(target.currentLocation || '') === DEMON_LOCATION;
+      if (!bothInDemon) return res.status(403).json({ success: false, message: 'Both players must be in the demon casino' });
+      if (!['approved', 'ghost'].includes(String(challenger.status || '')) || !['approved', 'ghost'].includes(String(target.status || ''))) {
+        return res.status(403).json({ success: false, message: 'Current status does not allow betting' });
       }
-      if (Number(a.gold || 0) < amount || Number(b.gold || 0) < amount) {
-        return res.status(400).json({ success: false, message: '有一方金币不足，无法对赌' });
+      if (Number(challenger.gold || 0) < amount || Number(target.gold || 0) < amount) {
+        return res.status(400).json({ success: false, message: 'One side does not have enough gold' });
       }
 
-      const winnerId = Math.random() < 0.5 ? challengerId : targetId;
-      const loserId = winnerId === challengerId ? targetId : challengerId;
+      const existing = db.prepare(`
+        SELECT *
+        FROM demon_gamble_requests
+        WHERE status = 'pending'
+          AND (
+            challengerId IN (?, ?)
+            OR targetId IN (?, ?)
+          )
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(challengerId, targetId, challengerId, targetId) as AnyRow | undefined;
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'You or the other player already has a pending request' });
+      }
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), loserId);
-        db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), winnerId);
-      });
-      tx();
+      const stamp = nowIso();
+      const result = db.prepare(`
+        INSERT INTO demon_gamble_requests(
+          challengerId, challengerName, targetId, targetName, amount, status, createdAt, updatedAt
+        )
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        challengerId,
+        String(challenger.name || ''),
+        targetId,
+        String(target.name || ''),
+        amount,
+        stamp,
+        stamp
+      );
 
-      const winner = getUser(db, winnerId);
+      const requestId = Number(result.lastInsertRowid || 0);
+      const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
       return res.json({
         success: true,
-        winnerId,
-        loserId,
-        amount,
-        message: `${String(winner?.name || '某人')} 赢下对赌，卷走 ${amount}G`,
-        winnerGold: Number(winner?.gold || 0)
+        request: mapDemonGambleRequestRow(row, challengerId),
+        message: `You sent a ${amount}G bet request to ${String(target.name || 'the other player')}`
       });
     } catch (e: any) {
-      return res.status(500).json({ success: false, message: e?.message || 'demon pvp gamble failed' });
+      return res.status(500).json({ success: false, message: e?.message || 'demon pvp gamble request failed' });
     }
   });
 
+  // ??????????
+  r.post('/demon/gamble/request/:requestId/respond', (req, res) => {
+    try {
+      const requestId = Number(req.params.requestId || 0);
+      const userId = Number(req.body?.userId || 0);
+      const accept = Boolean(req.body?.accept);
+      if (!requestId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
+
+      const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      if (!row) return res.status(404).json({ success: false, message: 'request not found' });
+      if (Number(row.targetId || 0) !== userId) return res.status(403).json({ success: false, message: 'Only the invited player can respond to this request' });
+      if (String(row.status || '') !== 'pending') {
+        return res.status(400).json({
+          success: false,
+          message: 'This request was already handled',
+          request: mapDemonGambleRequestRow(row, userId)
+        });
+      }
+
+      if (!accept) {
+        const stamp = nowIso();
+        db.prepare(`
+          UPDATE demon_gamble_requests
+          SET status = 'rejected',
+              responderId = ?,
+              updatedAt = ?
+          WHERE id = ?
+        `).run(userId, stamp, requestId);
+        const fresh = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+        return res.json({
+          success: true,
+          request: mapDemonGambleRequestRow(fresh, userId),
+          message: `You rejected the bet request from ${String(row.challengerName || 'the challenger')}`
+        });
+      }
+
+      const settled = settleDemonGambleRequest(db, requestId);
+      if (!settled.ok) {
+        return res.status(400).json({
+          success: false,
+          message: settled.message || 'Bet resolution failed',
+          request: settled.request || null
+        });
+      }
+
+      return res.json({
+        success: true,
+        request: settled.request,
+        message: settled.message
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || 'respond demon gamble request failed' });
+    }
+  });
   // 恶魔会：借款（固定利率 10%）
   r.post('/demon/loan/borrow', (req, res) => {
     try {
@@ -4126,7 +4496,7 @@ export function createGameplayRouter(ctx: AppContext) {
         WHERE id = ?
       `).run(nextMp, nowIso(), nowIso(), userId);
 
-      const encounter = buildWildEncounter(db);
+      const encounter = buildWildEncounter(db, user);
       if (encounter.eventType === 'item') {
         db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
         const drop = pickRandomDropByTier(db, 5, isDemonMemberJob(user.job));
@@ -4430,7 +4800,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const user = getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
       db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
-      const encounter = buildWildEncounter(db);
+      const encounter = buildWildEncounter(db, user);
       if (encounter.eventType === 'item') {
         const drop = pickRandomDropByTier(db, 5, isDemonMemberJob(user.job));
         if (drop) {
@@ -4877,6 +5247,172 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
+  r.post('/trade/request', (req, res) => {
+    try {
+      const fromUserId = Number(req.body?.fromUserId || 0);
+      const toUserId = Number(req.body?.toUserId || 0);
+      if (!fromUserId || !toUserId) return res.status(400).json({ success: false, message: 'invalid params' });
+      if (fromUserId === toUserId) return res.status(400).json({ success: false, message: '不能和自己交易' });
+
+      const fromUser = getUser(db, fromUserId);
+      const toUser = getUser(db, toUserId);
+      if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
+
+      const pair = normalizeTradePair(fromUserId, toUserId);
+      const activeSession = db.prepare(`
+        SELECT *
+        FROM interaction_trade_sessions
+        WHERE userAId = ? AND userBId = ? AND status = 'pending'
+        ORDER BY updatedAt DESC
+        LIMIT 1
+      `).get(pair.userAId, pair.userBId) as AnyRow | undefined;
+      if (activeSession) {
+        return res.json({
+          success: true,
+          created: false,
+          sessionId: String(activeSession.id || ''),
+          session: loadTradeSessionPayload(db, activeSession),
+          message: '你们已经有进行中的交易会话'
+        });
+      }
+
+      const existing = db.prepare(`
+        SELECT *
+        FROM interaction_trade_requests
+        WHERE fromUserId = ? AND toUserId = ? AND status = 'pending'
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(fromUserId, toUserId) as AnyRow | undefined;
+      if (existing) {
+        return res.json({ success: true, created: false, requestId: Number(existing.id || 0), message: '交易请求已发出，等待对方回应' });
+      }
+
+      const ret = db.prepare(`
+        INSERT INTO interaction_trade_requests(fromUserId, toUserId, status, sessionId, createdAt, updatedAt)
+        VALUES(?,?,?,?,?,?)
+      `).run(fromUserId, toUserId, 'pending', '', nowIso(), nowIso());
+      const requestId = Number(ret.lastInsertRowid || 0);
+
+      pushInteractionEvent(
+        db,
+        toUserId,
+        fromUserId,
+        toUserId,
+        'trade_request',
+        '交易请求',
+        `${String(fromUser.name || `玩家#${fromUserId}`)} 希望与你交易`,
+        { requestId, fromUserId, toUserId }
+      );
+      pushInteractionEvent(
+        db,
+        fromUserId,
+        fromUserId,
+        toUserId,
+        'trade_request',
+        '交易请求已发送',
+        `已向 ${String(toUser.name || `玩家#${toUserId}`)} 发出交易请求`,
+        { requestId, fromUserId, toUserId }
+      );
+
+      return res.json({ success: true, created: true, requestId, message: '已发出交易请求，等待对方确认' });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || 'create trade request failed' });
+    }
+  });
+
+  r.get('/trade/request/pending/:userId', (req, res) => {
+    try {
+      const userId = Number(req.params.userId || 0);
+      if (!userId) return res.status(400).json({ success: false, message: 'invalid userId', requests: [] });
+      const rows = db.prepare(`
+        SELECT r.id, r.fromUserId, r.toUserId, r.status, r.sessionId, r.createdAt, r.updatedAt, u.name AS fromUserName
+        FROM interaction_trade_requests r
+        JOIN users u ON u.id = r.fromUserId
+        WHERE r.toUserId = ? AND r.status = 'pending'
+        ORDER BY r.id ASC
+      `).all(userId) as AnyRow[];
+      return res.json({
+        success: true,
+        requests: rows.map((row) => ({
+          id: Number(row.id || 0),
+          fromUserId: Number(row.fromUserId || 0),
+          toUserId: Number(row.toUserId || 0),
+          fromUserName: String(row.fromUserName || ''),
+          status: String(row.status || 'pending'),
+          sessionId: String(row.sessionId || ''),
+          createdAt: String(row.createdAt || ''),
+          updatedAt: String(row.updatedAt || '')
+        }))
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || 'query pending trade requests failed', requests: [] });
+    }
+  });
+
+  r.post('/trade/request/:id/respond', (req, res) => {
+    try {
+      const requestId = Number(req.params.id || 0);
+      const userId = Number(req.body?.userId || 0);
+      const accept = req.body?.accept === false ? 0 : 1;
+      if (!requestId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
+
+      const request = db.prepare(`SELECT * FROM interaction_trade_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      if (!request) return res.status(404).json({ success: false, message: 'trade request not found' });
+      if (Number(request.toUserId || 0) !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
+      if (String(request.status || '') !== 'pending') {
+        return res.json({ success: true, status: String(request.status || ''), sessionId: String(request.sessionId || ''), message: '该交易请求已处理' });
+      }
+
+      const fromUserId = Number(request.fromUserId || 0);
+      const fromUser = getUser(db, fromUserId);
+      const toUser = getUser(db, userId);
+      if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
+
+      if (!accept) {
+        db.prepare(`UPDATE interaction_trade_requests SET status = 'rejected', updatedAt = ? WHERE id = ?`).run(nowIso(), requestId);
+        pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade_request', '交易请求被拒绝', `${String(toUser.name || `玩家#${userId}`)} 拒绝了你的交易请求`, { requestId });
+        pushInteractionEvent(db, userId, fromUserId, userId, 'trade_request', '你已拒绝交易请求', `你拒绝了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId });
+        return res.json({ success: true, status: 'rejected', message: '已拒绝该交易请求' });
+      }
+
+      const pair = normalizeTradePair(fromUserId, userId);
+      let sessionRow = db.prepare(`
+        SELECT *
+        FROM interaction_trade_sessions
+        WHERE userAId = ? AND userBId = ? AND status = 'pending'
+        ORDER BY updatedAt DESC
+        LIMIT 1
+      `).get(pair.userAId, pair.userBId) as AnyRow | undefined;
+      if (!sessionRow) {
+        const sessionId = `trade-${Date.now()}-${pair.userAId}-${pair.userBId}-${Math.floor(Math.random() * 10000)}`;
+        const tx = db.transaction(() => {
+          db.prepare(`
+            INSERT INTO interaction_trade_sessions(id, userAId, userBId, status, confirmA, confirmB, cancelledBy, completedAt, createdAt, updatedAt)
+            VALUES(?,?,?,?,?,?,?,?,?,?)
+          `).run(sessionId, pair.userAId, pair.userBId, 'pending', 0, 0, 0, null, nowIso(), nowIso());
+          db.prepare(`
+            INSERT OR IGNORE INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
+            VALUES(?,?,?,?,?,?)
+          `).run(sessionId, pair.userAId, '', 0, 0, nowIso());
+          db.prepare(`
+            INSERT OR IGNORE INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
+            VALUES(?,?,?,?,?,?)
+          `).run(sessionId, pair.userBId, '', 0, 0, nowIso());
+        });
+        tx();
+        sessionRow = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      }
+
+      db.prepare(`UPDATE interaction_trade_requests SET status = 'accepted', sessionId = ?, updatedAt = ? WHERE id = ?`).run(String(sessionRow?.id || ''), nowIso(), requestId);
+      const payload = loadTradeSessionPayload(db, sessionRow);
+      pushInteractionEvent(db, userId, fromUserId, userId, 'trade', '交易请求已接受', `你接受了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
+      pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade', '交易请求已接受', `${String(toUser.name || `玩家#${userId}`)} 接受了你的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
+      return res.json({ success: true, status: 'accepted', sessionId: String(sessionRow?.id || ''), session: payload, message: '已接受该交易请求，交易窗口已打开' });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, message: e?.message || 'respond trade request failed' });
+    }
+  });
+
   r.post('/trade/session/start', (req, res) => {
     try {
       const fromUserId = Number(req.body?.fromUserId || 0);
@@ -4986,9 +5522,10 @@ export function createGameplayRouter(ctx: AppContext) {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = Number(req.body?.userId || 0);
-      const itemName = String(req.body?.itemName || '').trim();
+      const rawItemName = String(req.body?.itemName || '').trim();
       let qty = clamp(Math.floor(Number(req.body?.qty || 0)), 0, 99);
       const gold = clamp(Math.floor(Number(req.body?.gold || 0)), 0, 99999999);
+      const userSkillId = Math.max(0, Math.floor(Number(req.body?.userSkillId || req.body?.skillEntryId || 0)));
       if (!sessionId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
       const session = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
@@ -5002,9 +5539,20 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (Number(me.gold || 0) < gold) return res.status(400).json({ success: false, message: '你的金币不足' });
 
+      let itemName = rawItemName;
       if (!itemName) qty = 0;
       if (itemName && qty > 0 && inventoryTotalQty(db, userId, itemName) < qty) {
         return res.status(400).json({ success: false, message: '你的物品数量不足' });
+      }
+
+      if (userSkillId > 0) {
+        const skillRow = pickTradeSkillEntry(db, userId, userSkillId);
+        if (!skillRow) return res.status(400).json({ success: false, message: '你不再持有该技能' });
+        const peerId = Number(session.userAId || 0) === userId ? Number(session.userBId || 0) : Number(session.userAId || 0);
+        const peerHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(peerId, Number(skillRow.skillId || 0));
+        if (peerHas) return res.status(400).json({ success: false, message: '对方已掌握该技能' });
+        itemName = encodeTradeSkillOffer(userSkillId, String(skillRow.name || ''));
+        qty = 1;
       }
 
       const tx = db.transaction(() => {
@@ -5050,7 +5598,6 @@ export function createGameplayRouter(ctx: AppContext) {
       return res.status(500).json({ success: false, message: e?.message || 'update trade offer failed' });
     }
   });
-
   r.post('/trade/session/:sessionId/confirm', (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
@@ -6404,3 +6951,5 @@ export function createGameplayRouter(ctx: AppContext) {
 
   return r;
 }
+
+

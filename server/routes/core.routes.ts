@@ -1,12 +1,16 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { AppContext } from '../types';
 import { writeAdminLog } from '../utils/common';
 import { hashPassword, verifyPassword } from '../middleware/auth';
 
 type AnyRow = Record<string, any>;
 
-const nowIso = () => new Date().toISOString();
+const DEFAULT_ROLE = '未分化';
+const DEFAULT_ROLE_ADULT = '普通人';
+const DEFAULT_JOB = '无';
+const DEFAULT_RANK = '无';
 const HOME_LOCATION_SET = new Set(['sanctuary', 'slums', 'rich_area']);
+const PLAYER_STATUS_SET = new Set(['pending', 'approved', 'rejected', 'banned']);
 const ADMIN_STATUS_SET = new Set([
   'pending',
   'approved',
@@ -18,30 +22,37 @@ const ADMIN_STATUS_SET = new Set([
   'pending_ghost'
 ]);
 
+const nowIso = () => new Date().toISOString();
+
 function normalizeName(v: any) {
   return String(v ?? '').trim();
 }
 
 function normalizeStatus(v: any) {
-  const s = String(v ?? '').trim();
-  if (['pending', 'approved', 'rejected', 'banned'].includes(s)) return s;
+  const s = normalizeName(v);
+  if (PLAYER_STATUS_SET.has(s)) return s;
   return 'pending';
 }
 
 function normalizeAdminStatus(v: any, fallback = 'pending') {
-  const s = String(v ?? '').trim();
+  const s = normalizeName(v);
   if (ADMIN_STATUS_SET.has(s)) return s;
   return fallback;
 }
 
 function normalizeRole(v: any) {
-  const s = String(v ?? '').trim();
-  return s || '未分化';
+  const s = normalizeName(v);
+  return s || DEFAULT_ROLE;
 }
 
 function normalizeJob(v: any) {
-  const s = String(v ?? '').trim();
-  return s || '无';
+  const s = normalizeName(v);
+  return s || DEFAULT_JOB;
+}
+
+function normalizeRank(v: any) {
+  const s = normalizeName(v);
+  return s || DEFAULT_RANK;
 }
 
 function parseEditableAge(v: any, fallbackRaw: any = 16) {
@@ -53,40 +64,113 @@ function parseEditableAge(v: any, fallbackRaw: any = 16) {
   if (!Number.isInteger(age) || age < 0 || age > 999) return null;
   return age;
 }
+
 function normalizeRoleByAge(ageRaw: any, roleRaw: any) {
   const age = Number(ageRaw ?? 0);
-  const role = String(roleRaw ?? '').trim();
+  const role = normalizeName(roleRaw);
   if (role === '鬼魂' || role.toLowerCase() === 'ghost') return '鬼魂';
-  if (age < 16) return '未分化';
-  if (!role || role === '未分化') return '普通人';
+  if (age < 16) return DEFAULT_ROLE;
+  if (!role || role === DEFAULT_ROLE) return DEFAULT_ROLE_ADULT;
   return role;
 }
 
 function resolveHomeLocationByRule(ageRaw: any, goldRaw: any, roleRaw: any, preferredRaw?: any) {
   const age = Number(ageRaw ?? 0);
   const gold = Number(goldRaw ?? 0);
-  const role = String(roleRaw ?? '').trim();
-  const preferred = String(preferredRaw ?? '').trim();
+  const role = normalizeName(roleRaw);
+  const preferred = normalizeName(preferredRaw);
 
-  if (role === '未分化' || age < 16) return 'sanctuary';
+  if (role === DEFAULT_ROLE || age < 16) return 'sanctuary';
 
   if (HOME_LOCATION_SET.has(preferred as any)) {
     if (preferred === 'rich_area' && gold <= 9999) return 'slums';
+    if (preferred === 'sanctuary') return gold > 9999 ? 'rich_area' : 'slums';
     return preferred;
   }
+
   return gold > 9999 ? 'rich_area' : 'slums';
+}
+
+function normalizeLongText(v: any, fallback = '') {
+  if (v === undefined || v === null) return fallback;
+  return String(v).replace(/\r\n/g, '\n');
 }
 
 function safeJson(res: Response, code: number, body: any) {
   return res.status(code).json(body);
 }
 
-function tryParseJson(v: any) {
-  if (typeof v !== 'string' || !v.trim()) return null;
+function deleteByIds(db: any, table: string, column: string, ids: Array<number | string>) {
+  const clean = ids
+    .map((x) => (typeof x === 'number' ? x : String(x).trim()))
+    .filter((x) => x !== '' && x !== 0);
+  if (!clean.length) return;
+  const placeholders = clean.map(() => '?').join(', ');
+  db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...clean);
+}
+
+function deleteCustomGameCascadeInTx(db: any, gameId: number) {
+  const mapIds = (db.prepare(`SELECT id FROM custom_game_maps WHERE game_id = ?`).all(gameId) as AnyRow[])
+    .map((row) => Number(row.id || 0))
+    .filter((id) => id > 0);
+  const runIds = (db.prepare(`SELECT id FROM custom_game_runs WHERE game_id = ?`).all(gameId) as AnyRow[])
+    .map((row) => Number(row.id || 0))
+    .filter((id) => id > 0);
+  const gameTaskIds = (db.prepare(`
+    SELECT id
+    FROM review_tasks
+    WHERE target_type = 'game'
+      AND target_id = ?
+      AND module_key IN ('custom_idea', 'custom_start')
+  `).all(String(gameId)) as AnyRow[])
+    .map((row) => Number(row.id || 0))
+    .filter((id) => id > 0);
+  const mapTaskIds = mapIds.length
+    ? (db.prepare(`
+        SELECT id
+        FROM review_tasks
+        WHERE target_type = 'map'
+          AND module_key = 'custom_map'
+          AND target_id IN (${mapIds.map(() => '?').join(', ')})
+      `).all(...mapIds.map(String)) as AnyRow[])
+        .map((row) => Number(row.id || 0))
+        .filter((id) => id > 0)
+    : [];
+  const taskIds = [...gameTaskIds, ...mapTaskIds];
+
+  deleteByIds(db, 'review_votes', 'task_id', taskIds);
+  deleteByIds(db, 'review_tasks', 'id', taskIds);
+  db.prepare(`DELETE FROM custom_game_reviews WHERE game_id = ?`).run(gameId);
+  deleteByIds(db, 'custom_game_reviews', 'map_id', mapIds);
+  db.prepare(`DELETE FROM custom_game_votes WHERE game_id = ?`).run(gameId);
+  deleteByIds(db, 'custom_game_run_events', 'run_id', runIds);
+  deleteByIds(db, 'custom_game_run_players', 'run_id', runIds);
+  db.prepare(`DELETE FROM custom_game_runs WHERE game_id = ?`).run(gameId);
+  db.prepare(`DELETE FROM custom_game_maps WHERE game_id = ?`).run(gameId);
+  db.prepare(`DELETE FROM custom_games WHERE id = ?`).run(gameId);
+}
+
+function cleanupDeletedUserCustomGameData(db: any, userId: number) {
   try {
-    return JSON.parse(v);
+    const gameIds = (db.prepare(`SELECT id FROM custom_games WHERE creator_user_id = ?`).all(userId) as AnyRow[])
+      .map((row) => Number(row.id || 0))
+      .filter((id) => id > 0);
+    for (const gameId of gameIds) {
+      deleteCustomGameCascadeInTx(db, gameId);
+    }
+
+    db.prepare(`DELETE FROM custom_game_votes WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM custom_game_run_players WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM custom_game_player_stats WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM custom_game_reviews WHERE reviewer_user_id = ?`).run(userId);
+
+    const creatorTaskIds = (db.prepare(`SELECT id FROM review_tasks WHERE creator_user_id = ?`).all(userId) as AnyRow[])
+      .map((row) => Number(row.id || 0))
+      .filter((id) => id > 0);
+    deleteByIds(db, 'review_votes', 'task_id', creatorTaskIds);
+    deleteByIds(db, 'review_tasks', 'id', creatorTaskIds);
   } catch {
-    return null;
+    // Custom-game tables may be absent during early bootstrap.
   }
 }
 
@@ -95,52 +179,71 @@ export function createCoreRouter(ctx: AppContext) {
   const db = ctx.db;
   const auth = ctx.auth;
 
-  /** ---------- schema guard ---------- */
   function ensureTables() {
-    db.prepare(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE,
-        role TEXT DEFAULT '未分化',
-        status TEXT DEFAULT 'pending',
-        age INTEGER DEFAULT 16,
+        age INTEGER DEFAULT 18,
+        role TEXT,
+        faction TEXT,
+        mentalRank TEXT,
+        physicalRank TEXT,
         gold INTEGER DEFAULT 0,
-        job TEXT DEFAULT '无',
-        physicalRank TEXT DEFAULT '无',
-        mentalRank TEXT DEFAULT '无',
-        currentLocation TEXT DEFAULT '',
-        homeLocation TEXT DEFAULT '',
-        avatarUrl TEXT DEFAULT '',
+        ability TEXT,
+        spiritName TEXT,
+        spiritType TEXT,
+        avatarUrl TEXT,
         avatarUpdatedAt TEXT,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
+        status TEXT DEFAULT 'pending',
+        deathDescription TEXT,
+        profileText TEXT,
+        isHidden INTEGER DEFAULT 0,
+        currentLocation TEXT,
+        homeLocation TEXT,
+        job TEXT DEFAULT '无',
+        hp INTEGER DEFAULT 100,
+        maxHp INTEGER DEFAULT 100,
+        mp INTEGER DEFAULT 100,
+        maxMp INTEGER DEFAULT 100,
+        mentalProgress REAL DEFAULT 0,
+        physicalProgress REAL DEFAULT 0,
+        workCount INTEGER DEFAULT 0,
+        trainCount INTEGER DEFAULT 0,
+        password TEXT,
+        loginPasswordHash TEXT,
+        roomPasswordHash TEXT,
+        roomBgImage TEXT,
+        roomDescription TEXT,
+        allowVisit INTEGER DEFAULT 1,
+        roomVisible INTEGER DEFAULT 1,
+        fury INTEGER DEFAULT 0,
+        guideStability INTEGER DEFAULT 100,
+        partyId TEXT DEFAULT NULL,
+        adminAvatarUrl TEXT,
+        forceOfflineAt TEXT,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-    db.prepare(`
       CREATE TABLE IF NOT EXISTS user_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        token TEXT UNIQUE,
+        token TEXT PRIMARY KEY,
         userId INTEGER NOT NULL,
         userName TEXT NOT NULL,
         role TEXT DEFAULT 'player',
-        revokedAt TEXT,
-        lastSeenAt TEXT DEFAULT CURRENT_TIMESTAMP,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-       )
-     `).run();
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        lastSeenAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        revokedAt DATETIME
+      );
 
-    db.prepare(`
       CREATE TABLE IF NOT EXISTS admin_whitelist (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         code_name TEXT,
         enabled INTEGER DEFAULT 1,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-    db.prepare(`
       CREATE TABLE IF NOT EXISTS admin_action_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         adminName TEXT NOT NULL,
@@ -148,264 +251,278 @@ export function createCoreRouter(ctx: AppContext) {
         targetType TEXT,
         targetId TEXT,
         detail TEXT,
-        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
-    // 尝试补索引（幂等）
+    const ensureColumn = (table: string, column: string, definition: string) => {
+      const cols = db.prepare(`PRAGMA table_info(${table})`).all() as AnyRow[];
+      if (!cols.some((row) => String(row.name || '') === column)) {
+        db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+      }
+    };
+
+    ensureColumn('users', 'faction', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'ability', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'spiritName', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'spiritType', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'avatarUrl', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'avatarUpdatedAt', `TEXT`);
+    ensureColumn('users', 'deathDescription', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'profileText', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'isHidden', `INTEGER DEFAULT 0`);
+    ensureColumn('users', 'currentLocation', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'homeLocation', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'job', `TEXT DEFAULT '无'`);
+    ensureColumn('users', 'hp', `INTEGER DEFAULT 100`);
+    ensureColumn('users', 'maxHp', `INTEGER DEFAULT 100`);
+    ensureColumn('users', 'mp', `INTEGER DEFAULT 100`);
+    ensureColumn('users', 'maxMp', `INTEGER DEFAULT 100`);
+    ensureColumn('users', 'erosionLevel', `INTEGER DEFAULT 0`);
+    ensureColumn('users', 'bleedingLevel', `INTEGER DEFAULT 0`);
+    ensureColumn('users', 'mentalProgress', `REAL DEFAULT 0`);
+    ensureColumn('users', 'physicalProgress', `REAL DEFAULT 0`);
+    ensureColumn('users', 'workCount', `INTEGER DEFAULT 0`);
+    ensureColumn('users', 'trainCount', `INTEGER DEFAULT 0`);
+    ensureColumn('users', 'password', `TEXT`);
+    ensureColumn('users', 'loginPasswordHash', `TEXT`);
+    ensureColumn('users', 'roomPasswordHash', `TEXT`);
+    ensureColumn('users', 'roomBgImage', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'roomDescription', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'allowVisit', `INTEGER DEFAULT 1`);
+    ensureColumn('users', 'roomVisible', `INTEGER DEFAULT 1`);
+    ensureColumn('users', 'fury', `INTEGER DEFAULT 0`);
+    ensureColumn('users', 'guideStability', `INTEGER DEFAULT 100`);
+    ensureColumn('users', 'partyId', `TEXT DEFAULT NULL`);
+    ensureColumn('users', 'adminAvatarUrl', `TEXT DEFAULT ''`);
+    ensureColumn('users', 'forceOfflineAt', `TEXT`);
+    ensureColumn('users', 'createdAt', `DATETIME DEFAULT CURRENT_TIMESTAMP`);
+    ensureColumn('users', 'updatedAt', `DATETIME DEFAULT CURRENT_TIMESTAMP`);
+
     db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name ON users(name)`).run();
     db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_sessions_user_role ON user_sessions(userId, role, revokedAt)`).run();
     db.prepare(`
       INSERT OR IGNORE INTO admin_whitelist(name, code_name, enabled)
-      VALUES('塔', 'tower_admin', 1)
+      VALUES ('塔', 'tower_admin', 1)
     `).run();
   }
 
   ensureTables();
 
-  function issueSessionToken(userId: number, userName: string, role: 'player' | 'admin') {
-    const token = auth.issueToken();
-    db.prepare(
-      `INSERT INTO user_sessions(token, userId, userName, role, revokedAt, lastSeenAt, createdAt)
-       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-    ).run(token, userId, userName, role);
-    return token;
-  }
+  const tableExists = (tableName: string) => {
+    const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`).get(tableName) as AnyRow | undefined;
+    return !!row;
+  };
 
-  function getUserByName(name: string): AnyRow | undefined {
+  const runIfTableExists = (tableName: string, sql: string, params: any[] = []) => {
+    if (!tableExists(tableName)) return;
+    db.prepare(sql).run(...params);
+  };
+
+  function getUserByName(name: string) {
     return db.prepare(`SELECT * FROM users WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
   }
 
-  function getUserById(id: number): AnyRow | undefined {
+  function getUserById(id: number) {
     return db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+  }
+
+  function issueSessionToken(userId: number, userName: string, role: 'player' | 'admin') {
+    const token = auth.issueToken();
+    db.prepare(`
+      INSERT INTO user_sessions(token, userId, userName, role, revokedAt, lastSeenAt, createdAt)
+      VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(token, userId, userName, role);
+    return token;
+  }
+
+  function syncUserHome(user: AnyRow | undefined | null) {
+    if (!user) return user;
+    const nextHome = resolveHomeLocationByRule(user.age, user.gold, user.role, user.homeLocation);
+    const prevHome = normalizeName(user.homeLocation);
+    const prevCurrent = normalizeName(user.currentLocation);
+    if (nextHome === prevHome) return user;
+
+    const nextCurrent = !prevCurrent || prevCurrent === prevHome ? nextHome : prevCurrent;
+    db.prepare(`UPDATE users SET homeLocation = ?, currentLocation = ?, updatedAt = ? WHERE id = ?`)
+      .run(nextHome, nextCurrent, nowIso(), Number(user.id));
+    return getUserById(Number(user.id)) || user;
   }
 
   function mapUser(u: AnyRow | undefined | null) {
     if (!u) return null;
     return {
-      id: Number(u.id),
-      name: u.name,
-      role: u.role ?? '未分化',
-      status: u.status ?? 'pending',
-      deathDescription: u.deathDescription ?? '',
-      age: Number(u.age ?? 16),
+      id: Number(u.id || 0),
+      name: String(u.name || ''),
+      role: normalizeRole(u.role),
+      faction: String(u.faction || ''),
+      mentalRank: normalizeRank(u.mentalRank),
+      physicalRank: normalizeRank(u.physicalRank),
       gold: Number(u.gold ?? 0),
-      job: u.job ?? '无',
-      physicalRank: u.physicalRank ?? '无',
-      mentalRank: u.mentalRank ?? '无',
-      faction: u.faction ?? '',
-      ability: u.ability ?? '',
-      spiritName: u.spiritName ?? '',
-      spiritType: u.spiritType ?? '',
+      ability: String(u.ability || ''),
+      spiritName: String(u.spiritName || ''),
+      spiritType: String(u.spiritType || ''),
+      spiritIntimacy: Number(u.spiritIntimacy ?? 0),
+      spiritLevel: Number(u.spiritLevel ?? 1),
+      spiritImageUrl: String(u.spiritImageUrl || ''),
+      spiritAppearance: String(u.spiritAppearance || ''),
+      avatarUrl: String(u.avatarUrl || ''),
+      avatarUpdatedAt: u.avatarUpdatedAt || null,
+      adminAvatarUrl: String(u.adminAvatarUrl || ''),
+      status: normalizeAdminStatus(u.status, 'pending') as any,
+      deathDescription: String(u.deathDescription || ''),
+      profileText: String(u.profileText || ''),
+      age: Number(u.age ?? 16),
+      isHidden: Number(u.isHidden ?? 0),
+      currentLocation: String(u.currentLocation || ''),
+      homeLocation: String(u.homeLocation || ''),
+      job: normalizeJob(u.job),
       hp: Number(u.hp ?? 100),
       maxHp: Number(u.maxHp ?? 100),
       mp: Number(u.mp ?? 100),
       maxMp: Number(u.maxMp ?? 100),
       erosionLevel: Number(u.erosionLevel ?? 0),
       bleedingLevel: Number(u.bleedingLevel ?? 0),
+      mentalProgress: Number(u.mentalProgress ?? 0),
+      physicalProgress: Number(u.physicalProgress ?? 0),
+      workCount: Number(u.workCount ?? 0),
+      trainCount: Number(u.trainCount ?? 0),
       fury: Number(u.fury ?? 0),
       guideStability: Number(u.guideStability ?? 100),
       partyId: u.partyId ?? null,
-      currentLocation: u.currentLocation ?? '',
-      homeLocation: u.homeLocation ?? '',
-      avatarUrl: u.avatarUrl ?? '',
-      adminAvatarUrl: u.adminAvatarUrl ?? '',
-      avatarUpdatedAt: u.avatarUpdatedAt ?? null,
+      gender: String(u.gender || ''),
+      height: String(u.height || ''),
+      orientation: String(u.orientation || ''),
+      factionRole: String(u.factionRole || ''),
+      personality: String(u.personality || ''),
+      appearance: String(u.appearance || ''),
+      clothing: String(u.clothing || ''),
+      background: String(u.background || ''),
+      roomBgImage: String(u.roomBgImage || ''),
+      roomDescription: String(u.roomDescription || ''),
+      allowVisit: Number(u.allowVisit ?? 1),
+      roomVisible: Number(u.roomVisible ?? 1),
       hasLoginPassword: !!(u.loginPasswordHash || u.password),
-      createdAt: u.createdAt ?? null,
-      updatedAt: u.updatedAt ?? null,
+      createdAt: u.createdAt || null,
+      updatedAt: u.updatedAt || null,
     };
   }
 
-  function extractBearer(req: Request) {
-    const raw = (req.headers.authorization || '').trim();
-    if (!raw.startsWith('Bearer ')) return '';
-    return raw.slice(7).trim();
-  }
-
-  function getSessionUser(req: Request): { userId: number; userName: string; role: string } | null {
-    const token = extractBearer(req);
-    if (!token) return null;
-    const row = db.prepare(
-      `SELECT userId, userName, role, revokedAt
-       FROM user_sessions
-       WHERE token = ?
-       LIMIT 1`
-    ).get(token) as AnyRow | undefined;
-
-    if (!row || row.revokedAt) return null;
-    db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
-    return {
-      userId: Number(row.userId),
-      userName: String(row.userName || ''),
-      role: String(row.role || 'player')
-    };
-  }
-
-  function requireAdmin(req: Request, res: Response, next: Function) {
-    const s = getSessionUser(req);
-    if (!s || s.role !== 'admin') {
-      return safeJson(res, 401, { success: false, message: '管理员会话失效或无权限' });
-    }
-    (req as any).admin = s;
-    next();
-  }
-
-  /** ======================================================
-   *  1) GET /api/users/:name
-   * ====================================================== */
-  router.get('/users/:name', (req, res) => {
-    try {
-      const name = normalizeName(req.params.name);
-      if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
-
-      const user = getUserByName(name);
-      return safeJson(res, 200, {
-        success: true,
-        exists: !!user,
-        user: mapUser(user) // 不存在时为 null
-      });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'query user failed' });
-    }
-  });
-
-  /** ======================================================
-   *  2) POST /api/users/init
-   *     - 新用户初始化；同名存在则直接返回已存在
-   * ====================================================== */
   router.post('/users/init', (req, res) => {
     try {
       const name = normalizeName(req.body?.name ?? req.body?.userName);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
 
-      const existed = getUserByName(name);
+      const existed = syncUserHome(getUserByName(name));
       if (existed) {
-        const fixedHome = resolveHomeLocationByRule(
-          Number(existed.age ?? 0),
-          Number(existed.gold ?? 0),
-          String(existed.role || ''),
-          existed.homeLocation
-        );
-        if (String(existed.homeLocation || '') !== fixedHome) {
-          db.prepare(`UPDATE users SET homeLocation = ?, updatedAt = ? WHERE id = ?`)
-            .run(fixedHome, nowIso(), Number(existed.id));
-        }
-        const refreshed = getUserById(Number(existed.id));
-        return safeJson(res, 200, {
-          success: true,
-          existed: true,
-          user: mapUser(refreshed || existed),
-        });
+        return safeJson(res, 200, { success: true, existed: true, user: mapUser(existed) });
       }
 
       const age = Number(req.body?.age ?? 15);
       const gold = Number(req.body?.gold ?? 0);
-      const role = normalizeRoleByAge(age, normalizeRole(req.body?.role ?? '未分化'));
+      const role = normalizeRoleByAge(age, req.body?.role ?? DEFAULT_ROLE);
       const status = normalizeStatus(req.body?.status ?? 'pending');
       const homeLocation = resolveHomeLocationByRule(age, gold, role, req.body?.homeLocation);
-      const currentLocation = String(req.body?.currentLocation ?? '').trim() || homeLocation;
+      const currentLocation = normalizeName(req.body?.currentLocation) || homeLocation;
 
-      db.prepare(
-        `INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, '无', '无', '无', ?, ?, ?, ?)`
-      ).run(name, role, status, age, gold, currentLocation, homeLocation, nowIso(), nowIso());
+      db.prepare(`
+        INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(name, role, status, age, gold, DEFAULT_JOB, DEFAULT_RANK, DEFAULT_RANK, currentLocation, homeLocation, nowIso(), nowIso());
 
-      const user = getUserByName(name);
       return safeJson(res, 200, {
         success: true,
         existed: false,
-        user: mapUser(user)
+        user: mapUser(getUserByName(name))
       });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'init user failed' });
     }
   });
 
-  /** ======================================================
-   *  3) POST /api/users
-   *     - 保存抽卡/分化结果（按 id 或 name 更新）
-   * ====================================================== */
   router.post('/users', (req, res) => {
     try {
       const id = Number(req.body?.id ?? req.body?.userId ?? 0);
       const name = normalizeName(req.body?.name ?? req.body?.userName);
-
-      let user: AnyRow | undefined;
-      if (id > 0) user = getUserById(id);
+      let user = id > 0 ? getUserById(id) : undefined;
       if (!user && name) user = getUserByName(name);
 
       if (!user && !name) {
         return safeJson(res, 400, { success: false, message: 'id or name required' });
       }
 
-      if (!user && name) {
-        // 不存在则创建
+      if (!user) {
         const createAge = Number(req.body?.age ?? 15);
-        const createRole = normalizeRoleByAge(createAge, normalizeRole(req.body?.role));
         const createGold = Number(req.body?.gold ?? 0);
-        const createAbility = String(req.body?.ability ?? '').trim();
-        const createSpiritName = String(req.body?.spiritName ?? '').trim();
-        const createSpiritType = String(req.body?.spiritType ?? '').trim();
-        const createHomeLocation = resolveHomeLocationByRule(createAge, createGold, createRole, req.body?.homeLocation);
-        const createCurrentLocation = String(req.body?.currentLocation ?? '').trim() || createHomeLocation;
-        db.prepare(
-          `INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, ability, spiritName, spiritType, currentLocation, homeLocation, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
+        const createRole = normalizeRoleByAge(createAge, req.body?.role ?? DEFAULT_ROLE);
+        const createStatus = normalizeStatus(req.body?.status ?? 'pending');
+        const createHome = resolveHomeLocationByRule(createAge, createGold, createRole, req.body?.homeLocation);
+        const createCurrent = normalizeName(req.body?.currentLocation) || createHome;
+
+        db.prepare(`
+          INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, faction, ability, spiritName, spiritType, currentLocation, homeLocation, profileText, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
           name,
           createRole,
-          normalizeStatus(req.body?.status ?? 'pending'),
+          createStatus,
           createAge,
           createGold,
           normalizeJob(req.body?.job),
-          String(req.body?.physicalRank ?? '无'),
-          String(req.body?.mentalRank ?? '无'),
-          createAbility,
-          createSpiritName,
-          createSpiritType,
-          createCurrentLocation,
-          createHomeLocation,
+          normalizeRank(req.body?.physicalRank),
+          normalizeRank(req.body?.mentalRank),
+          normalizeName(req.body?.faction),
+          normalizeName(req.body?.ability),
+          normalizeName(req.body?.spiritName),
+          normalizeName(req.body?.spiritType),
+          createCurrent,
+          createHome,
+          normalizeLongText(req.body?.profileText, ''),
           nowIso(),
           nowIso()
         );
         user = getUserByName(name);
-      } else if (user) {
-        const nextStatus = normalizeStatus(req.body?.status ?? user.status ?? 'pending');
-        const nextJob = normalizeJob(req.body?.job ?? user.job);
+      } else {
         const nextAge = Number(req.body?.age ?? user.age ?? 16);
-        const nextRole = normalizeRoleByAge(nextAge, normalizeRole(req.body?.role ?? user.role));
         const nextGold = Number(req.body?.gold ?? user.gold ?? 0);
-        const nextPhysical = String(req.body?.physicalRank ?? user.physicalRank ?? '无');
-        const nextMental = String(req.body?.mentalRank ?? user.mentalRank ?? '无');
-        const nextAbility = String(req.body?.ability ?? user.ability ?? '').trim();
-        const nextSpiritName = String(req.body?.spiritName ?? user.spiritName ?? '').trim();
-        const nextSpiritType = String(req.body?.spiritType ?? user.spiritType ?? '').trim();
-        const nextHomeLocation = resolveHomeLocationByRule(
-          nextAge,
-          nextGold,
-          nextRole,
-          req.body?.homeLocation ?? user.homeLocation ?? ''
-        );
-        const nextCurrentLocation = String(req.body?.currentLocation ?? user.currentLocation ?? '').trim() || nextHomeLocation;
+        const nextRole = normalizeRoleByAge(nextAge, req.body?.role ?? user.role);
+        const nextHome = resolveHomeLocationByRule(nextAge, nextGold, nextRole, req.body?.homeLocation ?? user.homeLocation);
+        const nextCurrent = normalizeName(req.body?.currentLocation ?? user.currentLocation) || nextHome;
 
-        db.prepare(
-          `UPDATE users
-           SET role = ?, status = ?, job = ?, age = ?, gold = ?, physicalRank = ?, mentalRank = ?, ability = ?, spiritName = ?, spiritType = ?, currentLocation = ?, homeLocation = ?, updatedAt = ?
-           WHERE id = ?`
-        ).run(
+        db.prepare(`
+          UPDATE users
+          SET role = ?,
+              status = ?,
+              job = ?,
+              age = ?,
+              gold = ?,
+              physicalRank = ?,
+              mentalRank = ?,
+              faction = ?,
+              ability = ?,
+              spiritName = ?,
+              spiritType = ?,
+              currentLocation = ?,
+              homeLocation = ?,
+              profileText = ?,
+              updatedAt = ?
+          WHERE id = ?
+        `).run(
           nextRole,
-          nextStatus,
-          nextJob,
+          normalizeStatus(req.body?.status ?? user.status),
+          normalizeJob(req.body?.job ?? user.job),
           nextAge,
           nextGold,
-          nextPhysical,
-          nextMental,
-          nextAbility,
-          nextSpiritName,
-          nextSpiritType,
-          nextCurrentLocation,
-          nextHomeLocation,
+          normalizeRank(req.body?.physicalRank ?? user.physicalRank),
+          normalizeRank(req.body?.mentalRank ?? user.mentalRank),
+          normalizeName(req.body?.faction ?? user.faction),
+          normalizeName(req.body?.ability ?? user.ability),
+          normalizeName(req.body?.spiritName ?? user.spiritName),
+          normalizeName(req.body?.spiritType ?? user.spiritType),
+          nextCurrent,
+          nextHome,
+          normalizeLongText(req.body?.profileText, String(user.profileText || '')),
           nowIso(),
           Number(user.id)
         );
@@ -418,39 +535,49 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  /** ======================================================
-   *  4) POST /api/auth/login（玩家登录）
-   * ====================================================== */
+  router.get('/users', (_req, res) => {
+    try {
+      const rows = db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[];
+      return safeJson(res, 200, { success: true, users: rows.map(mapUser) });
+    } catch (e: any) {
+      return safeJson(res, 500, { success: false, message: e?.message || 'query users failed', users: [] });
+    }
+  });
+
+  router.get('/users/:name', (req, res) => {
+    try {
+      const name = normalizeName(req.params.name);
+      if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
+
+      const user = syncUserHome(getUserByName(name));
+      return safeJson(res, 200, {
+        success: true,
+        exists: !!user,
+        user: mapUser(user)
+      });
+    } catch (e: any) {
+      return safeJson(res, 500, { success: false, message: e?.message || 'query user failed' });
+    }
+  });
+
   router.post('/auth/login', async (req, res) => {
     try {
       const name = normalizeName(req.body?.name ?? req.body?.userName);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
 
       const user = getUserByName(name);
-      if (!user) return safeJson(res, 404, { success: false, message: '用户不存在，请先初始化' });
-
-      if (String(user.status || '') === 'banned') {
-        return safeJson(res, 403, { success: false, message: '账号已被封禁' });
+      if (!user) return safeJson(res, 404, { success: false, message: '用户不存在，请先创建身份' });
+      if (normalizeName(user.status) === 'banned') {
+        return safeJson(res, 403, { success: false, message: '该账号已被封禁' });
       }
 
-      const fixedHome = resolveHomeLocationByRule(
-        Number(user.age ?? 0),
-        Number(user.gold ?? 0),
-        String(user.role || ''),
-        user.homeLocation
-      );
-      let effectiveUser = user;
-      if (String(user.homeLocation || '') !== fixedHome) {
-        db.prepare(`UPDATE users SET homeLocation = ?, updatedAt = ? WHERE id = ?`)
-          .run(fixedHome, nowIso(), Number(user.id));
-        effectiveUser = getUserById(Number(user.id)) || user;
-      }
-
+      let effectiveUser = syncUserHome(user) || user;
       const inputPassword = typeof req.body?.password === 'string' ? req.body.password : '';
-      const loginPasswordHash = String(effectiveUser.loginPasswordHash || '').trim();
+      const loginPasswordHash = normalizeName(effectiveUser.loginPasswordHash);
+
       if (loginPasswordHash) {
         if (!inputPassword) {
-          return safeJson(res, 401, { success: false, message: '该账号已设置全局密码，请输入密码' });
+          return safeJson(res, 401, { success: false, message: '该账号已设置密码，请输入密码' });
         }
         const ok = await verifyPassword(inputPassword, loginPasswordHash);
         if (!ok) return safeJson(res, 401, { success: false, message: '密码错误' });
@@ -467,11 +594,9 @@ export function createCoreRouter(ctx: AppContext) {
         }
       }
 
-      // 一人一皮：新登录会顶掉旧会话
-      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role='player' AND revokedAt IS NULL`)
-        .run(Number(user.id));
-
-      const token = issueSessionToken(Number(user.id), String(user.name), 'player');
+      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'player' AND revokedAt IS NULL`)
+        .run(Number(effectiveUser.id));
+      const token = issueSessionToken(Number(effectiveUser.id), String(effectiveUser.name), 'player');
 
       return safeJson(res, 200, {
         success: true,
@@ -483,32 +608,26 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  /** ======================================================
-   *  5) POST /api/auth/logout（玩家登出）
-   * ====================================================== */
-  router.post('/auth/logout', auth.requireUserAuth, (req: any, res) => {
+  router.post('/auth/logout', auth.requireUserAuth, (req: Request, res) => {
     try {
-      const token = String(req.user?.token || '').trim();
-      if (!token) return safeJson(res, 400, { success: false, message: 'token missing' });
-      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP, lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+      const token = auth.getBearerToken(req);
+      if (token) {
+        db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+      }
       return safeJson(res, 200, { success: true });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'logout failed' });
     }
   });
 
-  /** ======================================================
-   *  6) POST /api/admin/auth/login（管理员登录）
-   * ====================================================== */
   router.post('/admin/auth/login', (req, res) => {
     try {
-      const body = req.body || {};
-      const codeInput = normalizeName(body.entryCode ?? body.code ?? body.adminCode ?? body.password);
-      const adminNameInput = normalizeName(body.adminName ?? body.name ?? '');
-
+      const codeInput = normalizeName(req.body?.entryCode ?? req.body?.code ?? req.body?.adminCode ?? req.body?.password);
+      const adminNameInput = normalizeName(req.body?.adminName ?? req.body?.name);
       const serverCode = normalizeName(process.env.ADMIN_ENTRY_CODE || '');
+
       if (!serverCode) {
-        return safeJson(res, 500, { success: false, message: '服务端未配置 ADMIN_ENTRY_CODE' });
+        return safeJson(res, 500, { success: false, message: '服务器未配置 ADMIN_ENTRY_CODE' });
       }
       if (!codeInput || codeInput !== serverCode) {
         return safeJson(res, 401, { success: false, message: '管理员入口码错误' });
@@ -517,55 +636,46 @@ export function createCoreRouter(ctx: AppContext) {
         return safeJson(res, 400, { success: false, message: '请输入管理员名字' });
       }
 
-      // 数据库白名单：支持“管理员名字/代号”双入口，命中后统一回填真实管理员名字
       let adminName = adminNameInput;
-      const dbWhitelist = db.prepare(`
-        SELECT name, code_name
-        FROM admin_whitelist
-        WHERE enabled = 1
-      `).all() as AnyRow[];
-      if (dbWhitelist.length > 0) {
-        const matched = dbWhitelist.find((x) => {
-          const n = String(x.name || '').trim();
-          const c = String(x.code_name || '').trim();
-          return n === adminNameInput || (!!c && c === adminNameInput);
+      const whitelist = db.prepare(`SELECT name, code_name FROM admin_whitelist WHERE enabled = 1`).all() as AnyRow[];
+      if (whitelist.length > 0) {
+        const matched = whitelist.find((row) => {
+          const name = normalizeName(row.name);
+          const codeName = normalizeName(row.code_name);
+          return name === adminNameInput || (!!codeName && codeName === adminNameInput);
         });
         if (!matched) {
-          return safeJson(res, 403, { success: false, message: '不在管理员白名单' });
+          return safeJson(res, 403, { success: false, message: '不在管理员白名单中' });
         }
-        adminName = String(matched.name || adminNameInput).trim() || adminNameInput;
+        adminName = normalizeName(matched.name) || adminNameInput;
       }
 
-      // 可选白名单：ADMIN_WHITELIST=alice,bob（兼容真实名/输入名）
-      const whitelistRaw = normalizeName(process.env.ADMIN_WHITELIST || '');
-      if (whitelistRaw) {
-        const allow = new Set(whitelistRaw.split(',').map(s => s.trim()).filter(Boolean));
-        if (allow.size > 0 && !allow.has(adminName) && !allow.has(adminNameInput)) {
-          return safeJson(res, 403, { success: false, message: '不在管理员白名单' });
+      const envWhitelistRaw = normalizeName(process.env.ADMIN_WHITELIST || '');
+      if (envWhitelistRaw) {
+        const envWhitelist = new Set(envWhitelistRaw.split(',').map((part) => part.trim()).filter(Boolean));
+        if (!envWhitelist.has(adminName) && !envWhitelist.has(adminNameInput)) {
+          return safeJson(res, 403, { success: false, message: '不在管理员白名单中' });
         }
       }
 
-      // 保证管理员用户有一条记录（便于审计）
       let adminUser = getUserByName(adminName);
       if (!adminUser) {
-        db.prepare(
-          `INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
-           VALUES (?, '普通人', 'approved', 18, 0, '管理员', '无', '无', '', '', ?, ?)`
-        ).run(adminName, nowIso(), nowIso());
+        db.prepare(`
+          INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
+          VALUES (?, ?, 'approved', 18, 0, ?, ?, ?, '', '', ?, ?)
+        `).run(adminName, DEFAULT_ROLE_ADULT, '管理员', DEFAULT_RANK, DEFAULT_RANK, nowIso(), nowIso());
         adminUser = getUserByName(adminName);
       }
 
-      // 管理员也执行“一人一皮”：同账号新会话顶掉旧会话
-      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role='admin' AND revokedAt IS NULL`)
+      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'admin' AND revokedAt IS NULL`)
         .run(Number(adminUser!.id));
-
       const token = issueSessionToken(Number(adminUser!.id), adminName, 'admin');
 
       return safeJson(res, 200, {
         success: true,
         token,
         adminName,
-        adminAvatarUrl: adminUser?.adminAvatarUrl || '',
+        adminAvatarUrl: String(adminUser?.adminAvatarUrl || ''),
         user: mapUser(adminUser)
       });
     } catch (e: any) {
@@ -573,242 +683,128 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  /** ======================================================
-   *  6.1) GET /api/admin/whitelist（管理员白名单）
-   * ====================================================== */
-  router.get('/admin/whitelist', requireAdmin, (_req, res) => {
+  router.get('/admin/meta', auth.requireAdminAuth, (req: any, res) => {
     try {
-      const rows = db.prepare(`
-        SELECT name, code_name, enabled, createdAt
-        FROM admin_whitelist
-        ORDER BY id ASC
+      const currentAdminId = Number(req.admin?.userId || 0);
+      const currentAdmin = getUserById(currentAdminId);
+      const onlineAdmins = db.prepare(`
+        SELECT DISTINCT
+          u.id,
+          u.name,
+          u.adminAvatarUrl,
+          s.lastSeenAt
+        FROM user_sessions s
+        JOIN users u ON u.id = s.userId
+        WHERE s.role = 'admin'
+          AND s.revokedAt IS NULL
+          AND datetime(s.lastSeenAt) >= datetime('now', '-120 seconds')
+        ORDER BY datetime(s.lastSeenAt) DESC, u.id DESC
       `).all() as AnyRow[];
-      return safeJson(res, 200, {
-        success: true,
-        rows: rows.map((x) => ({
-          name: String(x.name || ''),
-          code_name: String(x.code_name || ''),
-          enabled: Number(x.enabled || 0) ? 1 : 0,
-          createdAt: String(x.createdAt || '')
-        }))
-      });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'query whitelist failed', rows: [] });
-    }
-  });
-
-  /** ======================================================
-   *  6.2) POST /api/admin/whitelist（新增/启用管理员白名单）
-   * ====================================================== */
-  router.post('/admin/whitelist', requireAdmin, (req: any, res) => {
-    try {
-      const name = normalizeName(req.body?.name);
-      const codeName = normalizeName(req.body?.codeName ?? req.body?.code_name ?? '');
-      if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
-      if (codeName) {
-        const dup = db.prepare(`
-          SELECT name
-          FROM admin_whitelist
-          WHERE code_name = ? AND name <> ?
-          LIMIT 1
-        `).get(codeName, name) as AnyRow | undefined;
-        if (dup) {
-          return safeJson(res, 400, { success: false, message: `管理员代号已被 ${String(dup.name || '')} 使用` });
-        }
-      }
-
-      db.prepare(`
-        INSERT INTO admin_whitelist(name, code_name, enabled, createdAt)
-        VALUES(?, ?, 1, ?)
-        ON CONFLICT(name)
-        DO UPDATE SET code_name=excluded.code_name, enabled=1
-      `).run(name, codeName || null, nowIso());
-
-      const adminName = String(req.admin?.userName || 'admin');
-      writeAdminLog(db, adminName, `编辑管理员白名单：新增 ${name}`, 'admin_whitelist', name, {
-        name,
-        codeName: codeName || null
-      });
+      const whitelist = db.prepare(`
+        SELECT name, code_name, enabled
+        FROM admin_whitelist
+        ORDER BY name ASC
+      `).all() as AnyRow[];
 
       return safeJson(res, 200, {
         success: true,
-        message: `管理员 ${adminName} 编辑了管理员名单：新增 ${name}`
+        currentAdmin: currentAdmin
+          ? {
+              id: Number(currentAdmin.id || 0),
+              name: String(currentAdmin.name || ''),
+              adminAvatarUrl: String(currentAdmin.adminAvatarUrl || ''),
+            }
+          : null,
+        onlineAdmins: onlineAdmins.map((row) => ({
+          id: Number(row.id || 0),
+          name: String(row.name || ''),
+          adminAvatarUrl: String(row.adminAvatarUrl || ''),
+          lastSeenAt: String(row.lastSeenAt || ''),
+        })),
+        whitelist: whitelist.map((row) => ({
+          name: String(row.name || ''),
+          codeName: String(row.code_name || ''),
+          enabled: Number(row.enabled ?? 1) ? 1 : 0,
+        })),
       });
     } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'add whitelist failed' });
+      return safeJson(res, 500, { success: false, message: e?.message || 'query admin meta failed' });
     }
   });
 
-  /** ======================================================
-   *  6.3) DELETE /api/admin/whitelist/:name（删除管理员白名单）
-   * ====================================================== */
-  router.delete('/admin/whitelist/:name', requireAdmin, (req: any, res) => {
-    try {
-      const name = normalizeName(req.params.name);
-      if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
-      if (name === '塔') {
-        return safeJson(res, 400, { success: false, message: '固定管理员不可删除' });
-      }
-
-      const info = db.prepare(`DELETE FROM admin_whitelist WHERE name = ?`).run(name);
-      if (!info.changes) return safeJson(res, 404, { success: false, message: '管理员不在白名单中' });
-
-      const adminName = String(req.admin?.userName || 'admin');
-      writeAdminLog(db, adminName, `编辑管理员白名单：删除 ${name}`, 'admin_whitelist', name);
-
-      return safeJson(res, 200, {
-        success: true,
-        message: `管理员 ${adminName} 编辑了管理员名单：删除 ${name}`
-      });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'delete whitelist failed' });
-    }
-  });
-
-  /** ======================================================
-   *  6.4) PUT /api/admin/profile/avatar（管理员头像）
-   * ====================================================== */
-  router.put('/admin/profile/avatar', requireAdmin, (req: any, res) => {
+  router.put('/admin/profile', auth.requireAdminAuth, (req: any, res) => {
     try {
       const adminUserId = Number(req.admin?.userId || 0);
-      if (!adminUserId) return safeJson(res, 400, { success: false, message: 'invalid admin user' });
+      if (!adminUserId) return safeJson(res, 400, { success: false, message: 'invalid admin user id' });
 
-      const avatarRaw = req.body?.avatarUrl;
-      const avatarUrl = typeof avatarRaw === 'string' ? avatarRaw.trim() : '';
-      db.prepare(`UPDATE users SET adminAvatarUrl = ?, updatedAt = ? WHERE id = ?`)
-        .run(avatarUrl || null, nowIso(), adminUserId);
+      const user = getUserById(adminUserId);
+      if (!user) return safeJson(res, 404, { success: false, message: 'admin user not found' });
 
-      const adminName = String(req.admin?.userName || 'admin');
-      writeAdminLog(db, adminName, '更新管理员头像', 'admin_profile', String(adminUserId), {
-        hasAvatar: !!avatarUrl
-      });
+      const adminAvatarUrl = normalizeLongText(req.body?.adminAvatarUrl, String(user.adminAvatarUrl || ''));
+      db.prepare(`
+        UPDATE users
+        SET adminAvatarUrl = ?, updatedAt = ?
+        WHERE id = ?
+      `).run(adminAvatarUrl, nowIso(), adminUserId);
 
+      const updated = getUserById(adminUserId);
       return safeJson(res, 200, {
         success: true,
-        adminAvatarUrl: avatarUrl || '',
-        avatarUrl: avatarUrl || '',
-        message: `管理员 ${adminName} 编辑了头像`
+        message: `管理员 ${String(updated?.name || req.admin?.name || 'admin')} 已更新后台头像`,
+        currentAdmin: updated
+          ? {
+              id: Number(updated.id || 0),
+              name: String(updated.name || ''),
+              adminAvatarUrl: String(updated.adminAvatarUrl || ''),
+            }
+          : null,
       });
     } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'update admin avatar failed' });
+      return safeJson(res, 500, { success: false, message: e?.message || 'update admin profile failed' });
     }
   });
 
-  /** ======================================================
-   *  6.5) GET /api/admin/online（后台在线管理员）
-   * ====================================================== */
-  router.get('/admin/online', requireAdmin, (_req, res) => {
+  router.get('/admin/users', auth.requireAdminAuth, (req: any, res) => {
     try {
-      const rows = db.prepare(`
-        SELECT
-          s.userId,
-          s.userName AS adminName,
-          MAX(COALESCE(s.lastSeenAt, s.createdAt)) AS lastSeenAt,
-          MAX(COALESCE(u.adminAvatarUrl, '')) AS avatarUrl
-        FROM user_sessions s
-        LEFT JOIN users u ON u.id = s.userId
-        WHERE s.role = 'admin' AND s.revokedAt IS NULL
-        GROUP BY s.userId, s.userName
-        ORDER BY datetime(lastSeenAt) DESC, s.userId DESC
-      `).all() as AnyRow[];
-
-      return safeJson(res, 200, {
-        success: true,
-        admins: rows.map((x) => ({
-          userId: Number(x.userId || 0),
-          userName: String(x.adminName || ''),
-          adminName: String(x.adminName || ''),
-          adminAvatarUrl: String(x.avatarUrl || ''),
-          avatarUrl: String(x.avatarUrl || ''),
-          lastSeenAt: String(x.lastSeenAt || ''),
-          isOnline: true
-        }))
-      });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'query online admins failed', admins: [] });
-    }
-  });
-
-  /** ======================================================
-   *  6.6) GET /api/admin/action-logs（管理员操作日志）
-   * ====================================================== */
-  router.get('/admin/action-logs', requireAdmin, (req, res) => {
-    try {
-      const limit = Math.max(1, Math.min(500, Number(req.query.limit || 120)));
-      const rows = db.prepare(`
-        SELECT id, adminName, action, targetType, targetId, detail, createdAt
-        FROM admin_action_logs
-        ORDER BY id DESC
-        LIMIT ?
-      `).all(limit) as AnyRow[];
-
-      return safeJson(res, 200, {
-        success: true,
-        logs: rows.map((x) => ({
-          id: Number(x.id || 0),
-          adminName: String(x.adminName || ''),
-          action: String(x.action || ''),
-          targetType: String(x.targetType || ''),
-          targetId: String(x.targetId || ''),
-          detail: tryParseJson(x.detail),
-          createdAt: String(x.createdAt || '')
-        }))
-      });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'query action logs failed', logs: [] });
-    }
-  });
-
-  /** ======================================================
-   *  6) GET /api/admin/users（审核列表）
-   * ====================================================== */
-  router.get('/admin/users', requireAdmin, (req, res) => {
-    try {
-      const status = normalizeName(req.query.status || '');
-      let rows: AnyRow[] = [];
-      if (status) {
-        rows = db.prepare(`SELECT * FROM users WHERE status = ? ORDER BY id DESC`).all(status) as AnyRow[];
-      } else {
-        rows = db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[];
-      }
+      const status = normalizeName(req.query?.status);
+      const rows = status
+        ? (db.prepare(`SELECT * FROM users WHERE status = ? ORDER BY id DESC`).all(status) as AnyRow[])
+        : (db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[]);
       return safeJson(res, 200, { success: true, users: rows.map(mapUser) });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'query admin users failed', users: [] });
     }
   });
 
-  /** ======================================================
-   *  7) POST /api/admin/users/:id/status（审核通过/驳回）
-   * ====================================================== */
-  router.post('/admin/users/:id/status', requireAdmin, (req, res) => {
+  router.post('/admin/users/:id/status', auth.requireAdminAuth, (req: any, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
 
       const user = getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
       const status = normalizeAdminStatus(req.body?.status, String(user.status || 'pending'));
-      const reason = normalizeName(req.body?.reason ?? '');
-      const adminName = String((req as any).admin?.userName || 'admin');
-      if (status === 'banned') {
-        db.prepare(`UPDATE users SET status = ?, forceOfflineAt = ?, updatedAt = ? WHERE id = ?`)
-          .run(status, nowIso(), nowIso(), id);
-      } else {
-        db.prepare(`UPDATE users SET status = ?, updatedAt = ? WHERE id = ?`)
-          .run(status, nowIso(), id);
-      }
+      const reason = normalizeName(req.body?.reason);
+      const updateSql = status === 'banned'
+        ? `UPDATE users SET status = ?, forceOfflineAt = ?, updatedAt = ? WHERE id = ?`
+        : `UPDATE users SET status = ?, updatedAt = ? WHERE id = ?`;
+      const params = status === 'banned'
+        ? [status, nowIso(), nowIso(), id]
+        : [status, nowIso(), id];
+      db.prepare(updateSql).run(...params);
 
       const updated = getUserById(id);
-      writeAdminLog(db, adminName, `编辑玩家状态 ${user.name} -> ${status}`, 'user', String(id), {
+      const adminName = String(req.admin?.name || 'admin');
+      writeAdminLog(db, adminName, `修改玩家状态 ${String(user.name || id)} -> ${status}`, 'user', String(id), {
         from: String(user.status || ''),
         to: status,
-        reason
+        reason,
       });
 
       return safeJson(res, 200, {
         success: true,
-        message: `管理员 ${adminName} 编辑了玩家状态：${status}`,
+        message: `管理员 ${adminName} 已更新玩家状态为 ${status}`,
         reason,
         user: mapUser(updated)
       });
@@ -817,13 +813,11 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  /** ======================================================
-   *  7.1) PUT /api/admin/users/:id（管理员编辑角色）
-   * ====================================================== */
-  router.put('/admin/users/:id', requireAdmin, async (req: any, res) => {
+  router.put('/admin/users/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
+
       const user = getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
@@ -832,47 +826,37 @@ export function createCoreRouter(ctx: AppContext) {
       if (age === null) {
         return safeJson(res, 400, { success: false, message: 'age must be an integer between 0 and 999' });
       }
-      const gold = Number(body.gold ?? user.gold ?? 0);
-      const role = normalizeRoleByAge(age, normalizeRole(body.role ?? user.role ?? '未分化'));
-      const status = normalizeAdminStatus(body.status ?? user.status, String(user.status || 'pending'));
+
       const name = normalizeName(body.name ?? user.name);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
-
       const dup = db.prepare(`SELECT id FROM users WHERE name = ? AND id <> ? LIMIT 1`).get(name, id) as AnyRow | undefined;
       if (dup) return safeJson(res, 400, { success: false, message: 'name already exists' });
 
-      const nextHome = resolveHomeLocationByRule(age, gold, role, body.homeLocation ?? user.homeLocation);
-      const prevCurrentLocation = String(user.currentLocation ?? '').trim();
-      const requestedCurrentLocation = String(body.currentLocation ?? '').trim();
+      const gold = Number(body.gold ?? user.gold ?? 0);
+      const role = normalizeRoleByAge(age, body.role ?? user.role);
+      const status = normalizeAdminStatus(body.status ?? user.status, String(user.status || 'pending'));
+      const homeLocation = resolveHomeLocationByRule(age, gold, role, body.homeLocation ?? user.homeLocation);
+      const prevHomeLocation = normalizeName(user.homeLocation);
+      const prevCurrentLocation = normalizeName(user.currentLocation);
       const currentLocationProvided = Object.prototype.hasOwnProperty.call(body, 'currentLocation');
-      const homeChanged = nextHome !== String(user.homeLocation ?? '').trim();
-      const shouldFollowHomeRule = homeChanged && (!currentLocationProvided || requestedCurrentLocation === prevCurrentLocation);
-      const nextCurrentLocation = shouldFollowHomeRule
-        ? nextHome
-        : (requestedCurrentLocation || prevCurrentLocation || nextHome);
-      const nextJob = normalizeJob(body.job ?? user.job ?? '无');
-      const nextPhysicalRank = String(body.physicalRank ?? user.physicalRank ?? '无').trim() || '无';
-      const nextMentalRank = String(body.mentalRank ?? user.mentalRank ?? '无').trim() || '无';
-      const nextFaction = String(body.faction ?? user.faction ?? '').trim();
-      const nextAbility = String(body.ability ?? user.ability ?? '').trim();
-      const nextSpiritName = String(body.spiritName ?? user.spiritName ?? '').trim();
-      const nextProfileText = String(body.profileText ?? user.profileText ?? '').trim();
-      const nextDeathDescription = String(body.deathDescription ?? user.deathDescription ?? '').trim();
-      const nextIsHidden = Number(body.isHidden ?? user.isHidden ?? 0) ? 1 : 0;
+      const requestedCurrentLocation = normalizeName(body.currentLocation);
+      const currentLocation = !currentLocationProvided
+        ? (!prevCurrentLocation || prevCurrentLocation === prevHomeLocation ? homeLocation : prevCurrentLocation)
+        : (requestedCurrentLocation || homeLocation);
       const hasPasswordField = Object.prototype.hasOwnProperty.call(body, 'password');
-      const rawPassword = hasPasswordField ? String(body.password ?? '') : '';
+      let nextLoginPasswordHash: string | null | undefined;
       let passwordAction: 'unchanged' | 'cleared' | 'updated' = 'unchanged';
-      let nextLoginPasswordHash: string | null = null;
+
       if (hasPasswordField) {
-        const trimmedPassword = rawPassword.trim();
-        if (!trimmedPassword) {
-          passwordAction = 'cleared';
+        const rawPassword = String(body.password ?? '').trim();
+        if (!rawPassword) {
           nextLoginPasswordHash = null;
+          passwordAction = 'cleared';
         } else {
-          if (trimmedPassword.length < 4) {
-            return safeJson(res, 400, { success: false, message: '全局账号密码至少 4 位' });
+          if (rawPassword.length < 4) {
+            return safeJson(res, 400, { success: false, message: '账号密码至少需要 4 位' });
           }
-          nextLoginPasswordHash = await hashPassword(trimmedPassword);
+          nextLoginPasswordHash = await hashPassword(rawPassword);
           passwordAction = 'updated';
         }
       }
@@ -890,11 +874,13 @@ export function createCoreRouter(ctx: AppContext) {
             faction = ?,
             ability = ?,
             spiritName = ?,
+            spiritType = ?,
             profileText = ?,
             deathDescription = ?,
             isHidden = ?,
             currentLocation = ?,
             homeLocation = ?,
+            avatarUrl = ?,
             updatedAt = ?
         WHERE id = ?
       `).run(
@@ -903,17 +889,19 @@ export function createCoreRouter(ctx: AppContext) {
         status,
         age,
         gold,
-        nextJob,
-        nextPhysicalRank,
-        nextMentalRank,
-        nextFaction,
-        nextAbility,
-        nextSpiritName,
-        nextProfileText,
-        nextDeathDescription,
-        nextIsHidden,
-        nextCurrentLocation,
-        nextHome,
+        normalizeJob(body.job ?? user.job),
+        normalizeRank(body.physicalRank ?? user.physicalRank),
+        normalizeRank(body.mentalRank ?? user.mentalRank),
+        normalizeName(body.faction ?? user.faction),
+        normalizeName(body.ability ?? user.ability),
+        normalizeName(body.spiritName ?? user.spiritName),
+        normalizeName(body.spiritType ?? user.spiritType),
+        normalizeLongText(body.profileText, String(user.profileText || '')),
+        normalizeLongText(body.deathDescription, String(user.deathDescription || '')),
+        Number(body.isHidden ?? user.isHidden ?? 0) ? 1 : 0,
+        currentLocation,
+        homeLocation,
+        normalizeLongText(body.avatarUrl, String(user.avatarUrl || '')),
         nowIso(),
         id
       );
@@ -922,25 +910,24 @@ export function createCoreRouter(ctx: AppContext) {
         db.prepare(`UPDATE users SET loginPasswordHash = ?, password = NULL, updatedAt = ? WHERE id = ?`)
           .run(nextLoginPasswordHash, nowIso(), id);
       }
-
       if (status === 'banned') {
-        db.prepare(`UPDATE users SET forceOfflineAt = ?, updatedAt = ? WHERE id = ?`)
-          .run(nowIso(), nowIso(), id);
+        db.prepare(`UPDATE users SET forceOfflineAt = ?, updatedAt = ? WHERE id = ?`).run(nowIso(), nowIso(), id);
       }
 
       const updated = getUserById(id);
-      const adminName = String(req.admin?.userName || 'admin');
+      const adminName = String(req.admin?.name || 'admin');
       writeAdminLog(db, adminName, `编辑玩家资料 ${name}`, 'user', String(id), {
         status,
         role,
         age,
-        homeLocation: nextHome,
-        passwordAction
+        gold,
+        homeLocation,
+        passwordAction,
       });
 
       return safeJson(res, 200, {
         success: true,
-        message: `管理员 ${adminName} 编辑了玩家 ${name}`,
+        message: `管理员 ${adminName} 已保存玩家资料`,
         user: mapUser(updated)
       });
     } catch (e: any) {
@@ -948,114 +935,105 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  /** ======================================================
-   *  7.2) DELETE /api/admin/users/:id（管理员删除角色）
-   * ====================================================== */
-  router.delete('/admin/users/:id', requireAdmin, (req: any, res) => {
+  const deleteUserAndRelatedData = (id: number) => {
+    const tx = db.transaction(() => {
+      cleanupDeletedUserCustomGameData(db, id);
+      runIfTableExists('user_sessions', `DELETE FROM user_sessions WHERE userId = ?`, [id]);
+      runIfTableExists('user_skills', `DELETE FROM user_skills WHERE userId = ?`, [id]);
+      runIfTableExists('user_inventory', `DELETE FROM user_inventory WHERE userId = ?`, [id]);
+      runIfTableExists('inventory', `DELETE FROM inventory WHERE userId = ?`, [id]);
+      runIfTableExists('notes', `DELETE FROM notes WHERE ownerId = ? OR targetId = ?`, [id, id]);
+      runIfTableExists('interaction_reports', `DELETE FROM interaction_reports WHERE reporterId = ? OR targetId = ?`, [id, id]);
+      runIfTableExists('interaction_report_votes', `DELETE FROM interaction_report_votes WHERE adminUserId = ?`, [id]);
+      runIfTableExists('interaction_events', `DELETE FROM interaction_events WHERE userId = ? OR sourceUserId = ? OR targetUserId = ?`, [id, id, id]);
+      runIfTableExists('interaction_skip_requests', `DELETE FROM interaction_skip_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      runIfTableExists('interaction_trade_requests', `DELETE FROM interaction_trade_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      runIfTableExists('interaction_trade_logs', `DELETE FROM interaction_trade_logs WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      runIfTableExists('interaction_trade_offers', `DELETE FROM interaction_trade_offers WHERE userId = ?`, [id]);
+      runIfTableExists('interaction_trade_sessions', `DELETE FROM interaction_trade_sessions WHERE userAId = ? OR userBId = ?`, [id, id]);
+      runIfTableExists('party_requests', `DELETE FROM party_requests WHERE fromUserId = ? OR toUserId = ? OR targetUserId = ?`, [id, id, id]);
+      runIfTableExists('party_entanglements', `DELETE FROM party_entanglements WHERE userAId = ? OR userBId = ?`, [id, id]);
+      runIfTableExists('active_rp_members', `DELETE FROM active_rp_members WHERE userId = ?`, [id]);
+      runIfTableExists('active_rp_leaves', `DELETE FROM active_rp_leaves WHERE userId = ?`, [id]);
+      runIfTableExists('active_group_rp_members', `DELETE FROM active_group_rp_members WHERE userId = ?`, [id]);
+      runIfTableExists('rp_mediation_invites', `DELETE FROM rp_mediation_invites WHERE invitedUserId = ? OR requestedByUserId = ?`, [id, id]);
+      runIfTableExists('demon_gamble_requests', `DELETE FROM demon_gamble_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      runIfTableExists('rooms', `DELETE FROM rooms WHERE ownerId = ?`, [id]);
+      db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+    });
+    tx();
+  };
+
+  const handleDeleteUser = (req: any, res: Response) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
+
       const user = getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
-      const tx = db.transaction(() => {
-        db.prepare(`DELETE FROM user_sessions WHERE userId = ?`).run(id);
-        db.prepare(`DELETE FROM user_skills WHERE userId = ?`).run(id);
-        db.prepare(`DELETE FROM inventory WHERE userId = ?`).run(id);
-        db.prepare(`DELETE FROM notes WHERE ownerId = ? OR targetId = ?`).run(id, id);
-        db.prepare(`DELETE FROM interaction_reports WHERE reporterId = ? OR targetId = ?`).run(id, id);
-        db.prepare(`DELETE FROM interaction_report_votes WHERE adminUserId = ?`).run(id);
-        db.prepare(`DELETE FROM party_requests WHERE fromUserId = ? OR toUserId = ? OR targetUserId = ?`).run(id, id, id);
-        db.prepare(`DELETE FROM party_entanglements WHERE userAId = ? OR userBId = ?`).run(id, id);
-        db.prepare(`DELETE FROM active_rp_members WHERE userId = ?`).run(id);
-        db.prepare(`DELETE FROM active_rp_leaves WHERE userId = ?`).run(id);
-        db.prepare(`DELETE FROM rp_mediation_invites WHERE invitedUserId = ? OR requestedByUserId = ?`).run(id, id);
-        db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
-      });
-      tx();
-
-      const adminName = String(req.admin?.userName || 'admin');
+      deleteUserAndRelatedData(id);
+      const adminName = String(req.admin?.name || 'admin');
       writeAdminLog(db, adminName, `删除玩家 ${String(user.name || id)}`, 'user', String(id));
 
       return safeJson(res, 200, {
         success: true,
-        message: `管理员 ${adminName} 删除了玩家 #${id}`
+        message: `管理员 ${adminName} 已删除玩家 ${String(user.name || id)}`
       });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'delete admin user failed' });
     }
-  });
+  };
 
-  /** ======================================================
-   *  8) 兼容：PUT /api/users/:id/home（地图入住）
-   * ====================================================== */
+  router.delete('/admin/users/:id', auth.requireAdminAuth, handleDeleteUser);
+  router.delete('/users/:id', auth.requireAdminAuth, handleDeleteUser);
+
   router.put('/users/:id/home', auth.requireUserAuth, (req: any, res) => {
     try {
-      const id = Number(req.params.id);
-      const locationId = String(req.body?.locationId || '').trim();
-      if (!id || !locationId) {
-        return safeJson(res, 400, { success: false, message: 'id/locationId required' });
-      }
-
-      const uid = Number(req.user?.id || 0);
-      if (uid !== id) {
-        return safeJson(res, 403, { success: false, message: '无权限修改他人家园' });
+      const id = Number(req.params.id || 0);
+      if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
+      if (Number(req.user?.id || 0) !== id) {
+        return safeJson(res, 403, { success: false, message: '只能修改自己的住处' });
       }
 
       const user = getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
-      const allowHomes = new Set(['sanctuary', 'slums', 'rich_area']);
-      if (!allowHomes.has(locationId)) {
-        return safeJson(res, 400, { success: false, message: '仅支持在圣所/西区/东区安家' });
+      const locationId = normalizeName(req.body?.locationId ?? req.body?.homeLocation);
+      if (!HOME_LOCATION_SET.has(locationId as any)) {
+        return safeJson(res, 400, { success: false, message: 'invalid home location' });
       }
 
-      const isMinor = Number(user.age || 0) < 16 || String(user.role || '') === '未分化';
-      if (isMinor && locationId !== 'sanctuary') {
-        return safeJson(res, 400, { success: false, message: '未分化阶段家园固定在圣所' });
+      const age = Number(user.age ?? 0);
+      const gold = Number(user.gold ?? 0);
+      const role = normalizeRole(user.role);
+      if (locationId === 'sanctuary' && !(age < 16 || role === DEFAULT_ROLE)) {
+        return safeJson(res, 403, { success: false, message: '圣所仅允许 16 岁以下未分化者入住' });
+      }
+      if (locationId === 'rich_area' && gold <= 9999) {
+        return safeJson(res, 403, { success: false, message: '资产不足，无法入住东区' });
+      }
+      if (locationId === 'slums' && age < 16) {
+        return safeJson(res, 403, { success: false, message: '未成年未分化者不能单独入住西区' });
       }
 
-      if (locationId === 'rich_area' && Number(user.gold || 0) <= 9999) {
-        return safeJson(res, 400, { success: false, message: '东区安家需要资产高于 9999G' });
-      }
-
+      const prevHome = normalizeName(user.homeLocation);
+      const prevCurrent = normalizeName(user.currentLocation);
+      const nextCurrent = !prevCurrent || prevCurrent === prevHome ? locationId : prevCurrent;
       db.prepare(`UPDATE users SET homeLocation = ?, currentLocation = ?, updatedAt = ? WHERE id = ?`)
-        .run(locationId, locationId, nowIso(), id);
+        .run(locationId, nextCurrent, nowIso(), id);
 
-      return safeJson(res, 200, { success: true });
+      return safeJson(res, 200, {
+        success: true,
+        homeLocation: locationId,
+        currentLocation: nextCurrent,
+        user: mapUser(getUserById(id))
+      });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'update home failed' });
     }
   });
 
-  /** ======================================================
-   *  9) 兼容：GET /api/users
-   * ====================================================== */
-  router.get('/users', (_req, res) => {
-    try {
-      const rows = db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[];
-      return safeJson(res, 200, { success: true, users: rows.map(mapUser) });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'query users failed', users: [] });
-    }
-  });
-
-  /** ======================================================
-   *  10) 兼容：DELETE /api/users/:id
-   * ====================================================== */
-  router.delete('/users/:id', requireAdmin, (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
-
-      const info = db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
-      if (!info.changes) return safeJson(res, 404, { success: false, message: 'user not found' });
-
-      return safeJson(res, 200, { success: true });
-    } catch (e: any) {
-      return safeJson(res, 500, { success: false, message: e?.message || 'delete user failed' });
-    }
-  });
-
   return router;
 }
+
