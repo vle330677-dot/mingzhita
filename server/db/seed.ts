@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import type { AppDatabase } from './types';
 
 const GUILD_DEFAULT_ITEMS = [
   {
@@ -174,7 +174,7 @@ const DEFAULT_SKILLS = [
   { name: '跨派调和', faction: '通用', tier: '高阶', description: '降低跨派技能排斥，提升兼容性。', npcId: null }
 ] as const;
 
-export function applyDefaultCatalogSeed(db: Database.Database) {
+export function applyDefaultCatalogSeed(db: AppDatabase) {
   const insertItem = db.prepare(`
     INSERT INTO items(name, description, locationTag, npcId, price, faction, tier, itemType, effectValue)
     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)
@@ -209,7 +209,7 @@ export function applyDefaultCatalogSeed(db: Database.Database) {
   }
 }
 
-export function runSeed(db: Database.Database) {
+export function runSeed(db: AppDatabase) {
   db.prepare(`
     INSERT OR IGNORE INTO admin_whitelist (name, code_name, enabled)
     VALUES ('塔', 'tower_admin', 1)

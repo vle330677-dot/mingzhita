@@ -1,5 +1,6 @@
-import Database from 'better-sqlite3';
-import { RequestHandler } from 'express';
+import type { RequestHandler } from 'express';
+import type { AppDatabase } from './db/types';
+import type { RealtimeRuntime } from './realtime';
 
 export interface AuthPack {
   requireAdminAuth: RequestHandler;
@@ -9,6 +10,7 @@ export interface AuthPack {
 }
 
 export interface AppContext {
-  db: Database.Database;
+  db: AppDatabase;
   auth: AuthPack;
+  runtime: RealtimeRuntime;
 }

@@ -1,7 +1,6 @@
-import Database from 'better-sqlite3';
+import type { AppDatabase } from './types';
 
-
-const addColumn = (db: Database.Database, table: string, col: string, type: string) => {
+const addColumn = (db: AppDatabase, table: string, col: string, type: string) => {
   if (!/^[a-zA-Z0-9_]+$/.test(table) || !/^[a-zA-Z0-9_]+$/.test(col)) return;
   try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
@@ -10,7 +9,7 @@ const addColumn = (db: Database.Database, table: string, col: string, type: stri
   }
 };
 
-export function runMigrate(db: Database.Database) {
+export function runMigrate(db: AppDatabase) {
   addColumn(db, 'users', 'homeLocation', 'TEXT');
   addColumn(db, 'users', 'avatarUpdatedAt', 'TEXT');
   addColumn(db, 'users', 'createdAt', 'TEXT');

@@ -1,5 +1,5 @@
 ﻿import express from 'express';
-import Database from 'better-sqlite3';
+import type { AppContext } from './types';
 
 type RPMessageType = 'user' | 'system' | 'text';
 
@@ -110,8 +110,9 @@ function mapSessionShape(session: SessionRow, members: MemberRow[]) {
   };
 }
 
-export function createRpRouter(db: Database.Database) {
+export function createRpRouter(ctx: AppContext) {
   const router = express.Router();
+  const { db, runtime } = ctx;
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS rp_mediation_invites (
@@ -315,6 +316,20 @@ export function createRpRouter(db: Database.Database) {
     }
   };
 
+  const notifyPairSession = (sessionId: string, extra: Record<string, any> = {}) => {
+    const userIds = loadSessionMembers(sessionId)
+      .map((member) => Number(member.userId || 0))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (!userIds.length) return;
+    void runtime.publishUsers(userIds, 'rp.user.sessions.changed', { sessionId, ...extra });
+    void runtime.publishUsers(userIds, 'rp.session.changed', { sessionId, ...extra });
+  };
+
+  const notifyGroupLocation = (locationId: string, archiveId: string, extra: Record<string, any> = {}) => {
+    if (!String(locationId || '').trim()) return;
+    void runtime.publishBroadcast('rp.group.changed', { locationId, archiveId, ...extra });
+  };
+
   router.post('/rp/session/upsert', (req, res) => {
     try {
       const { sessionId, userAId, userAName, userBId, userBName, locationId, locationName } = req.body || {};
@@ -371,6 +386,7 @@ export function createRpRouter(db: Database.Database) {
         db.prepare(`DELETE FROM active_rp_leaves WHERE sessionId = ?`).run(finalSessionId);
       });
       tx();
+      notifyPairSession(finalSessionId, { reason: 'upsert' });
 
       return res.json({ success: true, sessionId: finalSessionId });
     } catch (error: any) {
@@ -443,6 +459,7 @@ export function createRpRouter(db: Database.Database) {
         INSERT INTO active_rp_messages (sessionId, senderId, senderName, content, type)
         VALUES (?, ?, ?, ?, 'user')
       `).run(sessionId, userId, userName || member.userName || `U${userId}`, content);
+      notifyPairSession(sessionId, { reason: 'message', userId });
 
       return res.json({ success: true });
     } catch (error: any) {
@@ -494,6 +511,7 @@ export function createRpRouter(db: Database.Database) {
         }
       });
       tx();
+      notifyPairSession(sessionId, { reason: 'leave', userId, closed, archiveId: archiveId || null });
 
       return res.json({ success: true, closed, archiveId: archiveId || null });
     } catch (error: any) {
@@ -712,6 +730,7 @@ export function createRpRouter(db: Database.Database) {
         touchGroupArchiveParticipants(archiveId, userId, userName || `U${userId}`, locationName);
       });
       tx();
+      notifyGroupLocation(locationId, archiveId, { reason: 'join', userId });
 
       return res.json({ success: true, joined: true, archiveId, locationId, locationName });
     } catch (error: any) {
@@ -803,6 +822,7 @@ export function createRpRouter(db: Database.Database) {
         `).run(member.archiveId, userId, userName || member.userName || `U${userId}`, content, now());
       });
       tx();
+      notifyGroupLocation(locationId, member.archiveId, { reason: 'message', userId });
 
       return res.json({ success: true, archiveId: member.archiveId });
     } catch (error: any) {
@@ -848,6 +868,7 @@ export function createRpRouter(db: Database.Database) {
         }
       });
       tx();
+      notifyGroupLocation(locationId, member.archiveId, { reason: 'leave', userId, remaining });
 
       return res.json({ success: true, left: true, remaining });
     } catch (error: any) {

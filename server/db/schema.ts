@@ -1,6 +1,6 @@
-﻿import Database from 'better-sqlite3';
+﻿import type { AppDatabase } from './types';
 
-export function runSchema(db: Database.Database) {
+export function runSchema(db: AppDatabase) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

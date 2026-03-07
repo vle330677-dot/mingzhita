@@ -1,37 +1,34 @@
-import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+import { createMySqlDatabase, createSqliteDatabase } from './client';
+import type { AppDatabase } from './types';
 import { runSchema } from './schema';
 import { runMigrate } from './migrate';
 import { runSeed } from './seed';
 
+const require = createRequire(import.meta.url);
+const SyncMySql = require('sync-mysql');
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function initDb() {
+function initSqliteDb() {
   const dbPath = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'game.db');
   const dbDir = path.dirname(dbPath);
 
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
   const boot = () => {
-    const db = new Database(dbPath);
-    // WAL 模式：读写并发，不互相阻塞
+    const db = createSqliteDatabase(dbPath);
     db.pragma('journal_mode = WAL');
-    // WAL checkpoint：减少写放大
     db.pragma('wal_autocheckpoint = 1000');
-    // 同步级别：WAL 模式下 NORMAL 足够安全，且比 FULL 快得多
     db.pragma('synchronous = NORMAL');
-    // 内存缓存：20MB，减少磁盘 I/O
     db.pragma('cache_size = -20000');
-    // 临时表放内存
     db.pragma('temp_store = MEMORY');
-    // 外键约束
     db.pragma('foreign_keys = ON');
-    // busy timeout：并发写时等待而不是立刻返回 SQLITE_BUSY
     db.pragma('busy_timeout = 5000');
-    // mmap：让 OS 管理页缓存，多核友好
     db.pragma('mmap_size = 67108864');
     runSchema(db);
     runMigrate(db);
@@ -58,4 +55,46 @@ export function initDb() {
 
     return boot();
   }
+}
+
+function initMySqlDb() {
+  const host = process.env.MYSQL_HOST || '127.0.0.1';
+  const port = Number(process.env.MYSQL_PORT || 3306);
+  const user = process.env.MYSQL_USER || 'root';
+  const password = process.env.MYSQL_PASSWORD || '';
+  const database = process.env.MYSQL_DATABASE || 'mingzhita';
+  const charset = process.env.MYSQL_CHARSET || 'utf8mb4';
+
+  const bootstrap = new SyncMySql({
+    host,
+    port,
+    user,
+    password,
+    charset,
+    multipleStatements: true,
+  }) as { query: (sql: string, params?: any[]) => any; dispose?: () => void };
+
+  bootstrap.query('CREATE DATABASE IF NOT EXISTS ?? CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', [database]);
+  bootstrap.dispose?.();
+
+  const db = createMySqlDatabase({
+    host,
+    port,
+    user,
+    password,
+    database,
+    charset,
+    multipleStatements: true,
+  });
+
+  runSchema(db);
+  runMigrate(db);
+  runSeed(db);
+  return db;
+}
+
+export function initDb(): AppDatabase {
+  const client = String(process.env.DB_CLIENT || '').trim().toLowerCase();
+  const shouldUseMySql = client === 'mysql' || (!!process.env.MYSQL_HOST && client !== 'sqlite');
+  return shouldUseMySql ? initMySqlDb() : initSqliteDb();
 }

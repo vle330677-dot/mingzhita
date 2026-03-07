@@ -1,61 +1,44 @@
 import { Request, Response, NextFunction } from 'express';
+import type { RealtimeRuntime } from '../realtime';
 
-interface RateLimitEntry {
-  count: number;
-  resetTime: number;
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
-// 清理过期的限流记录
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (now > entry.resetTime) {
-      rateLimitStore.delete(key);
-    }
-  }
-}, 60 * 1000); // 每分钟清理一次
-
-export function rateLimiter(options: {
-  windowMs?: number;
-  maxRequests?: number;
-  keyGenerator?: (req: Request) => string;
-} = {}) {
-  const windowMs = options.windowMs || 60 * 1000; // 默认1分钟
-  const maxRequests = options.maxRequests || 100; // 默认100次/分钟
+export function rateLimiter(
+  runtime: RealtimeRuntime,
+  options: {
+    windowMs?: number;
+    maxRequests?: number;
+    keyGenerator?: (req: Request) => string;
+  } = {}
+) {
+  const windowMs = options.windowMs || 60 * 1000;
+  const maxRequests = options.maxRequests || 100;
   const keyGenerator = options.keyGenerator || ((req: Request) => {
-    // 优先使用用户ID，其次使用IP
     const userId = (req as any).user?.id || (req as any).admin?.userId;
     if (userId) return `user:${userId}`;
+
+    const authHeader = String(req.headers.authorization || '').trim();
+    if (authHeader.startsWith('Bearer ')) {
+      return `token:${authHeader.slice(7).trim()}`;
+    }
+
     return `ip:${req.ip || req.socket.remoteAddress || 'unknown'}`;
   });
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const key = keyGenerator(req);
-    const now = Date.now();
-    
-    let entry = rateLimitStore.get(key);
-    
-    if (!entry || now > entry.resetTime) {
-      entry = {
-        count: 1,
-        resetTime: now + windowMs
-      };
-      rateLimitStore.set(key, entry);
-      return next();
-    }
-    
-    entry.count++;
-    
-    if (entry.count > maxRequests) {
-      return res.status(429).json({
-        success: false,
-        message: '请求过于频繁，请稍后再试',
-        retryAfter: Math.ceil((entry.resetTime - now) / 1000)
-      });
-    }
-    
-    next();
+    void (async () => {
+      try {
+        const result = await runtime.consumeRateLimit(keyGenerator(req), windowMs, maxRequests);
+        if (!result.allowed) {
+          return res.status(429).json({
+            success: false,
+            message: '\u8bf7\u6c42\u8fc7\u4e8e\u9891\u7e41\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5',
+            retryAfter: result.retryAfter,
+          });
+        }
+        next();
+      } catch (error) {
+        console.error('[rate-limit] runtime fallback', error);
+        next();
+      }
+    })();
   };
 }

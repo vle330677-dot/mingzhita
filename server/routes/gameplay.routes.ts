@@ -4,6 +4,8 @@ import { writeAdminLog } from '../utils/common';
 
 type AnyRow = Record<string, any>;
 
+let gameplayRuntime: AppContext['runtime'] | null = null;
+
 const nowIso = () => new Date().toISOString();
 const afterMinutesIso = (m: number) => new Date(Date.now() + m * 60 * 1000).toISOString();
 const todayKey = () => nowIso().slice(0, 10);
@@ -1454,6 +1456,15 @@ function pushInteractionEvent(
     JSON.stringify(payload || {}),
     nowIso()
   );
+  void gameplayRuntime?.publishUser(uid, 'interaction.event.created', {
+    userId: uid,
+    sourceUserId: Number(sourceUserId || 0),
+    targetUserId: Number(targetUserId || 0),
+    actionType: String(actionType || ''),
+    title: String(title || ''),
+    message: String(message || ''),
+    payload: payload || {},
+  });
 }
 
 function normalizeTradePair(a: number, b: number) {
@@ -2302,6 +2313,7 @@ function pickNpcFactionSkill(db: any, userId: number, skillFaction: string) {
 export function createGameplayRouter(ctx: AppContext) {
   const r = Router();
   const { db, auth } = ctx;
+  gameplayRuntime = ctx.runtime;
   ensureTables(db);
   ensureWorldNpcSystem(db);
 
@@ -4307,7 +4319,7 @@ export function createGameplayRouter(ctx: AppContext) {
         const name = rand(fallback);
         const itemType = name.includes('技能书') ? 'skill_book' : '回复道具';
         addItem(db, userId, name, itemType, 1, '', name.includes('应急') ? 30 : 20);
-        return res.json({ success: true, message: `found ${name}`, item: { name, tier: '低阶', itemType } });
+      return res.json({ success: true, message: `found ${name}`, item: { name, tier: '低阶', itemType } });
       }
 
       const rawType = String(picked.itemType || '回复道具');
@@ -5405,6 +5417,7 @@ export function createGameplayRouter(ctx: AppContext) {
 
       db.prepare(`UPDATE interaction_trade_requests SET status = 'accepted', sessionId = ?, updatedAt = ? WHERE id = ?`).run(String(sessionRow?.id || ''), nowIso(), requestId);
       const payload = loadTradeSessionPayload(db, sessionRow);
+      void gameplayRuntime?.publishUsers([fromUserId, userId], 'trade.session.changed', { sessionId: String(sessionRow?.id || ''), status: 'pending', reason: 'accepted' });
       pushInteractionEvent(db, userId, fromUserId, userId, 'trade', '交易请求已接受', `你接受了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
       pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade', '交易请求已接受', `${String(toUser.name || `玩家#${userId}`)} 接受了你的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
       return res.json({ success: true, status: 'accepted', sessionId: String(sessionRow?.id || ''), session: payload, message: '已接受该交易请求，交易窗口已打开' });
@@ -5593,6 +5606,7 @@ export function createGameplayRouter(ctx: AppContext) {
 
       const fresh = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       const payload = loadTradeSessionPayload(db, fresh);
+      void gameplayRuntime?.publishUsers([userId, peerId], 'trade.session.changed', { sessionId, status: String(fresh?.status || 'pending'), reason: 'offer' });
       return res.json({ success: true, session: payload, message: '交易报价已更新（双方确认已重置）' });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'update trade offer failed' });
@@ -5657,10 +5671,12 @@ export function createGameplayRouter(ctx: AppContext) {
             `交易自动取消：${done.message}`,
             { sessionId }
           );
+          void gameplayRuntime?.publishUsers([userAId, userBId], 'trade.session.changed', { sessionId, status: 'cancelled', reason: 'failed' });
           return res.status(400).json({ success: false, message: done.message });
         }
         const completed = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
         const payload = loadTradeSessionPayload(db, completed);
+        void gameplayRuntime?.publishUsers([userAId, userBId], 'trade.session.changed', { sessionId, status: 'completed', reason: 'completed' });
         return res.json({ success: true, completed: true, session: payload, message: done.message || '交易已完成' });
       }
 
@@ -5678,6 +5694,7 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const payload = loadTradeSessionPayload(db, fresh);
+      void gameplayRuntime?.publishUsers([userAId, userBId], 'trade.session.changed', { sessionId, status: String(fresh.status || 'pending'), reason: 'confirm' });
       return res.json({
         success: true,
         completed: false,
@@ -5735,6 +5752,7 @@ export function createGameplayRouter(ctx: AppContext) {
           { sessionId }
         );
       }
+      void gameplayRuntime?.publishUsers([userId, peerId], 'trade.session.changed', { sessionId, status: 'cancelled', reason: 'cancel' });
       return res.json({ success: true, message: '交易已取消' });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'cancel trade session failed' });

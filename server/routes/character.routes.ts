@@ -1,5 +1,6 @@
 ﻿import { Router } from 'express';
 import { AppContext } from '../types';
+import { filterPresenceByLocation, loadOnlinePresenceFallback, loadPresenceByUserId } from '../utils/presence';
 
 type AnyRow = Record<string, any>;
 const nowIso = () => new Date().toISOString();
@@ -121,7 +122,7 @@ function releaseTowerGuardPrisoner(db: any, targetUserId: number, releaseAt: str
 
 export function createCharacterRouter(ctx: AppContext) {
   const r = Router();
-  const { db } = ctx;
+  const { db, runtime } = ctx;
   ensureParanormalTables(db);
 
   r.get('/characters/:id/runtime', (req, res) => {
@@ -344,6 +345,14 @@ export function createCharacterRouter(ctx: AppContext) {
       if (fromLocation === 'tower_of_life' && locationId !== 'tower_of_life' && !customFaction && !new Set(['sanctuary','london_tower','slums','rich_area','guild','army']).has(locationId)) return res.status(403).json({ success: false, code: 'TOWER_ADJACENT_ONLY', message: '你无法一下子走得那么远' });
       db.prepare(`UPDATE users SET currentLocation = ?, updatedAt = ? WHERE id = ?`).run(locationId, nowIso(), id);
       touchPresence(db, id);
+      const presenceSnapshot = loadPresenceByUserId(db, id);
+      if (presenceSnapshot) {
+        void runtime.upsertPresence(presenceSnapshot);
+      } else {
+        void runtime.touchPresence(id);
+      }
+      void runtime.publishBroadcast('presence.changed', { userId: id, locationId, fromLocation, currentLocation: locationId });
+      void runtime.publishUser(id, 'user.updated', { userId: id, fields: ['currentLocation'], currentLocation: locationId, fromLocation });
       let prisonTrigger: null | { gameId: string; gameName: string } = null;
       if (String(row.status || '') === 'ghost' && locationId === PARANORMAL_OFFICE && fromLocation !== PARANORMAL_OFFICE && Number(prisonRow.isImprisoned || 0) !== 1 && Math.random() < GHOST_PRISON_CHANCE) {
         const game = pickPrisonGame();
@@ -369,20 +378,41 @@ export function createCharacterRouter(ctx: AppContext) {
   };
 
   r.post('/characters/:id/location', handleLocationUpdate);
-  r.get('/locations/:locationId/players', (req, res) => {
+  r.get('/locations/:locationId/players', async (req, res) => {
     try {
       const locationId = String(req.params.locationId || '').trim();
       const excludeId = Number(req.query.excludeId || 0);
       if (!locationId) return res.json({ success: true, players: [] });
       if (excludeId) touchPresence(db, excludeId);
-      const rows = db.prepare(`SELECT u.id,u.name,u.role,u.job,u.status,u.currentLocation,u.avatarUrl,u.avatarUpdatedAt,u.partyId,COALESCE(tgp.isImprisoned,0) AS towerGuardImprisoned,COALESCE(pp.isImprisoned,0) AS paranormalImprisoned FROM users u LEFT JOIN tower_guard_prisoners tgp ON tgp.userId = u.id LEFT JOIN paranormal_prisoners pp ON pp.userId = u.id WHERE u.currentLocation = ? AND u.status IN ('approved','ghost') AND EXISTS (SELECT 1 FROM user_sessions s WHERE s.userId = u.id AND s.role = 'player' AND s.revokedAt IS NULL AND datetime(s.lastSeenAt) >= datetime('now', ?)) ORDER BY u.id DESC`).all(locationId, `-${ONLINE_WINDOW_SECONDS} seconds`) as AnyRow[];
-      const players = rows.filter((row) => Number(row.id) !== excludeId).map((row) => ({ id: Number(row.id || 0), name: String(row.name || ''), role: String(row.role || '未分化'), job: String(row.job || '无'), status: String(row.status || ''), currentLocation: String(row.currentLocation || ''), partyId: row.partyId || null, avatarUrl: String(row.avatarUrl || ''), avatarUpdatedAt: row.avatarUpdatedAt || null, towerGuardImprisoned: Number(row.towerGuardImprisoned || 0) === 1, paranormalImprisoned: Number(row.paranormalImprisoned || 0) === 1 }));
-      res.json({ success: true, players });
-    } catch (e: any) { res.status(500).json({ success: false, message: e?.message || 'players query failed', players: [] }); }
+
+      const merged = new Map<number, AnyRow>();
+      for (const row of filterPresenceByLocation(loadOnlinePresenceFallback(db, ONLINE_WINDOW_SECONDS), locationId, excludeId)) {
+        merged.set(Number(row.id || 0), row as AnyRow);
+      }
+      for (const row of await runtime.getLocationPresence(locationId, excludeId)) {
+        merged.set(Number(row.id || 0), row as AnyRow);
+      }
+
+      res.json({ success: true, players: Array.from(merged.values()) });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'players query failed', players: [] });
+    }
   });
-  r.post('/presence/heartbeat', (req, res) => {
-    try { const userId = Number(req.body?.userId || 0); if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' }); touchPresence(db, userId); res.json({ success: true }); }
-    catch (e: any) { res.status(500).json({ success: false, message: e?.message || 'heartbeat failed' }); }
+  r.post('/presence/heartbeat', async (req, res) => {
+    try {
+      const userId = Number(req.body?.userId || 0);
+      if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
+      touchPresence(db, userId);
+      const snapshot = loadPresenceByUserId(db, userId);
+      if (snapshot) {
+        await runtime.upsertPresence(snapshot);
+      } else {
+        await runtime.touchPresence(userId);
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e?.message || 'heartbeat failed' });
+    }
   });
   r.post('/users/:id/location', handleLocationUpdate);
   return r;

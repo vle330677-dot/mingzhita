@@ -12,6 +12,7 @@ import { cacheMiddleware } from './middleware/cache';
 import { createAnnouncementsRouter } from './routes/announcements.routes';
 import { createRoomsRouter } from './routes/rooms.routes';
 import { createLegacyRouter } from './routes/legacy.routes';
+import { createRealtimeRouter } from './routes/realtime.routes';
 import { createCoreRouter } from './routes/core.routes';
 import { createCompatRouter } from './routes/compat.routes';
 import { createCharacterRouter } from './routes/character.routes';
@@ -24,6 +25,7 @@ import { createGhostRouter } from './routes/ghost.routes';
 import { createArmyRouter } from './routes/army.routes';
 import { createConfirmationRouter } from './routes/confirmation.routes';
 import { createFactionRouter } from './routes/faction.routes';
+import { createRealtimeRuntime } from './realtime';
 import type { AppContext } from './types';
 
 dotenv.config();
@@ -41,7 +43,9 @@ export async function startServer() {
 
   const db = initDb();
   const auth = createAuth(db);
-  const ctx: AppContext = { db, auth };
+  const runtime = createRealtimeRuntime();
+  await runtime.ready();
+  const ctx: AppContext = { db, auth, runtime };
 
   // 性能优化中间件
   app.use(compressionMiddleware);
@@ -49,13 +53,14 @@ export async function startServer() {
   app.use(express.urlencoded({ extended: true }));
   
   // 全局限流：每分钟最多200个请求
-  app.use('/api', rateLimiter({ windowMs: 60 * 1000, maxRequests: 200 }));
+  app.use('/api', rateLimiter(runtime, { windowMs: 60 * 1000, maxRequests: 200 }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, ts: Date.now() });
   });
 
   // 路由配置（带缓存的路由使用缓存中间件）
+  app.use('/api', createRealtimeRouter(ctx));
   app.use('/api', createCoreRouter(ctx));
   app.use('/api', createCharacterRouter(ctx));
   app.use('/api', createCatalogRouter(ctx));
@@ -68,10 +73,10 @@ export async function startServer() {
   app.use('/api', createCompatRouter(ctx));
   
   // 公告和房间列表可以缓存30秒
-  app.use('/api', cacheMiddleware(30 * 1000), createAnnouncementsRouter(ctx));
-  app.use('/api', cacheMiddleware(30 * 1000), createRoomsRouter(ctx));
+  app.use('/api', cacheMiddleware(runtime, 30 * 1000), createAnnouncementsRouter(ctx));
+  app.use('/api', cacheMiddleware(runtime, 30 * 1000), createRoomsRouter(ctx));
   
-  app.use('/api', createRpRouter(db));
+  app.use('/api', createRpRouter(ctx));
   app.use('/api/custom-games', createCustomGameRouter(db));
   app.use('/api', createLegacyRouter(ctx));
 

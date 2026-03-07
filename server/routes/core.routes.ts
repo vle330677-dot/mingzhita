@@ -178,6 +178,7 @@ export function createCoreRouter(ctx: AppContext) {
   const router = Router();
   const db = ctx.db;
   const auth = ctx.auth;
+  const runtime = ctx.runtime;
 
   function ensureTables() {
     db.exec(`
@@ -596,6 +597,12 @@ export function createCoreRouter(ctx: AppContext) {
 
       db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'player' AND revokedAt IS NULL`)
         .run(Number(effectiveUser.id));
+      void runtime.publishUser(Number(effectiveUser.id), 'session.kicked', {
+        userId: Number(effectiveUser.id),
+        message: '\u8be5\u8d26\u53f7\u5df2\u5728\u5176\u4ed6\u8bbe\u5907\u767b\u5f55\uff0c\u4f60\u5df2\u88ab\u5f3a\u5236\u4e0b\u7ebf\u3002'
+      });
+      void runtime.removePresence(Number(effectiveUser.id));
+      void runtime.publishBroadcast('presence.removed', { userId: Number(effectiveUser.id) });
       const token = issueSessionToken(Number(effectiveUser.id), String(effectiveUser.name), 'player');
 
       return safeJson(res, 200, {
@@ -613,6 +620,11 @@ export function createCoreRouter(ctx: AppContext) {
       const token = auth.getBearerToken(req);
       if (token) {
         db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+      }
+      const userId = Number((req as any).user?.id || 0);
+      if (userId) {
+        void runtime.removePresence(userId);
+        void runtime.publishBroadcast('presence.removed', { userId });
       }
       return safeJson(res, 200, { success: true });
     } catch (e: any) {
