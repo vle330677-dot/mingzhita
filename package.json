@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
-    "start": "tsx server.ts"
+    "start": "tsx server.ts",
+    "db:mysql:import": "tsx server/db/importSqliteToMySql.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -18,8 +19,11 @@
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "mysql2": "^3.19.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "redis": "^5.11.0",
+    "sync-mysql": "^3.0.1",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

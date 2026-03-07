@@ -1,0 +1,17 @@
+{
+  "name": "mingzhita",
+  "build": {
+    "command": "npm install && npm run build"
+  },
+  "start": {
+    "command": "npm run start"
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000"
+  },
+  "health": {
+    "path": "/api/health",
+    "port": 3000
+  }
+}

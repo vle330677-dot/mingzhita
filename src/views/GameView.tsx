@@ -31,6 +31,7 @@ import { CustomGamePlayerView } from './CustomGamePlayerView';
 import CustomGameRunView from './CustomGameRunView';
 
 import { GlobalAnnouncementPrompt } from './GlobalAnnouncementPrompt';
+import { APP_REALTIME_EVENT } from '../utils/realtime';
 import {
   UI_THEME_PRESETS,
   DEFAULT_UI_THEME,
@@ -566,6 +567,67 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
     }
   };
 
+  const refreshLocalPlayers = async () => {
+    if (!effectiveLocationId || isDocumentHidden()) {
+      if (!effectiveLocationId) setLocalPlayers([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/locations/${effectiveLocationId}/players?excludeId=${actor.id}`);
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) return;
+      const unique = (data.players || []).filter(
+        (player: any, index: number, rows: any[]) => rows.findIndex((item) => item.id === player.id) === index
+      );
+      setLocalPlayers(unique);
+    } catch {
+      // ignore
+    }
+  };
+
+  const refreshWorldPresence = async () => {
+    if (isDocumentHidden()) return;
+    try {
+      const res = await fetch('/api/world/presence', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) return;
+      setWorldPresence(Array.isArray(data.players) ? data.players : []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const refreshPendingTradeRequests = async () => {
+    if (!actor?.id || isDocumentHidden()) return;
+    try {
+      const res = await fetch('/api/trade/request/pending/' + actor.id, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) return;
+      setPendingTradeRequests(Array.isArray(data.requests) ? data.requests : []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const refreshActiveTradeSession = async () => {
+    if (!actor?.id || isDocumentHidden()) return;
+    try {
+      const res = await fetch('/api/trade/session/active/' + actor.id, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) return;
+      const nextSessionId = data.sessionId ? String(data.sessionId) : '';
+      if (!nextSessionId) {
+        dismissedTradeSessionIdRef.current = '';
+        setActiveTradeSessionId(null);
+        return;
+      }
+      if (dismissedTradeSessionIdRef.current === nextSessionId) return;
+      setActiveTradeSessionId(nextSessionId);
+    } catch {
+      // ignore
+    }
+  };
+
   const roleText = String(actor.role || '');
   const isSentinel = roleText === '哨兵' || roleText.toLowerCase() === 'sentinel';
   const isGuide = roleText === '向导' || roleText.toLowerCase() === 'guide';
@@ -590,6 +652,60 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
 
 useEffect(() => { setRuntimeUser(user); }, [user]);
 useEffect(() => { prevJobRef.current = String(user?.job || '无'); }, [user?.id, user?.job]);
+
+useEffect(() => {
+  const currentUserId = Number(actor?.id || 0);
+  if (!currentUserId) return;
+
+  const onRealtime = (event: Event) => {
+    const detail = (event as CustomEvent<any>).detail || {};
+    const eventName = String(detail.event || '');
+    const payload = detail.payload || {};
+
+    if (eventName === 'presence.changed' || eventName === 'presence.removed') {
+      const changedLocation = String(payload.locationId || payload.currentLocation || '');
+      const previousLocation = String(payload.fromLocation || '');
+      const currentLocationId = String(effectiveLocationId || '');
+      if (currentLocationId && (changedLocation === currentLocationId || previousLocation === currentLocationId)) {
+        void refreshLocalPlayers();
+      }
+      void refreshWorldPresence();
+      return;
+    }
+
+    if (eventName === 'interaction.event.created') {
+      if (Number(payload.userId || 0) !== currentUserId) return;
+      const actionType = String(payload.actionType || '');
+      if (actionType === 'trade' || actionType === 'trade_request') {
+        void refreshPendingTradeRequests();
+        void refreshActiveTradeSession();
+      }
+      return;
+    }
+
+    if (eventName === 'trade.session.changed') {
+      const userIds = Array.isArray(payload.userIds) ? payload.userIds.map((value: any) => Number(value || 0)) : [];
+      if (userIds.length > 0 && !userIds.includes(currentUserId)) return;
+      void refreshPendingTradeRequests();
+      void refreshActiveTradeSession();
+      return;
+    }
+
+    if (eventName === 'rp.user.sessions.changed') {
+      const userIds = Array.isArray(payload.userIds) ? payload.userIds.map((value: any) => Number(value || 0)) : [];
+      if (userIds.length > 0 && !userIds.includes(currentUserId)) return;
+      void refreshRPSessionList(true);
+      return;
+    }
+
+    if (eventName === 'user.updated' && Number(payload.userId || 0) === currentUserId && payload.currentLocation) {
+      setRuntimeUser((current) => current ? { ...current, currentLocation: String(payload.currentLocation) } : current);
+    }
+  };
+
+  window.addEventListener(APP_REALTIME_EVENT, onRealtime as EventListener);
+  return () => window.removeEventListener(APP_REALTIME_EVENT, onRealtime as EventListener);
+}, [actor?.id, effectiveLocationId]);
 
 useEffect(() => {
   const uid = Number(actor?.id || 0);
@@ -667,7 +783,7 @@ useEffect(() => {
     } catch {}
   };
   pull();
-  const t = setInterval(pull, 10000);
+  const t = setInterval(pull, 25000);
   return () => { alive = false; clearInterval(t); };
 }, [actor.id]);
 
@@ -934,7 +1050,7 @@ useEffect(() => {
     };
 
     fetchPlayers();
-    const timer = setInterval(fetchPlayers, 6000);
+    const timer = setInterval(fetchPlayers, 15000);
     return () => clearInterval(timer);
   }, [effectiveLocationId, actor.id]);
 
@@ -954,7 +1070,7 @@ useEffect(() => {
     };
 
     fetchWorldPresence();
-    const timer = setInterval(fetchWorldPresence, 12000);
+    const timer = setInterval(fetchWorldPresence, 25000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -979,7 +1095,7 @@ useEffect(() => {
     };
 
     pollTradeRequests();
-    const timer = setInterval(pollTradeRequests, 6000);
+    const timer = setInterval(pollTradeRequests, 15000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -1010,7 +1126,7 @@ useEffect(() => {
     };
 
     pollActiveTradeSession();
-    const timer = setInterval(pollActiveTradeSession, 6000);
+    const timer = setInterval(pollActiveTradeSession, 15000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -1377,7 +1493,7 @@ useEffect(() => {
     pollIncoming(false);
     const t = setInterval(() => {
       pollIncoming(true);
-    }, 5000);
+    }, 15000);
 
     return () => {
       alive = false;
@@ -1775,7 +1891,6 @@ useEffect(() => {
 
       setActiveView(selectedLocation.id);
       setSelectedLocation(null);
-      fetchGlobalData();
     }
   };
 
@@ -1795,8 +1910,9 @@ useEffect(() => {
     const next = String(locationId || '').trim();
     if (!next) return;
     setSelectedLocation(null);
+    setRuntimeUser((current) => current ? { ...current, currentLocation: next } : current);
     setActiveView(next);
-    fetchGlobalData();
+    void refreshWorldPresence();
   };
 
   const handleExploreSkill = async () => {

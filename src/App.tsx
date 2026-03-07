@@ -13,6 +13,7 @@ import { AdminView } from './views/AdminView';
 import { User } from './types';
 import { apiFetch, clearUserSession, clearAdminSession } from './utils/http';
 import { APP_TOAST_EVENT } from './utils/appEvents';
+import { buildRealtimeStreamUrl, dispatchRealtimeEvent } from './utils/realtime';
 import { hydrateUiTheme } from './utils/theme';
 
 export type ViewState =
@@ -47,6 +48,36 @@ export default function App() {
     toastTimerRef.current = window.setTimeout(() => setToast(null), duration);
   };
 
+  const fetchGlobalData = useCallback(async (force = false) => {
+    const userNameValue = String(user?.name || '').trim();
+    if (!userNameValue) return;
+
+    const now = Date.now();
+    if (!force) {
+      if (globalFetchInFlightRef.current) return globalFetchInFlightRef.current;
+      if (now - globalFetchLastAtRef.current < 1200) return;
+    }
+
+    globalFetchLastAtRef.current = now;
+    const task = (async () => {
+      try {
+        const res = await fetch(`/api/users/${encodeURIComponent(userNameValue)}`);
+        const data = await res.json();
+        if (data.success) setUser(data.user);
+      } catch (e) {
+        console.error('fetchGlobalData failed', e);
+      }
+    })();
+
+    globalFetchInFlightRef.current = task;
+    try {
+      await task;
+    } finally {
+      if (globalFetchInFlightRef.current === task) globalFetchInFlightRef.current = null;
+      globalFetchLastAtRef.current = Date.now();
+    }
+  }, [user?.name]);
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -56,6 +87,77 @@ export default function App() {
   useEffect(() => {
     hydrateUiTheme();
   }, []);
+
+  useEffect(() => {
+    const currentUserId = Number(user?.id || 0);
+    if (!currentUserId || typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+
+    let disposed = false;
+    let source: EventSource | null = null;
+    let retryTimer: number | null = null;
+
+    const connect = () => {
+      if (disposed) return;
+      try {
+        source = new EventSource(buildRealtimeStreamUrl(currentUserId));
+        source.onmessage = (event) => {
+          let detail: any = null;
+          try {
+            detail = event.data ? JSON.parse(event.data) : null;
+          } catch {
+            detail = null;
+          }
+          if (!detail?.event) return;
+
+          dispatchRealtimeEvent(detail);
+
+          if (detail.event === 'session.kicked') {
+            window.dispatchEvent(new CustomEvent('auth:kicked', {
+              detail: {
+                message: detail.payload?.message || '\u8be5\u8d26\u53f7\u5df2\u5728\u5176\u4ed6\u8bbe\u5907\u767b\u5f55\uff0c\u4f60\u5df2\u88ab\u5f3a\u5236\u4e0b\u7ebf\u3002',
+              },
+            }));
+            return;
+          }
+
+          if (detail.event === 'user.updated' && Number(detail.payload?.userId || 0) === currentUserId) {
+            const fields = Array.isArray(detail.payload?.fields)
+              ? detail.payload.fields.map((field: any) => String(field || ''))
+              : [];
+            const locationOnly = fields.length > 0 && fields.every((field: string) => field === 'currentLocation');
+            if (!locationOnly) {
+              void fetchGlobalData(true);
+            }
+          }
+        };
+
+        source.onerror = () => {
+          if (source) {
+            source.close();
+            source = null;
+          }
+          if (disposed || retryTimer !== null) return;
+          retryTimer = window.setTimeout(() => {
+            retryTimer = null;
+            connect();
+          }, 3000);
+        };
+      } catch {
+        if (disposed || retryTimer !== null) return;
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          connect();
+        }, 3000);
+      }
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      if (source) source.close();
+    };
+  }, [user?.id, fetchGlobalData]);
 
   // 全局 app:toast 事件监听（任何组件可触发，无需修改 GameView props）
   useEffect(() => {
@@ -139,7 +241,7 @@ export default function App() {
         } catch (e) {
           console.error('Sync failed', e);
         }
-      }, 8000);
+      }, 25000);
 
       return () => clearInterval(timer);
     }
@@ -159,7 +261,7 @@ export default function App() {
       }
     };
     ping();
-    const timer = setInterval(ping, 6000);
+    const timer = setInterval(ping, 25000);
     return () => clearInterval(timer);
   }, [user?.id, currentView]);
 
@@ -211,35 +313,6 @@ export default function App() {
     };
   }, []);
 
-  const fetchGlobalData = useCallback(async (force = false) => {
-    const userNameValue = String(user?.name || '').trim();
-    if (!userNameValue) return;
-
-    const now = Date.now();
-    if (!force) {
-      if (globalFetchInFlightRef.current) return globalFetchInFlightRef.current;
-      if (now - globalFetchLastAtRef.current < 1200) return;
-    }
-
-    globalFetchLastAtRef.current = now;
-    const task = (async () => {
-      try {
-        const res = await fetch(`/api/users/${encodeURIComponent(userNameValue)}`);
-        const data = await res.json();
-        if (data.success) setUser(data.user);
-      } catch (e) {
-        console.error('fetchGlobalData failed', e);
-      }
-    })();
-
-    globalFetchInFlightRef.current = task;
-    try {
-      await task;
-    } finally {
-      if (globalFetchInFlightRef.current === task) globalFetchInFlightRef.current = null;
-      globalFetchLastAtRef.current = Date.now();
-    }
-  }, [user?.name]);
 
   const handleLogout = async () => {
     try {
