@@ -26,12 +26,12 @@ function basePresenceSql(whereClause: string) {
     SELECT
       u.id,
       u.name,
-      u.userName,
+      u.name AS userName,
       u.role,
       u.job,
       u.status,
       u.currentLocation,
-      u.locationId,
+      u.currentLocation AS locationId,
       u.partyId,
       u.avatarUrl,
       u.avatarUpdatedAt,
@@ -73,7 +73,7 @@ export function loadOnlinePresenceFallback(db: any, onlineWindowSeconds = ONLINE
   const rows = db.prepare(`
     ${basePresenceSql(`
       WHERE u.status IN ('approved', 'ghost')
-        AND COALESCE(u.currentLocation, u.locationId, '') <> ''
+        AND COALESCE(u.currentLocation, '') <> ''
         AND EXISTS (
           SELECT 1
           FROM user_sessions s

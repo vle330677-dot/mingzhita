@@ -85,6 +85,7 @@ function normalizeCreateTableSql(block: string) {
 function normalizeMySqlSql(sql: string) {
   let normalized = sql.replace(/\r\n/g, '\n');
   normalized = normalized.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT IGNORE INTO');
+  normalized = normalized.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
   normalized = normalized.replace(/ON\s+CONFLICT\s*\([^)]*\)\s+DO\s+UPDATE\s+SET/gi, 'ON DUPLICATE KEY UPDATE');
   normalized = normalized.replace(/excluded\.(\w+)/gi, 'VALUES($1)');
   normalized = normalized.replace(/datetime\(\s*'now'\s*,\s*\?\s*\)/gi, 'DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND)');
@@ -97,6 +98,59 @@ function normalizeMySqlSql(sql: string) {
   }
 
   return normalized;
+}
+
+type ParsedConditionalIndex = {
+  unique: boolean;
+  indexName: string;
+  tableName: string;
+  columnsSql: string;
+};
+
+function splitSqlStatements(sql: string) {
+  const statements: string[] = [];
+  let current = '';
+  let quote: "'" | '"' | '`' | null = null;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    current += char;
+
+    if (quote) {
+      if (char === quote && sql[i - 1] !== '\\') {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char as "'" | '"' | '`';
+      continue;
+    }
+
+    if (char === ';') {
+      const statement = current.slice(0, -1).trim();
+      if (statement) statements.push(statement);
+      current = '';
+    }
+  }
+
+  const tail = current.trim();
+  if (tail) statements.push(tail);
+  return statements;
+}
+
+function parseConditionalCreateIndex(sql: string): ParsedConditionalIndex | null {
+  const trimmed = sql.trim().replace(/\s+/g, ' ');
+  const match = trimmed.match(/^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\([\s\S]+\))$/i);
+  if (!match) return null;
+
+  return {
+    unique: Boolean(match[1]),
+    indexName: match[2],
+    tableName: match[3],
+    columnsSql: match[4],
+  };
 }
 
 class SqliteStatement implements AppStatement {
@@ -183,8 +237,11 @@ export class MySqlDatabase implements AppDatabase {
   }
 
   exec(sql: string) {
-    const normalized = normalizeMySqlSql(sql);
-    this.connection.query(normalized);
+    const statements = splitSqlStatements(sql);
+    if (!statements.length) return;
+    for (const statement of statements) {
+      this.executeStatement(statement);
+    }
   }
 
   pragma(_sql: string) {
@@ -226,6 +283,10 @@ export class MySqlDatabase implements AppDatabase {
   }
 
   run(sql: string, params: any[]): DbRunResult {
+    if (this.ensureConditionalIndex(sql)) {
+      return { changes: 0, lastInsertRowid: 0 };
+    }
+
     const normalized = normalizeMySqlSql(sql);
     const result = this.connection.query(normalized, normalizeBindValues(params)) as any;
     if (Array.isArray(result)) {
@@ -235,6 +296,38 @@ export class MySqlDatabase implements AppDatabase {
       changes: Number(result?.affectedRows ?? result?.changedRows ?? 0),
       lastInsertRowid: Number(result?.insertId ?? 0),
     };
+  }
+
+  private executeStatement(sql: string) {
+    const statement = sql.trim();
+    if (!statement) return;
+    if (this.ensureConditionalIndex(statement)) return;
+    this.connection.query(normalizeMySqlSql(statement));
+  }
+
+  private ensureConditionalIndex(sql: string) {
+    const parsed = parseConditionalCreateIndex(sql);
+    if (!parsed) return false;
+
+    const existing = this.connection.query(
+      `
+        SELECT 1
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+          AND index_name = ?
+        LIMIT 1
+      `,
+      [parsed.tableName, parsed.indexName],
+    ) as any[];
+
+    if (Array.isArray(existing) && existing.length > 0) {
+      return true;
+    }
+
+    const sqlToRun = `CREATE ${parsed.unique ? 'UNIQUE ' : ''}INDEX ${parsed.indexName} ON ${parsed.tableName}${parsed.columnsSql}`;
+    this.connection.query(sqlToRun);
+    return true;
   }
 
   private handleMetaQuery(sql: string, params: any[]) {

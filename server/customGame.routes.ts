@@ -166,7 +166,7 @@ function getBearerToken(req: any) {
 
 function getReqUserFactory(db: DB) {
   return function getReqUser(req: any): AuthUser | null {
-    // 1) 鍏煎宸叉湁 req.user / session
+    // 1) 兼容已有的 req.user / session
     const u = req.user || req.session?.user;
     if (u?.id) {
       return {
@@ -177,7 +177,7 @@ function getReqUserFactory(db: DB) {
       };
     }
 
-    // 2) bearer token锛堝鎺ヤ綘鐜板湪 user_sessions锛?
+    // 2) Bearer Token，对接当前的 user_sessions
     const token = getBearerToken(req);
     if (token) {
       try {
@@ -202,7 +202,7 @@ function getReqUserFactory(db: DB) {
       }
     }
 
-    // 3) header 鍏滃簳锛堣皟璇曪級
+    // 3) header 兜底，仅用于调试
     const id = Number(req.headers["x-user-id"]);
     if (!id) return null;
     return {
@@ -310,8 +310,8 @@ async function ensureReviewQuorumTables(db: DB) {
   ];
   for (const x of ddl) await dbRun(db, x);
 
-  // 鍗曠鐞嗗憳鍗冲彲鍐宠锛坮equired_approvals = 1锛?
-  // 浣跨敤 UPSERT 纭繚宸叉湁鏃ц褰曪紙鍊间负 2锛変篃浼氳鏇存柊
+  // 单管理员即可决议，默认 required_approvals = 1
+  // 使用 UPSERT 确保旧记录也会被刷新
   const defaults: Array<[ReviewModule, number]> = [
     ["custom_idea", 1],
     ["custom_map", 1],
@@ -401,7 +401,7 @@ async function voteAndJudge(db: DB, opts: {
     };
   }
 
-  // 鍙戣捣浜轰笉鑳借嚜瀹★紙required > 1 鏃舵墠闄愬埗锛宺equired = 1 鏃剁鐞嗗憳鍙洿鎺ュ喅璁嚜宸辨彁浜ょ殑娓告垙锛?
+  // 当 required > 1 时，发起人不能给自己审核；单管理员模式下允许直接裁决
   if (required > 1 && task.creator_user_id && Number(task.creator_user_id) === Number(opts.adminId)) {
     throw new Error("creator cannot self-review");
   }
@@ -631,7 +631,7 @@ export function createCustomGameRouter(db: DB) {
         [title, ideaText, user.id, ts, ts]
       );
 
-      // 鍒涘缓浼氱浠诲姟锛堝垱鎰忥級
+      // 创建会签任务（创意）
       await ensureReviewTask(db, {
         moduleKey: "custom_idea",
         targetType: "game",
@@ -702,7 +702,7 @@ export function createCustomGameRouter(db: DB) {
 
       if (!result.done) {
         return res.json({
-          message: `宸茶褰曞鏍哥エ锛?{result.approveCount}/${result.required} 閫氳繃锛?{result.rejectCount}/${result.required} 椹冲洖`,
+          message: `已记录审核票：通过 ${result.approveCount}/${result.required}，驳回 ${result.rejectCount}/${result.required}`,
           pending: true,
           ...result,
         });
@@ -776,7 +776,7 @@ export function createCustomGameRouter(db: DB) {
 
       if (!result.done) {
         return res.json({
-          message: `宸茶褰曞鏍哥エ锛?{result.approveCount}/${result.required} 閫氳繃锛?{result.rejectCount}/${result.required} 椹冲洖`,
+          message: `已记录审核票：通过 ${result.approveCount}/${result.required}，驳回 ${result.rejectCount}/${result.required}`,
           pending: true,
           ...result,
         });
@@ -840,7 +840,7 @@ export function createCustomGameRouter(db: DB) {
   });
 
 
-  // 寮€灞€浼氱锛堣揪鍒伴棬妲涘悗鍙繘鍏?ready_for_vote锛涚湡姝ｅ紑灞€浠嶈蛋 vote/open + close-and-judge锛?
+  // 开局会签：通过后先进入 ready_for_vote，正式开局仍走 vote/open + close-and-judge
   router.post("/admin/review/start/:gameId", requireAdmin, async (req, res) => {
     try {
       const admin = (req as any).authUser as AuthUser;
@@ -875,7 +875,7 @@ export function createCustomGameRouter(db: DB) {
 
       if (!result.done) {
         return res.json({
-          message: `宸茶褰曞鏍哥エ锛?{result.approveCount}/${result.required} 閫氳繃锛?{result.rejectCount}/${result.required} 椹冲洖`,
+          message: `已记录审核票：通过 ${result.approveCount}/${result.required}，驳回 ${result.rejectCount}/${result.required}`,
           pending: true,
           ...result,
         });
@@ -956,7 +956,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 寮€灞€鐢宠 -------------------- */
+  /** -------------------- 开局申请 -------------------- */
   router.post("/:id/start-request", requireAuth, async (req, res) => {
     try {
       const user = (req as any).authUser as AuthUser;
@@ -973,7 +973,7 @@ export function createCustomGameRouter(db: DB) {
         [now(), gameId]
       );
 
-      // 寤轰换鍔?
+      // 创建审核任务
       await ensureReviewTask(db, {
         moduleKey: "custom_start",
         targetType: "game",
@@ -988,7 +988,7 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
-  /** -------------------- 鎶曠エ -------------------- */
+  /** -------------------- 投票 -------------------- */
   router.post("/:id/vote/open", requireAdmin, async (req, res) => {
     try {
       const gameId = Number(req.params.id);
@@ -997,7 +997,7 @@ export function createCustomGameRouter(db: DB) {
       const game = await dbGet(db, `SELECT * FROM custom_games WHERE id = ?`, [gameId]);
       if (!game) return res.status(404).json({ message: "game not found" });
 
-      // 鍙厑璁镐細绛鹃€氳繃鍚庤繘鍏ュ紑绁?
+      // 只有会签通过后才能进入开局投票
       if (!["ready_for_vote", "ready_for_start"].includes(String(game.status))) {
         return res.status(400).json({ message: "game not in ready_for_vote/ready_for_start" });
       }
@@ -1183,13 +1183,13 @@ export function createCustomGameRouter(db: DB) {
 
       switch (actionType) {
         case "explore":
-          addScore = 1; energyCost = 5; msg = `${me.name} 杩涜浜嗘帰绱紙+1鍒嗭級`; break;
+          addScore = 1; energyCost = 5; msg = `${me.name} 进行了探索（+1分）`; break;
         case "collect":
-          addScore = 2; energyCost = 8; msg = `${me.name} 杩涜浜嗛噰闆嗭紙+2鍒嗭級`; break;
+          addScore = 2; energyCost = 8; msg = `${me.name} 进行了采集（+2分）`; break;
         case "attack":
-          addScore = 3; energyCost = 10; msg = `${me.name} 鍙戣捣鏀诲嚮锛?3鍒嗭級`; break;
+          addScore = 3; energyCost = 10; msg = `${me.name} 发起攻击（+3分）`; break;
         default:
-          addScore = 0; energyCost = 3; msg = `${me.name} 鎵ц鍔ㄤ綔 ${actionType}`; break;
+          addScore = 0; energyCost = 3; msg = `${me.name} 执行动作 ${actionType}`; break;
       }
 
       const nextEnergy = Math.max(0, Number(me.energy || 0) - energyCost);
@@ -1367,7 +1367,7 @@ export function createCustomGameRouter(db: DB) {
         db,
         `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
          VALUES (?, ?, 'score_grant', ?, ?, ?)`,
-        [run.id, user.id, `鍚?${target.name} 鍙戞斁绉垎 ${points}`, toJson({ targetUserId, points, reason, stage }, {}), now()]
+        [run.id, user.id, `向 ${target.name} 发放积分 ${points}`, toJson({ targetUserId, points, reason, stage }, {}), now()]
       );
 
       res.json({ message: "ok", targetUserId, score: newScore });
