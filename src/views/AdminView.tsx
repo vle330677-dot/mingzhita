@@ -270,7 +270,63 @@ export function AdminView() {
             <TabButton active={tab === 'custom_games'} onClick={() => setTab('custom_games')} icon={<Gamepad2 size={16} />} label="灾厄游戏审核" />
           </div>
           <div className="rounded-3xl bg-white p-4 shadow-sm border border-slate-200">
-            {tab === 'users' && <div className="space-y-4"><div className="flex gap-3"><Field label="筛选" value={userFilter} onChange={setUserFilter} placeholder="名字 / 状态 / 职位" /></div><div className="overflow-auto"><table className="w-full text-sm"><thead><tr className="text-left text-slate-500"><th className="py-2">名字</th><th>状态</th><th>身份</th><th>职位</th><th>操作</th></tr></thead><tbody>{filteredUsers.map((user) => <tr key={user.id} className="border-t border-slate-100 align-top"><td className="py-3 font-bold">{user.name}<div className="text-xs text-slate-500">ID {user.id}</div></td><td className="py-3"><select value={user.status} onChange={(e) => updateUserStatus(user.id, e.target.value as UserStatus)} className="rounded-xl border border-slate-200 px-2 py-1 text-xs">{STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}</select></td><td className="py-3 text-slate-600">{user.role || '无'}</td><td className="py-3 text-slate-600">{user.job || '无'}</td><td className="py-3"><div className="flex flex-wrap gap-2"><button onClick={() => openEditUser(user)} className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-black text-white hover:bg-slate-800"><Edit3 className="inline mr-1" size={12} />编辑</button><button onClick={() => deleteUser(user)} className="rounded-xl bg-rose-100 px-3 py-1.5 text-xs font-black text-rose-700 hover:bg-rose-200"><Trash2 className="inline mr-1" size={12} />删除</button></div></td></tr>)}</tbody></table></div></div>}
+            {tab === 'users' && (
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <Field label="筛选" value={userFilter} onChange={setUserFilter} placeholder="名字 / 状态 / 职位" />
+                </div>
+                <div className="overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-slate-500">
+                        <th className="py-2">名字</th>
+                        <th>状态</th>
+                        <th>身份</th>
+                        <th>职位</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((user) => (
+                        <tr key={user.id} className="border-t border-slate-100 align-top">
+                          <td className="py-3 font-bold">
+                            {user.name}
+                            <div className="text-xs text-slate-500">ID {user.id}</div>
+                          </td>
+                          <td className="py-3">
+                            <select value={user.status} onChange={(e) => updateUserStatus(user.id, e.target.value as UserStatus)} className="rounded-xl border border-slate-200 px-2 py-1 text-xs">
+                              {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
+                            </select>
+                          </td>
+                          <td className="py-3 text-slate-600">{user.role || '无'}</td>
+                          <td className="py-3 text-slate-600">{user.job || '无'}</td>
+                          <td className="py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {user.status === 'pending' && (
+                                <>
+                                  <button onClick={() => updateUserStatus(user.id, 'approved')} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-500">
+                                    <CheckCircle2 className="inline mr-1" size={12} />通过审核
+                                  </button>
+                                  <button onClick={() => updateUserStatus(user.id, 'rejected')} className="rounded-xl bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-700 hover:bg-amber-200">
+                                    驳回
+                                  </button>
+                                </>
+                              )}
+                              <button onClick={() => openEditUser(user)} className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-black text-white hover:bg-slate-800">
+                                <Edit3 className="inline mr-1" size={12} />编辑
+                              </button>
+                              <button onClick={() => deleteUser(user)} className="rounded-xl bg-rose-100 px-3 py-1.5 text-xs font-black text-rose-700 hover:bg-rose-200">
+                                <Trash2 className="inline mr-1" size={12} />删除
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {tab === 'messages' && <div className="space-y-4"><div className="grid gap-3 md:grid-cols-2"><Field label="公告标题" value={announcementTitle} onChange={setAnnouncementTitle} placeholder="标题" /><div /></div><label className="block text-xs font-black text-slate-500">公告内容</label><textarea value={announcementContent} onChange={(e) => setAnnouncementContent(e.target.value)} className="min-h-[120px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm" /><button onClick={submitAnnouncement} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white hover:bg-slate-800"><CheckCircle2 className="inline mr-2" size={14} />发布公告</button><div className="space-y-3">{messages.map((row) => <div key={row.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-black">{row.title}</div><div className="text-xs text-slate-500">来自 {row.userName} · {row.createdAt}</div></div><div className={`rounded-full px-3 py-1 text-xs font-black ${row.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{row.status}</div></div><div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{row.content}</div><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => updateMessageStatus(row.id, row.status === 'resolved' ? 'open' : 'resolved')} className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-black text-white hover:bg-slate-800">{row.status === 'resolved' ? '重新打开' : '标记已处理'}</button><button onClick={() => deleteMessage(row.id)} className="rounded-xl bg-rose-100 px-3 py-1.5 text-xs font-black text-rose-700 hover:bg-rose-200">删除</button></div></div>)}</div></div>}
             {tab === 'items' && <AdminItemsPanel refreshKey={refreshNonce} onNotice={flash} />}
             {tab === 'skills' && <AdminSkillsPanel refreshKey={refreshNonce} onNotice={flash} />}
