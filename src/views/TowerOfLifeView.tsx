@@ -540,15 +540,15 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
   };
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-slate-950 text-slate-100 font-sans select-none">
+    <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,248,255,0.94)_40%,_rgba(232,239,250,0.96)_100%)] text-slate-900 font-sans select-none">
       <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('/命之塔.jpg')" }}>
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/55 via-slate-950/70 to-slate-950/90 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/78 via-white/62 to-slate-100/82 pointer-events-none" />
       </div>
 
       <div className="absolute top-4 left-4 md:top-6 md:left-6 z-[90]">
         <button
           onClick={onExit}
-          className="touch-manipulation inline-flex items-center gap-2 rounded-xl border border-amber-300/35 bg-slate-900/80 px-4 py-2 text-xs md:text-sm font-black text-amber-200 shadow-xl backdrop-blur hover:bg-slate-800/90 active:scale-95 transition-all"
+          className="touch-manipulation inline-flex items-center gap-2 rounded-xl border border-white/70 bg-white/82 px-4 py-2 text-xs font-black text-slate-800 shadow-xl backdrop-blur hover:bg-white/95 active:scale-95 transition-all md:text-sm"
         >
           <ArrowLeft size={18} />
           <span className="hidden sm:inline">离开命之塔</span>
@@ -557,7 +557,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
       </div>
 
       <div className="absolute top-4 right-4 md:top-6 md:right-6 z-[90]">
-        <div className="rounded-xl border border-slate-600/70 bg-slate-900/70 px-3 py-1.5 text-[10px] md:text-xs text-slate-200 backdrop-blur">
+        <div className="rounded-xl border border-white/75 bg-white/82 px-3 py-1.5 text-[10px] text-slate-700 backdrop-blur md:text-xs">
           点击地图坐标即可进入对应功能区。
         </div>
       </div>
@@ -574,13 +574,13 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
               <div
                 className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl md:rounded-3xl border-2 flex items-center justify-center shadow-2xl transition-all ${
                   selectedPoint === point.id
-                    ? 'bg-amber-500 text-slate-950 border-amber-200 scale-105'
-                    : 'bg-slate-900/85 text-amber-200 border-amber-400/40 group-hover:bg-amber-500 group-hover:text-slate-950 group-hover:border-amber-200 group-hover:scale-110'
+                    ? 'bg-amber-400/95 text-slate-900 border-amber-100 scale-105'
+                    : 'bg-white/88 text-amber-700 border-white/75 group-hover:bg-amber-100 group-hover:text-amber-800 group-hover:border-amber-200 group-hover:scale-110'
                 }`}
               >
                 {point.icon}
               </div>
-              <span className="px-2.5 py-1 rounded-full text-[10px] md:text-xs font-black bg-slate-900/85 border border-slate-700 text-slate-100 whitespace-nowrap shadow-lg">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-white/90 border border-white/80 text-slate-700 whitespace-nowrap shadow-lg md:text-xs">
                 {point.name}
               </span>
             </div>
@@ -595,7 +595,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-[1px]"
+              className="fixed inset-0 z-[100] bg-white/35 backdrop-blur-[2px]"
               onClick={() => setSelectedPoint(null)}
             />
 
@@ -604,12 +604,12 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 330, damping: 32 }}
-              className="fixed inset-x-0 bottom-0 z-[110] max-h-[86vh] rounded-t-3xl border border-slate-700 bg-slate-900/95 shadow-2xl flex flex-col md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[520px] md:rounded-none md:rounded-l-3xl md:border-l md:border-t-0 mobile-portrait-safe-sheet mobile-contrast-surface-dark"
+              className="theme-elevated-surface fixed inset-x-0 bottom-0 z-[110] flex max-h-[86vh] flex-col rounded-t-3xl shadow-2xl md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[520px] md:rounded-none md:rounded-l-3xl md:border-l md:border-t-0 mobile-portrait-safe-sheet"
             >
               <div className="border-b border-slate-700/80 p-4 md:p-5 shrink-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-amber-300 flex items-center justify-center shrink-0">
+                    <div className="theme-soft-surface flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-600">
                       {selectedPointMeta.icon}
                     </div>
                     <div className="min-w-0">
@@ -619,7 +619,7 @@ export function TowerOfLifeView({ user, onExit, showToast, fetchGlobalData }: Pr
                   </div>
                   <button
                     onClick={() => setSelectedPoint(null)}
-                    className="rounded-lg border border-slate-700 bg-slate-800 p-2 text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+                    className="theme-soft-surface rounded-lg p-2 text-slate-500 hover:text-slate-900 transition-colors"
                   >
                     <X size={16} />
                   </button>

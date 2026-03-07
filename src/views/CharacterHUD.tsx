@@ -270,7 +270,7 @@ export function CharacterHUD({ user, onLogout, onRefresh, currentLocationName, o
               initial={{ opacity: 0, scale: 0.92, width: 88 }}
               animate={{ opacity: 1, scale: 1, width: 336 }}
               exit={{ opacity: 0, scale: 0.92 }}
-              className="flex max-h-[82vh] flex-col overflow-hidden rounded-[2rem] border border-slate-700 bg-slate-900/95 shadow-2xl backdrop-blur-xl mobile-portrait-safe-hud mobile-contrast-surface-dark"
+              className="theme-elevated-surface flex max-h-[82vh] flex-col overflow-hidden rounded-[2rem] mobile-portrait-safe-hud"
             >
               <div className="border-b border-slate-700 bg-slate-800/70 p-4 cursor-move">
                 <div className="flex items-start justify-between gap-3">
@@ -425,62 +425,32 @@ export function CharacterHUD({ user, onLogout, onRefresh, currentLocationName, o
               </div>
             </motion.div>
           ) : (
-            <motion.div
+            <motion.button
               key="collapsed"
+              type="button"
               initial={{ scale: 0.75, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.75, opacity: 0 }}
               onClick={() => setIsExpanded(true)}
-              className="flex w-[min(18rem,88vw)] cursor-pointer items-center gap-3 rounded-[1.75rem] border border-slate-700 bg-slate-900/90 p-3 pr-4 shadow-xl backdrop-blur-xl transition-all hover:border-sky-500 hover:bg-slate-800"
+              className="theme-elevated-surface flex w-[78px] flex-col items-center gap-2 rounded-[1.5rem] px-2.5 py-3 text-center transition-all hover:-translate-y-0.5 hover:border-sky-400/60"
+              title="点击展开角色面板"
             >
-              <button
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setShowProfileModal(true);
-                }}
-                className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-slate-600 bg-slate-700"
-                title="点击查看角色详情和头像设置"
-              >
+              <div className="relative h-12 w-12 overflow-hidden rounded-2xl border border-slate-600 bg-slate-700">
                 {localAvatarUrl ? (
                   <img src={localAvatarUrl} className="h-full w-full object-cover" alt="avatar" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-base font-black text-white">{avatarInitial}</div>
                 )}
-              </button>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setShowProfileModal(true);
-                    }}
-                    className="max-w-[9rem] truncate text-left text-sm font-black text-white underline decoration-dotted underline-offset-2"
-                  >
-                    {user.name}
-                  </button>
-                  <div className="text-[11px] font-bold text-sky-300">{displayRole}</div>
-                </div>
-                <div className="mt-2 space-y-1.5">
-                  <MiniBar label="HP" value={hpPct} color="bg-rose-500" />
-                  <MiniBar label="MP" value={mpPct} color="bg-sky-500" />
-                  {isSentinel && <MiniBar label="狂暴" value={Math.max(0, Math.min(100, fury))} color={fury >= 80 ? 'bg-red-600' : 'bg-fuchsia-500'} />}
-                  {isGuide && <MiniBar label="稳定" value={Math.max(0, Math.min(100, guideStability))} color={guideStability <= 20 ? 'bg-rose-600' : 'bg-emerald-500'} />}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-400">
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2 py-0.5">
-                    <MapPin size={10} />
-                    <span className="max-w-[7rem] truncate">{displayLocation}</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2 py-0.5">
-                    <Users size={10} />
-                    {Math.max(0, Number(onlineCount || 0))} 在线
-                  </span>
-                </div>
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-sky-600 px-1 text-[9px] font-black text-white">
+                  {Math.max(0, Number(onlineCount || 0))}
+                </span>
               </div>
-
-              <ChevronRight size={14} className="shrink-0 text-slate-500" />
-            </motion.div>
+              <div className="w-full truncate text-[11px] font-black text-slate-100">{user.name}</div>
+              <div className="w-full truncate text-[10px] text-slate-400">{displayRole}</div>
+              <div className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800/80 px-2 py-1 text-[10px] font-black text-slate-200">
+                <ChevronRight size={11} /> 展开
+              </div>
+            </motion.button>
           )}
         </AnimatePresence>
       </motion.div>
@@ -491,7 +461,7 @@ export function CharacterHUD({ user, onLogout, onRefresh, currentLocationName, o
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm mobile-portrait-safe-overlay"
             onClick={() => setShowProfileModal(false)}
           >
             <motion.div
@@ -499,7 +469,7 @@ export function CharacterHUD({ user, onLogout, onRefresh, currentLocationName, o
               animate={{ y: 0, scale: 1, opacity: 1 }}
               exit={{ y: 24, scale: 0.96, opacity: 0 }}
               onClick={(event) => event.stopPropagation()}
-              className="w-full max-w-2xl overflow-hidden rounded-[2rem] border border-slate-700 bg-slate-900 shadow-2xl"
+              className="theme-elevated-surface w-full max-w-2xl overflow-hidden rounded-[2rem] mobile-portrait-safe-card"
             >
               <div className="border-b border-slate-700 px-5 py-4">
                 <div className="text-lg font-black text-white">角色详情</div>

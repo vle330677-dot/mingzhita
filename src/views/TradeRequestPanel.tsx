@@ -34,7 +34,7 @@ export function TradeRequestPanel({ requests, busyRequestId, onRespond }: Props)
           return (
             <div
               key={request.id}
-              className="rounded-3xl border border-emerald-500/30 bg-slate-950/95 p-4 shadow-2xl backdrop-blur"
+              className="theme-elevated-surface rounded-3xl border border-emerald-500/30 p-4 shadow-2xl backdrop-blur"
             >
               <div className="flex items-start gap-3">
                 <div className="rounded-2xl bg-emerald-500/15 p-3 text-emerald-300">

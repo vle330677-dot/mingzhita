@@ -51,6 +51,7 @@ interface UserSkill {
 type OfferMode = 'none' | 'item' | 'skill';
 
 const TRADE_SKILL_PREFIX = '__skill__:';
+const isDocumentHidden = () => typeof document !== 'undefined' && document.hidden;
 
 function parseSkillOffer(itemName?: string) {
   const value = String(itemName || '').trim();
@@ -218,9 +219,18 @@ export function TradeWindow({ sessionId, currentUser, showToast, onClose, fetchG
     fetchInventory();
     fetchSkills();
     fetchSession(false);
-    const sessionTimer = window.setInterval(() => fetchSession(true), 3000);
-    const bagTimer = window.setInterval(fetchInventory, 4000);
-    const skillTimer = window.setInterval(fetchSkills, 5000);
+    const sessionTimer = window.setInterval(() => {
+      if (isDocumentHidden()) return;
+      fetchSession(true);
+    }, 3500);
+    const bagTimer = window.setInterval(() => {
+      if (isDocumentHidden()) return;
+      fetchInventory();
+    }, 7000);
+    const skillTimer = window.setInterval(() => {
+      if (isDocumentHidden()) return;
+      fetchSkills();
+    }, 8000);
     return () => {
       window.clearInterval(sessionTimer);
       window.clearInterval(bagTimer);
@@ -344,9 +354,9 @@ export function TradeWindow({ sessionId, currentUser, showToast, onClose, fetchG
           initial={{ y: 24, scale: 0.98, opacity: 0 }}
           animate={{ y: 0, scale: 1, opacity: 1 }}
           exit={{ y: 24, scale: 0.98, opacity: 0 }}
-          className="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-700 bg-slate-900 shadow-2xl"
+          className="theme-elevated-surface w-full max-w-3xl overflow-hidden rounded-3xl border shadow-2xl"
         >
-          <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+          <div className="flex items-center justify-between border-b border-slate-700/70 px-5 py-4 theme-soft-surface">
             <div>
               <div className="text-sm font-black text-white">玩家交易窗口</div>
               <div className="text-[11px] text-slate-400">会话: {sessionId}</div>
@@ -376,13 +386,13 @@ export function TradeWindow({ sessionId, currentUser, showToast, onClose, fetchG
                   />
                 </div>
 
-                <div className="rounded-3xl border border-slate-700 bg-slate-950 p-4">
+                <div className="rounded-3xl border border-slate-700 bg-slate-950/55 p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-black text-white">你的报价</div>
                       <div className="text-[11px] text-slate-400">一次报价只能选择“物品”或“技能”其中一种，可以额外附带金币。</div>
                     </div>
-                    <div className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-[11px] text-slate-300">
+                    <div className="rounded-full border border-slate-700 bg-slate-950/45 px-3 py-1 text-[11px] text-slate-300">
                       当前对方: {peerName || '未知玩家'} {peerConfirmed ? '已确认' : '未确认'}
                     </div>
                   </div>
@@ -474,7 +484,7 @@ export function TradeWindow({ sessionId, currentUser, showToast, onClose, fetchG
                   )}
 
                   <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
-                    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-300">
+                    <div className="rounded-2xl border border-slate-700 bg-slate-950/45 p-3 text-xs text-slate-300">
                       当前报价预览：{formatOfferText({ userId: myId, itemName: offerMode === 'skill' && selectedSkill ? `${TRADE_SKILL_PREFIX}${selectedSkill.id}:${selectedSkill.name}` : offerMode === 'item' ? myItemName : '', qty: offerMode === 'item' ? myQty : 0, gold: myGold })}
                     </div>
                     <label className="block text-xs font-black text-slate-400">
@@ -506,14 +516,14 @@ export function TradeWindow({ sessionId, currentUser, showToast, onClose, fetchG
                 </div>
 
                 <div className="grid gap-2 md:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-300">
+                  <div className="rounded-2xl border border-slate-700 bg-slate-950/55 p-4 text-sm text-slate-300">
                     <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">我的状态</div>
                     <div className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black ${myConfirmed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-300'}`}>
                       {myConfirmed ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                       {myConfirmed ? '已确认交易' : '尚未确认'}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-slate-700 bg-slate-950 p-4 text-sm text-slate-300">
+                  <div className="rounded-2xl border border-slate-700 bg-slate-950/55 p-4 text-sm text-slate-300">
                     <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">对方报价</div>
                     <div className="mt-2 leading-6">{formatOfferText(peerOffer || null)}</div>
                   </div>

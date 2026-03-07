@@ -154,15 +154,21 @@ body {
 }
 
 .theme-shell [class*="bg-slate-950"],
-.theme-shell [class*="bg-slate-900"] {
+.theme-shell [class*="bg-slate-900"],
+.theme-shell [class*="bg-black"],
+.theme-shell [class*="bg-stone-900"],
+.theme-shell [class*="bg-zinc-900"] {
   background-color: var(--ui-panel-strong) !important;
   backdrop-filter: blur(18px) saturate(135%);
   box-shadow: var(--ui-card-shadow);
 }
 
 .theme-shell [class*="bg-slate-800"],
+.theme-shell [class*="bg-slate-700"],
 .theme-shell [class*="bg-gray-900"],
-.theme-shell [class*="bg-gray-800"] {
+.theme-shell [class*="bg-gray-800"],
+.theme-shell [class*="bg-stone-800"],
+.theme-shell [class*="bg-zinc-800"] {
   background-color: var(--ui-panel-soft) !important;
   backdrop-filter: blur(14px) saturate(128%);
 }
@@ -170,7 +176,10 @@ body {
 .theme-shell [class*="border-slate-700"],
 .theme-shell [class*="border-slate-800"],
 .theme-shell [class*="border-gray-200"],
-.theme-shell [class*="border-gray-100"] {
+.theme-shell [class*="border-gray-100"],
+.theme-shell [class*="border-black"],
+.theme-shell [class*="border-stone"],
+.theme-shell [class*="border-zinc"] {
   border-color: var(--ui-border) !important;
 }
 
@@ -184,7 +193,8 @@ body {
 .theme-shell [class*="text-slate-700"],
 .theme-shell [class*="text-gray-900"],
 .theme-shell [class*="text-gray-800"],
-.theme-shell [class*="text-gray-700"] {
+.theme-shell [class*="text-gray-700"],
+.theme-shell [class*="text-black"] {
   color: var(--ui-text-primary) !important;
 }
 
@@ -265,7 +275,7 @@ body {
 }
 
 :root {
-  --mobile-portrait-safe-gap: clamp(72px, 16dvh, 144px);
+  --mobile-portrait-safe-gap: clamp(76px, 16.67dvh, 156px);
 }
 
 .mobile-contrast-surface-light {
@@ -322,4 +332,24 @@ body {
     height: 52px !important;
   }
 
+}
+
+
+.theme-shell .theme-elevated-surface {
+  border: 1px solid var(--ui-border) !important;
+  background: var(--ui-panel-strong) !important;
+  color: var(--ui-text-primary) !important;
+  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: var(--ui-card-shadow);
+}
+
+.theme-shell .theme-soft-surface {
+  border: 1px solid var(--ui-border) !important;
+  background: var(--ui-panel-soft) !important;
+  color: var(--ui-text-primary) !important;
+  backdrop-filter: blur(14px) saturate(128%);
+}
+
+.theme-shell .theme-muted-text {
+  color: var(--ui-text-secondary) !important;
 }

@@ -30,6 +30,8 @@ interface Props {
   onLeave: (locationId: string) => Promise<void> | void;
 }
 
+const isDocumentHidden = () => typeof document !== 'undefined' && document.hidden;
+
 function resolveAvatarSrc(raw: any, updatedAt?: any) {
   if (!raw || typeof raw !== 'string') return '';
   const s = raw.trim();
@@ -92,10 +94,13 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
 
   useEffect(() => {
     fetchSession(false);
-    const timer = setInterval(() => fetchSession(true), 2500);
+    const timer = setInterval(() => {
+      if (isDocumentHidden()) return;
+      fetchSession(true);
+    }, minimized ? 5000 : 3000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser.id, locationId]);
+  }, [currentUser.id, locationId, minimized]);
 
   useEffect(() => {
     if (!minimized) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -149,9 +154,9 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
       exit={{ opacity: 0, y: 14 }}
       className={`fixed z-[255] left-3 right-3 md:left-auto md:w-[430px] md:right-[446px] ${
         minimized ? 'bottom-4' : 'bottom-4 md:bottom-6'
-      } bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden`}
+      } theme-elevated-surface rounded-2xl shadow-2xl overflow-hidden`}
     >
-      <div className="px-3 py-2.5 border-b border-slate-700 bg-slate-900/95 flex items-center justify-between gap-2">
+      <div className="px-3 py-2.5 border-b border-slate-700/70 theme-soft-surface flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="text-[13px] font-black text-white truncate">{title}</div>
           <div className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -193,7 +198,7 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
             </div>
           </div>
 
-          <div className="h-[320px] overflow-y-auto p-3 space-y-2 custom-scrollbar bg-slate-950">
+          <div className="h-[320px] overflow-y-auto p-3 space-y-2 custom-scrollbar bg-slate-950/60">
             {loading ? (
               <div className="text-xs text-slate-500">读取群戏中...</div>
             ) : messages.length === 0 ? (
@@ -233,7 +238,7 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
             <div ref={bottomRef} />
           </div>
 
-          <div className="p-3 border-t border-slate-700 bg-slate-900/95">
+          <div className="p-3 border-t border-slate-700/70 theme-soft-surface">
             <div className="flex items-center gap-2">
               <input
                 value={input}
@@ -245,7 +250,7 @@ export function GroupRoleplayWindow({ currentUser, locationId, locationName, onC
                   }
                 }}
                 placeholder="输入群戏内容..."
-                className="flex-1 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-100 outline-none focus:border-sky-500"
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-950/55 border border-slate-700 text-xs text-slate-100 outline-none focus:border-sky-500"
               />
               <button
                 onClick={sendMessage}

@@ -183,11 +183,11 @@ export function NpcInteractionUI({ currentUser, npc, onClose, showToast, onUpdat
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="relative w-full max-w-[560px] rounded-3xl border border-slate-700 bg-slate-950/95 shadow-2xl overflow-hidden flex flex-col max-h-[88vh] mobile-portrait-safe-card mobile-contrast-surface-dark"
+        className="theme-elevated-surface relative flex w-full max-w-[560px] max-h-[88vh] flex-col overflow-hidden rounded-3xl mobile-portrait-safe-card mobile-contrast-surface-dark"
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-20 p-2 rounded-full border border-slate-700 bg-slate-900 text-slate-300 hover:text-white"
+          className="theme-soft-surface absolute top-3 right-3 z-20 rounded-full p-2 text-slate-300 hover:text-white"
         >
           <X size={16} />
         </button>

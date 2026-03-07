@@ -24,6 +24,7 @@ import { SpiritBureauView } from './SpiritBureauView';
 import { ObserverView } from './ObserverView';
 import { TowerGuardView } from './TowerGuardView';
 import { WildHuntView } from './WildHuntView';
+import CustomFactionView from './CustomFactionView';
 
 // ===== 新增：灾厄游戏 =====
 import { CustomGamePlayerView } from './CustomGamePlayerView';
@@ -96,6 +97,7 @@ const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';
 
 const SAFE_ZONES = ['tower_of_life', 'sanctuary', 'london_tower', 'tower_guard'];
 const TOWER_ADJACENT_LOCATIONS = new Set(['sanctuary', 'london_tower', 'slums', 'rich_area', 'guild', 'army']);
+const isDocumentHidden = () => typeof document !== 'undefined' && document.hidden;
 
 interface Props {
   user: User;
@@ -279,6 +281,12 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   // ===== 灾厄游戏状态（新增）=====
   const [showCustomGamePanel, setShowCustomGamePanel] = useState(false);
   const [activeCustomGameId, setActiveCustomGameId] = useState<number | null>(null);
+  const [customFactions, setCustomFactions] = useState<any[]>([]);
+  const [customFactionAssets, setCustomFactionAssets] = useState<any[]>([]);
+  const [createFactionMode, setCreateFactionMode] = useState(false);
+  const [pendingFactionPoint, setPendingFactionPoint] = useState<{ x: number; y: number } | null>(null);
+  const [creatingFaction, setCreatingFaction] = useState(false);
+  const [customFactionForm, setCustomFactionForm] = useState({ name: '', description: '', mapImageUrl: '' });
 
   const [showSettings, setShowSettings] = useState(false);
   const [uiThemePreset, setUiThemePresetState] = useState<string>(() => getUiThemePreset());
@@ -339,16 +347,40 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const globalMapBackground = customBackgroundImage || (isPortraitMobile ? '/map_background-s.png' : '/map_background.jpg');
   const currentBackgroundImage = useMemo(() => {
     if (customBackgroundImage) return customBackgroundImage;
+    const customView = Array.isArray(customFactions) ? customFactions.find((row) => String(row?.id || '') === String(activeView || '')) : null;
+    if (activeView && String(customView?.mapImageUrl || '').trim()) return String(customView.mapImageUrl || '').trim();
     if (activeView && LOCATION_BG_MAP[activeView]) return LOCATION_BG_MAP[activeView];
     return '/map_background.jpg';
-  }, [activeView, customBackgroundImage]);
+  }, [activeView, customBackgroundImage, customFactions]);
   const mapLocations = useMemo(() => {
-    if (!isPortraitMobile) return LOCATIONS;
-    return LOCATIONS.map((loc) => {
-      const p = MOBILE_MAP_COORDS[String(loc.id)];
-      return p ? { ...loc, x: p.x, y: p.y } : loc;
-    });
-  }, [isPortraitMobile]);
+    const baseLocations = !isPortraitMobile
+      ? LOCATIONS
+      : LOCATIONS.map((loc) => {
+          const p = MOBILE_MAP_COORDS[String(loc.id)];
+          return p ? { ...loc, x: p.x, y: p.y } : loc;
+        });
+
+    const extraLocations = (Array.isArray(customFactions) ? customFactions : []).map((row) => ({
+      id: String(row?.id || ''),
+      name: String(row?.name || '自定义势力'),
+      x: Number(row?.x || 50),
+      y: Number(row?.y || 50),
+      type: String(row?.type || 'safe'),
+      description: String(row?.description || '玩家自建势力入口。'),
+      mapImageUrl: String(row?.mapImageUrl || ''),
+      isCustomFaction: true,
+      ownerName: String(row?.ownerName || ''),
+      leaderTitle: String(row?.leaderTitle || '掌权者'),
+    }));
+
+    return [...baseLocations, ...extraLocations];
+  }, [customFactions, isPortraitMobile]);
+
+  const isSafeLocationId = (locationId?: string | null) => {
+    const match = mapLocations.find((loc) => String(loc.id) === String(locationId || ''));
+    if (!match) return SAFE_ZONES.includes(String(locationId || ''));
+    return String(match.type || 'safe') === 'safe';
+  };
 
   const [runtimeUser, setRuntimeUser] = useState(user);
   const actor = runtimeUser || user;
@@ -397,6 +429,81 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
     if (actorId) ids.add(actorId);
     return ids.size;
   }, [worldPresence, actor?.id]);
+
+  const refreshCustomFactions = async (silent = false) => {
+    try {
+      const [factionRes, assetRes] = await Promise.all([
+        fetch('/api/custom-factions', { cache: 'no-store' }),
+        fetch('/api/custom-factions/assets', { cache: 'no-store' }),
+      ]);
+      const factionData = await factionRes.json().catch(() => ({} as any));
+      const assetData = await assetRes.json().catch(() => ({} as any));
+      if (!factionRes.ok || factionData.success === false) {
+        if (!silent) showToast(factionData.message || '读取自定义势力失败');
+        return;
+      }
+      setCustomFactions(Array.isArray(factionData.factions) ? factionData.factions : []);
+      if (assetRes.ok && assetData.success !== false) {
+        setCustomFactionAssets(Array.isArray(assetData.assets) ? assetData.assets : []);
+      }
+    } catch {
+      if (!silent) showToast('网络异常，读取自定义势力失败');
+    }
+  };
+
+  useEffect(() => {
+    refreshCustomFactions(true);
+    const timer = window.setInterval(() => refreshCustomFactions(true), 15000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleWorldMapClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!createFactionMode) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = Math.max(4, Math.min(96, ((event.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(4, Math.min(96, ((event.clientY - rect.top) / rect.height) * 100));
+    setPendingFactionPoint({ x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) });
+  };
+
+  const createCustomFaction = async () => {
+    if (!pendingFactionPoint || creatingFaction) return;
+    if (!String(customFactionForm.name || '').trim()) {
+      showToast('请先填写势力名称');
+      return;
+    }
+    setCreatingFaction(true);
+    try {
+      const res = await fetch('/api/custom-factions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: actor.id,
+          name: String(customFactionForm.name || '').trim(),
+          description: String(customFactionForm.description || '').trim(),
+          mapImageUrl: String(customFactionForm.mapImageUrl || '').trim(),
+          x: pendingFactionPoint.x,
+          y: pendingFactionPoint.y,
+        }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '创建势力失败');
+        return;
+      }
+      showToast(data.message || '已创建自定义势力');
+      setPendingFactionPoint(null);
+      setCreateFactionMode(false);
+      setCustomFactionForm({ name: '', description: '', mapImageUrl: '' });
+      await refreshCustomFactions(true);
+      fetchGlobalData();
+    } catch {
+      showToast('网络异常，创建势力失败');
+    } finally {
+      setCreatingFaction(false);
+    }
+  };
 
   const activeRPSession = useMemo(
     () => rpSessions.find((session) => session.sessionId === rpSessionId) || rpSessions[0] || null,
@@ -476,7 +583,7 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const canUseGuardArrestSkill = isTowerGuardJob(actor.job);
   const showWorldMapOverlayUi = !selectedLocation;
   const resolveLocationName = (locationId: string) =>
-    LOCATIONS.find((l) => String(l.id) === String(locationId || ''))?.name || '未知区域';
+    mapLocations.find((l) => String(l.id) === String(locationId || ''))?.name || '未知区域';
   const isGroupRPInCurrentLocation =
     !!groupRPJoinedLocationId && String(groupRPJoinedLocationId) === String(effectiveLocationId || '');
 
@@ -551,6 +658,7 @@ useEffect(() => {
 useEffect(() => {
   let alive = true;
   const pull = async () => {
+    if (isDocumentHidden()) return;
     try {
       const res = await fetch(`/api/characters/${actor.id}/runtime`, { cache: 'no-store' });
       const data = await res.json();
@@ -559,7 +667,7 @@ useEffect(() => {
     } catch {}
   };
   pull();
-  const t = setInterval(pull, 8000);
+  const t = setInterval(pull, 10000);
   return () => { alive = false; clearInterval(t); };
 }, [actor.id]);
 
@@ -568,6 +676,7 @@ useEffect(() => {
   if (!actor?.faction || !actor?.id) return;
   let alive = true;
   const poll = async () => {
+    if (isDocumentHidden()) return;
     try {
       // 用当前用户职位的阵营推断需要轮询的职位列表（直接拉所有进行中的挑战）
       const res = await fetch(`/api/job/challenge/active?jobName=__all__`, { cache: 'no-store' });
@@ -611,6 +720,7 @@ useEffect(() => {
 
   let alive = true;
   const pullPrisonState = async () => {
+    if (isDocumentHidden()) return;
     try {
       const res = await fetch(`/api/paranormal/prison/state?userId=${actor.id}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({} as any));
@@ -622,7 +732,7 @@ useEffect(() => {
   };
 
   pullPrisonState();
-  const timer = setInterval(pullPrisonState, 6000);
+  const timer = setInterval(pullPrisonState, 8000);
   return () => {
     alive = false;
     clearInterval(timer);
@@ -632,6 +742,7 @@ useEffect(() => {
 useEffect(() => {
   let alive = true;
   const pullGuardPrisonState = async () => {
+    if (isDocumentHidden()) return;
     try {
       const res = await fetch(`/api/tower-guard/prison/state?userId=${actor.id}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({} as any));
@@ -642,7 +753,7 @@ useEffect(() => {
     }
   };
   pullGuardPrisonState();
-  const timer = setInterval(pullGuardPrisonState, 6000);
+  const timer = setInterval(pullGuardPrisonState, 8000);
   return () => {
     alive = false;
     clearInterval(timer);
@@ -654,6 +765,7 @@ useEffect(() => {
   let alive = true;
 
   const pollGuardArrestInbox = async () => {
+    if (isDocumentHidden()) return;
     try {
       const res = await fetch(`/api/tower-guard/arrest/inbox?userId=${actor.id}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({} as any));
@@ -700,7 +812,7 @@ useEffect(() => {
   };
 
   pollGuardArrestInbox();
-  const timer = setInterval(pollGuardArrestInbox, 6000);
+  const timer = setInterval(pollGuardArrestInbox, 8000);
   return () => {
     alive = false;
     clearInterval(timer);
@@ -730,6 +842,7 @@ useEffect(() => {
     
 
     const pullAnnouncements = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/announcements?sinceId=${lastSeenAnnId}&limit=20`, {
           cache: 'no-store'
@@ -754,7 +867,7 @@ useEffect(() => {
     };
 
     pullAnnouncements();
-    const t = setInterval(pullAnnouncements, 4000);
+    const t = setInterval(pullAnnouncements, 8000);
     return () => {
       alive = false;
       clearInterval(t);
@@ -805,6 +918,7 @@ useEffect(() => {
     }
 
     const fetchPlayers = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/locations/${effectiveLocationId}/players?excludeId=${actor.id}`);
         const data = await res.json();
@@ -820,7 +934,7 @@ useEffect(() => {
     };
 
     fetchPlayers();
-    const timer = setInterval(fetchPlayers, 4000);
+    const timer = setInterval(fetchPlayers, 6000);
     return () => clearInterval(timer);
   }, [effectiveLocationId, actor.id]);
 
@@ -828,6 +942,7 @@ useEffect(() => {
     let alive = true;
 
     const fetchWorldPresence = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch('/api/world/presence', { cache: 'no-store' });
         const data = await res.json().catch(() => ({} as any));
@@ -839,7 +954,7 @@ useEffect(() => {
     };
 
     fetchWorldPresence();
-    const timer = setInterval(fetchWorldPresence, 10000);
+    const timer = setInterval(fetchWorldPresence, 12000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -851,6 +966,7 @@ useEffect(() => {
     let alive = true;
 
     const pollTradeRequests = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch('/api/trade/request/pending/' + actor.id, { cache: 'no-store' });
         const data = await res.json().catch(() => ({} as any));
@@ -863,7 +979,7 @@ useEffect(() => {
     };
 
     pollTradeRequests();
-    const timer = setInterval(pollTradeRequests, 4000);
+    const timer = setInterval(pollTradeRequests, 6000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -875,6 +991,7 @@ useEffect(() => {
     let alive = true;
 
     const pollActiveTradeSession = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch('/api/trade/session/active/' + actor.id, { cache: 'no-store' });
         const data = await res.json().catch(() => ({} as any));
@@ -893,7 +1010,7 @@ useEffect(() => {
     };
 
     pollActiveTradeSession();
-    const timer = setInterval(pollActiveTradeSession, 4000);
+    const timer = setInterval(pollActiveTradeSession, 6000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -905,6 +1022,7 @@ useEffect(() => {
     let alive = true;
 
     const fetchWorldNpcs = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/world/npcs?userId=${actor.id}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({} as any));
@@ -941,6 +1059,7 @@ useEffect(() => {
     };
 
     const pollSkipRequests = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/interact/skip/pending/${actor.id}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({}));
@@ -981,7 +1100,7 @@ useEffect(() => {
     };
 
     pollSkipRequests();
-    const timer = setInterval(pollSkipRequests, 5000);
+    const timer = setInterval(pollSkipRequests, 7000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -997,6 +1116,7 @@ useEffect(() => {
     interactionEventCursorRef.current = hasStoredCursor ? Math.floor(stored) : 0;
 
     const pollInteractionEvents = async () => {
+      if (isDocumentHidden()) return;
       try {
         const afterId = Math.max(0, Number(interactionEventCursorRef.current || 0));
         const res = await fetch(`/api/interact/events/${actor.id}?afterId=${afterId}&limit=30`, { cache: 'no-store' });
@@ -1029,7 +1149,7 @@ useEffect(() => {
     let timer: number | null = null;
     const beginPolling = () => {
       pollInteractionEvents();
-      timer = window.setInterval(pollInteractionEvents, 4000);
+      timer = window.setInterval(pollInteractionEvents, 6000);
     };
 
     const bootstrapCursor = async () => {
@@ -1064,6 +1184,7 @@ useEffect(() => {
     let alive = true;
 
     const pollEntanglements = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/party/entangle/${actor.id}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({}));
@@ -1108,7 +1229,7 @@ useEffect(() => {
     };
 
     pollEntanglements();
-    const timer = setInterval(pollEntanglements, 6000);
+    const timer = setInterval(pollEntanglements, 8000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -1120,6 +1241,7 @@ useEffect(() => {
     let alive = true;
 
     const pollPartyRequests = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/party/requests/${actor.id}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({}));
@@ -1172,7 +1294,7 @@ useEffect(() => {
     };
 
     pollPartyRequests();
-    const timer = setInterval(pollPartyRequests, 5000);
+    const timer = setInterval(pollPartyRequests, 7000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -1184,6 +1306,7 @@ useEffect(() => {
     let alive = true;
 
     const pollMediationInvites = async () => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/rp/mediation/invites/${actor.id}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({}));
@@ -1227,7 +1350,7 @@ useEffect(() => {
     };
 
     pollMediationInvites();
-    const timer = setInterval(pollMediationInvites, 6000);
+    const timer = setInterval(pollMediationInvites, 8000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -1239,6 +1362,7 @@ useEffect(() => {
     let alive = true;
 
     const pollIncoming = async (notifyNew = true) => {
+      if (isDocumentHidden()) return;
       try {
         const res = await fetch(`/api/rp/session/list/${actor.id}`, { cache: 'no-store' });
         const data = await res.json().catch(() => ({} as any));
@@ -1253,7 +1377,7 @@ useEffect(() => {
     pollIncoming(false);
     const t = setInterval(() => {
       pollIncoming(true);
-    }, 4000);
+    }, 5000);
 
     return () => {
       alive = false;
@@ -1319,6 +1443,8 @@ useEffect(() => {
   }, [groupRPJoinedLocationId, actor.id, actor.name]);
 
   const userAge = actor?.age || 0;
+  const hasActiveJob = !!String(actor?.job || '').trim() && String(actor?.job || '').trim() !== '\u65e0';
+  const hasFaction = !!String(actor?.faction || '').trim() && String(actor?.faction || '').trim() !== '\u65e0';
   const isUndifferentiated = userAge < 16;
   const isStudentAge = userAge >= 16 && userAge <= 19;
   const hasGuideEscort =
@@ -1329,14 +1455,15 @@ useEffect(() => {
       const role = String(p.role || '');
       return sameParty && (role === '向导' || role.toLowerCase() === 'guide');
     });
+  const shouldApplyMinorTravelRestriction = isUndifferentiated && !hasGuideEscort && !hasActiveJob;
+  const shouldApplyStudentTravelPrompt = isStudentAge && !hasFaction && !hasActiveJob;
   const isMinorFogMode =
-    isUndifferentiated &&
-    !hasGuideEscort &&
+    shouldApplyMinorTravelRestriction &&
     !!effectiveLocationId &&
-    !SAFE_ZONES.includes(String(effectiveLocationId));
+    !isSafeLocationId(String(effectiveLocationId));
 
   useEffect(() => {
-    if (isMinorFogMode && activeView && !SAFE_ZONES.includes(activeView)) {
+    if (isMinorFogMode && activeView && !isSafeLocationId(activeView)) {
       setActiveView(null);
       showToast('与向导脱队后迷雾加深，你被迫退出该区域交互。');
     }
@@ -1351,7 +1478,7 @@ useEffect(() => {
     let timer: number | null = null;
     try {
       const sid = buildPairSessionId(actor.id, target.id, effectiveLocationId || 'unknown');
-      const locationName = LOCATIONS.find((l) => l.id === effectiveLocationId)?.name || '未知区域';
+      const locationName = resolveLocationName(String(effectiveLocationId || ''));
 
       const payload = {
         sessionId: sid,
@@ -1567,7 +1694,7 @@ useEffect(() => {
       showToast('你被关押在守塔会地下监牢中，当前无法前往其他区域。');
       return;
     }
-    const targetUnsafe = !SAFE_ZONES.includes(selectedLocation.id);
+    const targetUnsafe = !isSafeLocationId(String(selectedLocation?.id || ''));
     let minorRiskConfirmed = false;
 
     if (isTreatmentLocked && selectedLocation.id !== 'sanctuary') {
@@ -1584,7 +1711,7 @@ useEffect(() => {
       return;
     }
 
-    if (isUndifferentiated && targetUnsafe && !hasGuideEscort) {
+    if (shouldApplyMinorTravelRestriction && targetUnsafe) {
       const headstrong = window.confirm('这里太危险了，未分化者不建议前往。\n选择【确定】头铁前往（迷雾模式），选择【取消】留在安全区。');
       if (!headstrong) {
         showToast('你决定继续留在安全区域。');
@@ -1592,9 +1719,7 @@ useEffect(() => {
       }
       minorRiskConfirmed = true;
     }
-
-    const hasFaction = !!(actor.faction && actor.faction !== '无');
-    if (isStudentAge && !hasFaction && action === 'enter' && targetUnsafe) {
+    if (shouldApplyStudentTravelPrompt && action === 'enter' && targetUnsafe) {
       if (!window.confirm('你尚未加入阵营，当前进入将按最低职位处理，是否继续？')) {
         const londonTower = LOCATIONS.find((l) => l.id === 'london_tower');
         if (londonTower) {
@@ -1640,7 +1765,7 @@ useEffect(() => {
         showToast('你触发了收容机制，已被关入灵异管理所监牢。');
       }
 
-      if (isUndifferentiated && targetUnsafe && !hasGuideEscort) {
+      if (shouldApplyMinorTravelRestriction && targetUnsafe) {
         setActiveView(null);
         setSelectedLocation(null);
         showToast('迷雾笼罩了前方，非玩家角色会驱离你；你仍可在此区域探索掉落。');
@@ -1977,7 +2102,7 @@ const closeAnnouncement = () => {
     const placed: Array<{ x: number; y: number }> = [];
 
     // 寻找当前地点的物理坐标信息
-    const loc = LOCATIONS.find((l) => l.id === effectiveLocationId);
+    const loc = mapLocations.find((l) => String(l.id) === String(effectiveLocationId));
     const isWorldMap = !activeView; // 如果没有 activeView，说明在大地图视角
 
     // 定位基准点：如果在大地图，基准点直接绑定该地标坐标（稍微往上移一点点免得挡住文字）；
@@ -2043,24 +2168,24 @@ const closeAnnouncement = () => {
 
   const currentLocationMeta = useMemo(() => {
     if (!effectiveLocationId) return null;
-    return LOCATIONS.find((loc) => String(loc.id) === String(effectiveLocationId)) || null;
+    return mapLocations.find((loc) => String(loc.id) === String(effectiveLocationId)) || null;
   }, [effectiveLocationId]);
 
   const currentLocationName = useMemo(() => {
     if (!currentLocationMeta) return '未知区域';
-    if (isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(currentLocationMeta.id)) {
+    if (shouldApplyMinorTravelRestriction && !isSafeLocationId(String(currentLocationMeta.id || ''))) {
       return '迷雾区域';
     }
     return currentLocationMeta.name;
-  }, [currentLocationMeta, isUndifferentiated, hasGuideEscort]);
+  }, [currentLocationMeta, shouldApplyMinorTravelRestriction]);
 
   const currentLocationDesc = useMemo(() => {
     if (!currentLocationMeta) return '地图信息读取中';
-    if (isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(currentLocationMeta.id)) {
+    if (shouldApplyMinorTravelRestriction && !isSafeLocationId(String(currentLocationMeta.id || ''))) {
       return '当前区域被迷雾覆盖，需向导陪同才能完整辨识。';
     }
     return currentLocationMeta.description;
-  }, [currentLocationMeta, isUndifferentiated, hasGuideEscort]);
+  }, [currentLocationMeta, shouldApplyMinorTravelRestriction]);
 
   const renderActiveView = () => {
     if (!activeView) return null;
@@ -2104,7 +2229,11 @@ const closeAnnouncement = () => {
         content = <TowerGuardView {...commonProps} />;
         break;
       default:
-        content = null;
+        if (String(activeView || '').startsWith('custom_faction_')) {
+          content = <CustomFactionView {...commonProps} locationId={String(activeView || '')} />;
+        } else {
+          content = null;
+        }
         break;
     }
 
@@ -2166,11 +2295,34 @@ const closeAnnouncement = () => {
         {!activeView && (
           <motion.div className="relative w-full h-full flex items-center justify-center p-2 md:p-8 z-10">
             <div
+              onClick={handleWorldMapClick}
               className={`relative w-full bg-slate-900/50 rounded-2xl md:rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl ${
                 isPortraitMobile ? 'aspect-[9/16] max-w-[560px]' : 'aspect-[16/9] max-w-[1200px]'
-              }`}
+              } ${createFactionMode ? 'cursor-crosshair' : ''}`}
             >
               <img src={globalMapBackground} className="w-full h-full object-cover opacity-80" />
+
+              <div className="absolute right-3 top-3 z-20 flex max-w-[72vw] flex-col items-end gap-2 md:right-5 md:top-5 md:max-w-sm">
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setCreateFactionMode((value) => !value);
+                    if (createFactionMode) setPendingFactionPoint(null);
+                  }}
+                  className={`rounded-2xl px-4 py-2 text-xs font-black shadow-lg transition-colors ${
+                    createFactionMode
+                      ? 'bg-amber-600 text-white hover:bg-amber-500'
+                      : 'bg-white/90 text-slate-950 hover:bg-white'
+                  }`}
+                >
+                  {createFactionMode ? '取消创建势力' : '创建自定义势力（50000G）'}
+                </button>
+                {createFactionMode && (
+                  <div className="rounded-2xl border border-white/15 bg-slate-950/72 px-3 py-2 text-[11px] leading-5 text-slate-100 backdrop-blur">
+                    点击地图空白处放置新的势力入口。创建成功后，你会自动成为该势力的掌权者。
+                  </div>
+                )}
+              </div>
 
               {mapLocations.map((loc) => {
                 const labelAnchorClass =
@@ -2188,7 +2340,10 @@ const closeAnnouncement = () => {
                     key={loc.id}
                     className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer touch-manipulation"
                     style={{ left: `${loc.x}%`, top: `${loc.y}%` }}
-                    onClick={() => setSelectedLocation(loc)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedLocation(loc);
+                    }}
                   >
                     <div
                       className={`w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center backdrop-blur-sm transition-all
@@ -2229,7 +2384,7 @@ const closeAnnouncement = () => {
                       ${selectedLocation?.id === loc.id ? 'opacity-100 scale-110 z-20 border-sky-500/50 text-white' : 'opacity-0 hover:opacity-100 translate-y-2 hover:translate-y-0'}
                     `}
                     >
-                      {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(loc.id) ? 'Fog Zone' : loc.name}
+                      {shouldApplyMinorTravelRestriction && !isSafeLocationId(String(loc.id || '')) ? 'Fog Zone' : loc.name}
                     </div>
                   </div>
                 );
@@ -2790,7 +2945,7 @@ const closeAnnouncement = () => {
               setActiveView(null);
               setSelectedLocation(null);
               const backName =
-                LOCATIONS.find((x) => x.id === String(returnLocation || ''))?.name ||
+                mapLocations.find((x) => String(x.id) === String(returnLocation || ''))?.name ||
                 (returnLocation ? String(returnLocation) : '城中');
               showToast(`战败后已返回：${backName}`);
               fetchGlobalData();
@@ -2812,7 +2967,7 @@ const closeAnnouncement = () => {
           >
             <div className="absolute inset-0 rounded-[2rem] overflow-hidden -z-10 opacity-30">
               <img
-                src={customBackgroundImage || LOCATION_BG_MAP[selectedLocation.id] || globalMapBackground}
+                src={selectedLocation.mapImageUrl || customBackgroundImage || LOCATION_BG_MAP[selectedLocation.id] || globalMapBackground}
                 className="w-full h-full object-cover blur-md scale-110"
               />
             </div>
@@ -2820,7 +2975,7 @@ const closeAnnouncement = () => {
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <h3 className="text-2xl font-black text-white mb-2 flex items-center gap-2">
-                  {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(selectedLocation.id) ? '迷雾区域' : selectedLocation.name}
+                  {shouldApplyMinorTravelRestriction && !isSafeLocationId(String(selectedLocation?.id || '')) ? '迷雾区域' : selectedLocation.name}
                   <span
                     className={`text-[10px] px-2 py-1 rounded-lg border backdrop-blur-sm ${
                       selectedLocation.type === 'safe'
@@ -2832,7 +2987,7 @@ const closeAnnouncement = () => {
                   </span>
                 </h3>
                 <p className="text-sm text-slate-300 leading-relaxed mb-6 font-medium">
-                  {isUndifferentiated && !hasGuideEscort && !SAFE_ZONES.includes(selectedLocation.id)
+                  {shouldApplyMinorTravelRestriction && !isSafeLocationId(String(selectedLocation?.id || ''))
                     ? '这里雾蒙蒙的，仿佛有迷雾笼罩。真的要去吗？'
                     : selectedLocation.description}
                 </p>
@@ -2907,6 +3062,80 @@ const closeAnnouncement = () => {
               >
                 <X size={20} />
               </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pendingFactionPoint && !activeView && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+          >
+            <div className="theme-elevated-surface w-full max-w-2xl rounded-[2rem] border p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xl font-black text-slate-100">建立新的自定义势力</div>
+                  <div className="mt-1 text-xs text-slate-400">地图坐标：{pendingFactionPoint.x}% / {pendingFactionPoint.y}%</div>
+                </div>
+                <button
+                  onClick={() => setPendingFactionPoint(null)}
+                  className="rounded-full bg-slate-800 px-3 py-2 text-xs font-black text-slate-200 hover:bg-slate-700"
+                >
+                  取消
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  value={customFactionForm.name}
+                  onChange={(event) => setCustomFactionForm((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder="势力名称"
+                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <input
+                  value={customFactionForm.mapImageUrl}
+                  onChange={(event) => setCustomFactionForm((prev) => ({ ...prev, mapImageUrl: event.target.value }))}
+                  placeholder="地图图片地址，例如 /new/faction-map.jpg"
+                  className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <textarea
+                  value={customFactionForm.description}
+                  onChange={(event) => setCustomFactionForm((prev) => ({ ...prev, description: event.target.value }))}
+                  placeholder="输入势力介绍、规则、气氛与定位。"
+                  className="min-h-[120px] rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none focus:border-sky-500 md:col-span-2"
+                />
+              </div>
+
+              {customFactionAssets.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {customFactionAssets.slice(0, 8).map((asset: any) => (
+                    <button
+                      key={String(asset?.url || '')}
+                      onClick={() => setCustomFactionForm((prev) => ({ ...prev, mapImageUrl: String(asset?.url || '') }))}
+                      className="rounded-full border border-slate-600 px-3 py-1 text-[11px] text-slate-300 hover:border-sky-500 hover:text-sky-200"
+                    >
+                      {String(asset?.name || asset?.url || '地图素材')}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="rounded-2xl border border-amber-400/30 bg-amber-100/10 px-3 py-2 text-xs text-amber-100">
+                  创建费用：50000G。金币不足或仍处于其他阵营时将无法建立。
+                </div>
+                <button
+                  onClick={createCustomFaction}
+                  disabled={creatingFaction}
+                  className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-black text-white hover:bg-sky-500 disabled:opacity-60"
+                >
+                  {creatingFaction ? '创建中...' : '确认建立新势力'}
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

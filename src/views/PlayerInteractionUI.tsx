@@ -490,7 +490,7 @@ export function PlayerInteractionUI({
           onClick={(e) => e.stopPropagation()}
           initial={{ scale: 0.92, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="relative max-w-sm rounded-3xl border border-slate-700 bg-slate-900 p-8 text-center shadow-2xl mobile-portrait-safe-card mobile-contrast-surface-dark"
+          className="theme-elevated-surface relative max-w-sm rounded-3xl p-8 text-center mobile-portrait-safe-card"
         >
           <button
             onClick={onClose}
@@ -512,7 +512,7 @@ export function PlayerInteractionUI({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.92, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="relative h-[min(540px,72vh)] w-[min(560px,94vw)] mobile-contrast-surface-dark"
+        className="theme-elevated-surface relative h-[min(540px,72vh)] w-[min(560px,94vw)] rounded-[2rem] mobile-contrast-surface-dark"
       >
         <button
           onClick={onClose}
@@ -522,7 +522,7 @@ export function PlayerInteractionUI({
         </button>
 
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
-          <div className="pointer-events-auto h-72 w-52 overflow-hidden rounded-[1.75rem] border-4 border-slate-700 bg-slate-900 shadow-[0_0_60px_rgba(0,0,0,0.75)] flex items-center justify-center">
+          <div className="theme-elevated-surface pointer-events-auto flex h-72 w-52 items-center justify-center overflow-hidden rounded-[1.75rem] border-4 border-white/45 shadow-[0_20px_50px_rgba(38,58,92,0.22)]">
             {targetAvatarSrc && !avatarLoadFailed ? (
               <img
                 src={targetAvatarSrc}
@@ -537,7 +537,7 @@ export function PlayerInteractionUI({
             )}
           </div>
 
-          <div className="mt-4 w-[min(22rem,88vw)] rounded-2xl border border-slate-700 bg-slate-900/90 p-4 text-center shadow-xl backdrop-blur pointer-events-auto">
+          <div className="theme-elevated-surface pointer-events-auto mt-4 w-[min(22rem,88vw)] rounded-2xl p-4 text-center">
             <h4 className="mb-1 text-lg font-black text-white">{effectiveTarget.name}</h4>
             <div className="text-xs text-slate-400">
               {effectiveTarget.role || '未知身份'}
@@ -722,7 +722,7 @@ function OverlayCard({
       initial={{ y: 20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 20, opacity: 0 }}
-      className="absolute bottom-4 z-50 w-[min(22rem,90vw)] rounded-3xl border border-slate-700 bg-slate-900 p-4 shadow-2xl pointer-events-auto mobile-contrast-surface-dark"
+      className="theme-elevated-surface absolute bottom-4 z-50 w-[min(22rem,90vw)] rounded-3xl p-4 pointer-events-auto mobile-contrast-surface-dark"
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-sm font-black text-white">{title}</div>
@@ -759,7 +759,7 @@ function ActionButton({
       >
         {icon}
       </button>
-      <div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded bg-black/80 px-2 py-1 text-[10px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="theme-elevated-surface theme-muted-text pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold opacity-0 transition-opacity group-hover:opacity-100">
         {label}
       </div>
     </div>

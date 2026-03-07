@@ -52,6 +52,7 @@ const EXPANDED_H = 500;
 const MINI_W = 330;
 const MINI_H = 58;
 const MOBILE_PORTRAIT_QUERY = '(max-width: 767px) and (orientation: portrait)';
+const isDocumentHidden = () => typeof document !== 'undefined' && document.hidden;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -190,7 +191,10 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
 
   useEffect(() => {
     fetchSessionData(false);
-    const timer = setInterval(() => fetchSessionData(true), 2500);
+    const timer = setInterval(() => {
+      if (isDocumentHidden()) return;
+      fetchSessionData(true);
+    }, minimized ? 5000 : 3000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, minimized]);
@@ -360,7 +364,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
-      className={`fixed z-[260] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden mobile-contrast-surface-dark mobile-portrait-safe-roleplay ${
+      className={`fixed z-[260] theme-elevated-surface rounded-2xl shadow-2xl overflow-hidden mobile-contrast-surface-dark mobile-portrait-safe-roleplay ${
         minimized ? 'mobile-portrait-safe-roleplay-min' : ''
       }`}
       style={{
@@ -372,7 +376,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
     >
       <div
         onMouseDown={startDrag}
-        className={`px-3 py-2 border-b border-slate-700 bg-slate-900/95 flex items-center justify-between ${
+        className={`px-3 py-2 border-b border-slate-700/70 theme-soft-surface flex items-center justify-between ${
           isPortraitMobile ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
         }`}
       >
@@ -419,7 +423,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
       </div>
 
       {!minimized && sessions.length > 1 && (
-        <div className="border-b border-slate-700 bg-slate-950/80 px-2 py-2 overflow-x-auto custom-scrollbar">
+        <div className="border-b border-slate-700/70 theme-soft-surface px-2 py-2 overflow-x-auto custom-scrollbar">
           <div className="flex gap-2 min-w-max">
             {sessions.map((item) => {
               const active = item.sessionId === sessionId;
@@ -458,7 +462,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
         </div>
       ) : (
         <>
-          <div className="h-[calc(100%-42px-92px)] overflow-y-auto p-3 space-y-2 bg-slate-950 custom-scrollbar">
+          <div className="h-[calc(100%-42px-92px)] overflow-y-auto p-3 space-y-2 bg-slate-950/60 custom-scrollbar">
             {loading ? (
               <div className="text-slate-500 text-xs">加载中...</div>
             ) : messages.length === 0 ? (
@@ -513,7 +517,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
             <div ref={bottomRef} />
           </div>
 
-          <div className="h-[92px] p-2.5 border-t border-slate-700 bg-slate-900">
+          <div className="h-[92px] p-2.5 border-t border-slate-700/70 theme-soft-surface">
             <AnimatePresence>
               {hint && (
                 <motion.div
@@ -532,7 +536,7 @@ export function RoleplayWindow({ sessionId, currentUser, onClose, sessions = [],
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="输入对戏内容..."
-                className="flex-1 h-14 resize-none rounded-lg bg-slate-950 border border-slate-700 text-slate-100 p-2 text-xs outline-none focus:border-sky-500"
+                className="flex-1 h-14 resize-none rounded-lg bg-slate-950/60 border border-slate-700 text-slate-100 p-2 text-xs outline-none focus:border-sky-500"
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
                     event.preventDefault();

@@ -38,6 +38,8 @@ export default function App() {
   // 全局 Toast
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const globalFetchInFlightRef = useRef<Promise<void> | null>(null);
+  const globalFetchLastAtRef = useRef(0);
 
   const showToast = (msg: string, type: ToastType = 'info', duration = 3000) => {
     setToast({ msg, type });
@@ -129,6 +131,7 @@ export default function App() {
   useEffect(() => {
     if (user && (currentView === 'GAME' || currentView === 'TOWER_OF_LIFE')) {
       const timer = setInterval(async () => {
+        if (typeof document !== 'undefined' && document.hidden) return;
         try {
           const res = await fetch(`/api/users/${encodeURIComponent((user as any).name)}`);
           const data = await res.json();
@@ -136,11 +139,11 @@ export default function App() {
         } catch (e) {
           console.error('Sync failed', e);
         }
-      }, 5000);
+      }, 8000);
 
       return () => clearInterval(timer);
     }
-  }, [user, currentView]);
+  }, [user?.name, currentView]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -208,14 +211,33 @@ export default function App() {
     };
   }, []);
 
-  const fetchGlobalData = useCallback(async () => {
-    if (!user?.name) return;
+  const fetchGlobalData = useCallback(async (force = false) => {
+    const userNameValue = String(user?.name || '').trim();
+    if (!userNameValue) return;
+
+    const now = Date.now();
+    if (!force) {
+      if (globalFetchInFlightRef.current) return globalFetchInFlightRef.current;
+      if (now - globalFetchLastAtRef.current < 1200) return;
+    }
+
+    globalFetchLastAtRef.current = now;
+    const task = (async () => {
+      try {
+        const res = await fetch(`/api/users/${encodeURIComponent(userNameValue)}`);
+        const data = await res.json();
+        if (data.success) setUser(data.user);
+      } catch (e) {
+        console.error('fetchGlobalData failed', e);
+      }
+    })();
+
+    globalFetchInFlightRef.current = task;
     try {
-      const res = await fetch(`/api/users/${encodeURIComponent(user.name)}`);
-      const data = await res.json();
-      if (data.success) setUser(data.user);
-    } catch (e) {
-      console.error('fetchGlobalData failed', e);
+      await task;
+    } finally {
+      if (globalFetchInFlightRef.current === task) globalFetchInFlightRef.current = null;
+      globalFetchLastAtRef.current = Date.now();
     }
   }, [user?.name]);
 

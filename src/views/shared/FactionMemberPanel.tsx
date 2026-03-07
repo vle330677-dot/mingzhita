@@ -1,5 +1,15 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { LogOut, MapPin, RefreshCcw, ShieldAlert, UserMinus, Users } from 'lucide-react';
+import {
+  BadgePlus,
+  Briefcase,
+  LogOut,
+  MapPin,
+  RefreshCcw,
+  ShieldAlert,
+  Trash2,
+  UserMinus,
+  Users,
+} from 'lucide-react';
 import { User } from '../../types';
 
 interface FactionRosterRow {
@@ -8,6 +18,18 @@ interface FactionRosterRow {
   job: string;
   faction: string;
   currentLocation: string;
+}
+
+interface CustomRoleRow {
+  id: number;
+  title: string;
+  description: string;
+  minAge: number;
+  minMentalRank: string;
+  minPhysicalRank: string;
+  maxMembers: number;
+  salary: number;
+  currentMembers: number;
 }
 
 interface Props {
@@ -29,7 +51,7 @@ const LOCATION_LABEL: Record<string, string> = {
   demon_society: '恶魔会',
   paranormal_office: '灵异管理所',
   observers: '观察者',
-  tower_guard: '守塔会'
+  tower_guard: '守塔会',
 };
 
 function locationLabel(id?: string) {
@@ -43,29 +65,49 @@ function isNoJob(value?: string) {
   return !normalized || normalized === '无' || normalized === '无职位' || normalized.toLowerCase() === 'none';
 }
 
+const EMPTY_ROLE_FORM = {
+  title: '',
+  description: '',
+  minAge: '16',
+  minMentalRank: '',
+  minPhysicalRank: '',
+  maxMembers: '0',
+  salary: '0',
+};
+
 export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalData, title }: Props) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [quitting, setQuitting] = useState(false);
   const [rows, setRows] = useState<FactionRosterRow[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRoleRow[]>([]);
   const [factionName, setFactionName] = useState('');
   const [leaderJob, setLeaderJob] = useState('');
   const [canManage, setCanManage] = useState(false);
+  const [canManageRoles, setCanManageRoles] = useState(false);
   const [kickEnabled, setKickEnabled] = useState(true);
+  const [createForm, setCreateForm] = useState(EMPTY_ROLE_FORM);
+  const [creatingRole, setCreatingRole] = useState(false);
+  const [joiningRoleId, setJoiningRoleId] = useState<number | null>(null);
+  const [deletingRoleId, setDeletingRoleId] = useState<number | null>(null);
 
   const pullRoster = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch(`/api/faction/roster?userId=${user.id}&locationId=${encodeURIComponent(locationId)}`);
+      const res = await fetch(`/api/faction/roster?userId=${user.id}&locationId=${encodeURIComponent(locationId)}`, {
+        cache: 'no-store',
+      });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
         if (!silent) showToast(data.message || '读取成员信息失败');
         return;
       }
       setRows(Array.isArray(data.members) ? data.members : []);
+      setCustomRoles(Array.isArray(data.customRoles) ? data.customRoles : []);
       setFactionName(String(data.factionName || ''));
       setLeaderJob(String(data.leaderJob || ''));
       setCanManage(Boolean(data.canManage));
+      setCanManageRoles(Boolean(data.canManageRoles));
       setKickEnabled(Boolean(data.kickEnabled ?? true));
     } catch {
       if (!silent) showToast('网络异常，读取成员信息失败');
@@ -77,8 +119,8 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
 
   useEffect(() => {
     pullRoster(true);
-    const timer = setInterval(() => pullRoster(true), 10000);
-    return () => clearInterval(timer);
+    const timer = window.setInterval(() => pullRoster(true), 10000);
+    return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id, locationId]);
 
@@ -110,8 +152,8 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
         body: JSON.stringify({
           operatorId: user.id,
           targetUserId: target.id,
-          locationId
-        })
+          locationId,
+        }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
@@ -136,7 +178,7 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
       const res = await fetch('/api/tower/quit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id })
+        body: JSON.stringify({ userId: user.id }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data.success === false) {
@@ -153,8 +195,98 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
     }
   };
 
+  const handleJoinCustomRole = async (role: CustomRoleRow) => {
+    if (joiningRoleId) return;
+    setJoiningRoleId(role.id);
+    try {
+      const res = await fetch('/api/tower/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          locationId,
+          jobName: role.title,
+          minorConfirm: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '加入职位失败');
+        return;
+      }
+      showToast(data.message || `已加入职位：${role.title}`);
+      await pullRoster(true);
+      fetchGlobalData?.();
+    } catch {
+      showToast('网络异常，加入职位失败');
+    } finally {
+      setJoiningRoleId(null);
+    }
+  };
+
+  const handleCreateRole = async () => {
+    if (!canManageRoles || creatingRole) return;
+    const title = createForm.title.trim();
+    if (!title) {
+      showToast('请先填写职位名称');
+      return;
+    }
+    setCreatingRole(true);
+    try {
+      const res = await fetch('/api/faction/custom-roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          locationId,
+          title,
+          description: createForm.description.trim(),
+          minAge: Number(createForm.minAge || 0),
+          minMentalRank: createForm.minMentalRank.trim(),
+          minPhysicalRank: createForm.minPhysicalRank.trim(),
+          maxMembers: Number(createForm.maxMembers || 0),
+          salary: Number(createForm.salary || 0),
+        }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '新增职位失败');
+        return;
+      }
+      showToast(data.message || '已新增自定义职位');
+      setCreateForm(EMPTY_ROLE_FORM);
+      await pullRoster(true);
+    } catch {
+      showToast('网络异常，新增职位失败');
+    } finally {
+      setCreatingRole(false);
+    }
+  };
+
+  const handleDeleteRole = async (role: CustomRoleRow) => {
+    if (deletingRoleId) return;
+    if (!window.confirm(`确定删除自定义职位「${role.title}」吗？`)) return;
+    setDeletingRoleId(role.id);
+    try {
+      const res = await fetch(`/api/faction/custom-roles/${role.id}?userId=${user.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data.success === false) {
+        showToast(data.message || '删除职位失败');
+        return;
+      }
+      showToast(data.message || '已删除自定义职位');
+      await pullRoster(true);
+    } catch {
+      showToast('网络异常，删除职位失败');
+    } finally {
+      setDeletingRoleId(null);
+    }
+  };
+
   return (
-    <div className="rounded-2xl border border-slate-600/40 bg-slate-900/50 p-4 space-y-3">
+    <div className="theme-elevated-surface rounded-2xl border p-4 space-y-3 shadow-xl">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h4 className="font-black text-sm text-slate-100 flex items-center gap-2">
@@ -164,11 +296,7 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
           <p className="text-[11px] text-slate-400 mt-1">
             阵营：{factionName || '未配置'} {leaderJob ? `| 最高职位：${leaderJob}` : ''}
           </p>
-          {canQuitCurrentPost && (
-            <p className="mt-1 text-[11px] text-emerald-300">
-              你当前在此担任：{selfRow?.job}
-            </p>
-          )}
+          {canQuitCurrentPost && <p className="mt-1 text-[11px] text-emerald-300">你当前在此担任：{selfRow?.job}</p>}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -187,7 +315,7 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
               setRefreshing(true);
               pullRoster();
             }}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700 transition-colors inline-flex items-center gap-1.5"
+            className="px-2.5 py-1.5 rounded-lg theme-soft-surface text-xs font-bold transition-colors inline-flex items-center gap-1.5"
           >
             <RefreshCcw size={12} className={refreshing ? 'animate-spin' : ''} />
             刷新
@@ -203,8 +331,133 @@ export function FactionMemberPanel({ user, locationId, showToast, fetchGlobalDat
       )}
 
       {!kickEnabled && (
-        <div className="text-[11px] text-slate-300 bg-slate-800/70 border border-slate-600/30 rounded-lg p-2">
+        <div className="text-[11px] text-slate-300 theme-soft-surface rounded-lg p-2">
           该区域仅展示成员信息，不允许辞退操作。
+        </div>
+      )}
+
+      {(customRoles.length > 0 || canManageRoles) && (
+        <div className="rounded-2xl border border-slate-700/60 theme-soft-surface p-3 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-black text-slate-100">
+            <Briefcase size={15} />
+            自定义职位
+          </div>
+
+          {customRoles.length === 0 ? (
+            <div className="text-xs text-slate-400">当前还没有额外开放的自定义职位。</div>
+          ) : (
+            <div className="space-y-2">
+              {customRoles.map((role) => {
+                const isCurrent = String(selfRow?.job || '') === role.title;
+                const reachedLimit = role.maxMembers > 0 && role.currentMembers >= role.maxMembers && !isCurrent;
+                return (
+                  <div key={role.id} className="rounded-xl border border-slate-700 bg-slate-900/55 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-black text-slate-100 truncate">{role.title}</div>
+                        <div className="mt-1 text-[11px] text-slate-400 leading-5">
+                          {role.description || '暂无描述'}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-slate-300">
+                          <span className="rounded-full border border-slate-600 px-2 py-1">年龄 {role.minAge || 0}+</span>
+                          {role.minMentalRank && <span className="rounded-full border border-slate-600 px-2 py-1">精神 {role.minMentalRank}+</span>}
+                          {role.minPhysicalRank && <span className="rounded-full border border-slate-600 px-2 py-1">肉体 {role.minPhysicalRank}+</span>}
+                          <span className="rounded-full border border-slate-600 px-2 py-1">人数 {role.currentMembers}/{role.maxMembers || '∞'}</span>
+                          {role.salary > 0 && <span className="rounded-full border border-emerald-600/60 px-2 py-1 text-emerald-300">工资 {role.salary}G</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 shrink-0">
+                        <button
+                          onClick={() => handleJoinCustomRole(role)}
+                          disabled={joiningRoleId === role.id || reachedLimit || isCurrent}
+                          className={`rounded-lg px-3 py-2 text-[11px] font-black transition-colors ${
+                            isCurrent
+                              ? 'bg-slate-700 text-slate-300 cursor-not-allowed'
+                              : reachedLimit
+                                ? 'bg-rose-900/60 text-rose-200 cursor-not-allowed'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          }`}
+                        >
+                          {isCurrent ? '当前职位' : joiningRoleId === role.id ? '处理中...' : reachedLimit ? '名额已满' : '申请加入'}
+                        </button>
+                        {canManageRoles && (
+                          <button
+                            onClick={() => handleDeleteRole(role)}
+                            disabled={deletingRoleId === role.id}
+                            className="rounded-lg px-3 py-2 text-[11px] font-black bg-rose-900/45 text-rose-200 hover:bg-rose-900/70 disabled:opacity-60 inline-flex items-center justify-center gap-1"
+                          >
+                            <Trash2 size={11} />
+                            {deletingRoleId === role.id ? '删除中' : '删除'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {canManageRoles && (
+            <div className="rounded-xl border border-dashed border-slate-600 bg-slate-950/45 p-3 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-black text-slate-200">
+                <BadgePlus size={14} />
+                新增自定义职位
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <input
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="职位名称"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <input
+                  value={createForm.minAge}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, minAge: e.target.value }))}
+                  placeholder="最低年龄"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <input
+                  value={createForm.minMentalRank}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, minMentalRank: e.target.value }))}
+                  placeholder="最低精神等级，如 B+"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <input
+                  value={createForm.minPhysicalRank}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, minPhysicalRank: e.target.value }))}
+                  placeholder="最低肉体等级，如 C+"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <input
+                  value={createForm.maxMembers}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, maxMembers: e.target.value }))}
+                  placeholder="人数上限，0 为不限"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+                <input
+                  value={createForm.salary}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, salary: e.target.value }))}
+                  placeholder="工资（G）"
+                  className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                />
+              </div>
+              <textarea
+                value={createForm.description}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="职位描述与职责说明"
+                className="min-h-[92px] w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+              />
+              <button
+                onClick={handleCreateRole}
+                disabled={creatingRole}
+                className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-black text-white hover:bg-sky-500 disabled:opacity-60"
+              >
+                <BadgePlus size={14} />
+                {creatingRole ? '创建中...' : '确认新增职位'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
