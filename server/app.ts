@@ -25,6 +25,8 @@ import { createGhostRouter } from './routes/ghost.routes';
 import { createArmyRouter } from './routes/army.routes';
 import { createConfirmationRouter } from './routes/confirmation.routes';
 import { createFactionRouter } from './routes/faction.routes';
+import { createCityRouter } from './routes/city.routes';
+import { createMediationRouter } from './routes/mediation.routes';
 import { createRealtimeRuntime } from './realtime';
 import type { AppContext } from './types';
 
@@ -70,6 +72,8 @@ export async function startServer() {
   app.use('/api', createArmyRouter(ctx));
   app.use('/api', createConfirmationRouter(ctx));
   app.use('/api', createFactionRouter(ctx));
+  app.use('/api', createCityRouter(ctx));
+  app.use('/api', createMediationRouter(ctx));
   app.use('/api', createCompatRouter(ctx));
   
   // 公告和房间列表可以缓存30秒

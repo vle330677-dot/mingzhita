@@ -744,6 +744,58 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
+  router.post('/admin/whitelist', auth.requireAdminAuth, (req: any, res) => {
+    try {
+      const adminName = normalizeName(req.body?.name ?? req.body?.adminName);
+      const codeName = normalizeName(req.body?.codeName ?? req.body?.code_name);
+      const enabled = Number(req.body?.enabled ?? 1) ? 1 : 0;
+      if (!adminName) {
+        return safeJson(res, 400, { success: false, message: '请输入管理员名字' });
+      }
+
+      const existedByName = db.prepare(`
+        SELECT id, name
+        FROM admin_whitelist
+        WHERE name = ?
+        LIMIT 1
+      `).get(adminName) as AnyRow | undefined;
+      if (existedByName) {
+        return safeJson(res, 400, { success: false, message: '该管理员已在白名单中' });
+      }
+
+      if (codeName) {
+        const existedByCodeName = db.prepare(`
+          SELECT id, code_name
+          FROM admin_whitelist
+          WHERE code_name = ?
+          LIMIT 1
+        `).get(codeName) as AnyRow | undefined;
+        if (existedByCodeName) {
+          return safeJson(res, 400, { success: false, message: '管理员代号已被占用' });
+        }
+      }
+
+      const result = db.prepare(`
+        INSERT INTO admin_whitelist(name, code_name, enabled, createdAt)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(adminName, codeName || null, enabled);
+
+      const operatorName = String(req.admin?.name || 'admin');
+      writeAdminLog(db, operatorName, `新增管理员白名单 ${adminName}`, 'admin_whitelist', String(result.lastInsertRowid), {
+        name: adminName,
+        codeName,
+        enabled,
+      });
+
+      return safeJson(res, 200, {
+        success: true,
+        message: `管理员 ${operatorName} 已新增白名单管理员 ${adminName}`,
+      });
+    } catch (e: any) {
+      return safeJson(res, 500, { success: false, message: e?.message || 'create admin whitelist failed' });
+    }
+  });
+
   router.put('/admin/profile', auth.requireAdminAuth, (req: any, res) => {
     try {
       const adminUserId = Number(req.admin?.userId || 0);

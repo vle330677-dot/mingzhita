@@ -78,6 +78,185 @@ function now() {
   return new Date().toISOString();
 }
 
+const VOTE_ONLINE_WINDOW_SECONDS = 120;
+
+function unwrapStoredMapData(raw: any) {
+  const parsed = fromJson<any>(raw, {});
+  if (!parsed || typeof parsed !== "object") {
+    return { mapJson: {}, dropPointJson: {}, raw: {} };
+  }
+  const mapJson =
+    parsed.mapJson && typeof parsed.mapJson === "object" ? parsed.mapJson : parsed;
+  const dropPointJson =
+    parsed.dropPointJson && typeof parsed.dropPointJson === "object" ? parsed.dropPointJson : {};
+  return { mapJson, dropPointJson, raw: parsed };
+}
+
+function buildRunMapSnapshot(raw: any) {
+  const { mapJson, dropPointJson } = unwrapStoredMapData(raw);
+  const baseMap = mapJson && typeof mapJson === "object" ? mapJson : {};
+  return {
+    ...baseMap,
+    dropPointJson,
+  };
+}
+
+async function countEligibleVoteUsers(db: DB) {
+  const row = await dbGet(
+    db,
+    `
+      SELECT COUNT(DISTINCT s.userId) AS total
+      FROM user_sessions s
+      JOIN users u ON u.id = s.userId
+      WHERE s.role = 'player'
+        AND s.revokedAt IS NULL
+        AND u.status IN ('approved', 'ghost')
+        AND datetime(s.lastSeenAt) >= datetime('now', ?)
+    `,
+    [`-${VOTE_ONLINE_WINDOW_SECONDS} seconds`]
+  );
+  return Math.max(0, Number(row?.total || 0));
+}
+
+async function getVoteSnapshot(db: DB, gameId: number, userId?: number | null) {
+  const counts = await dbGet(
+    db,
+    `
+      SELECT
+        SUM(CASE WHEN vote = 1 THEN 1 ELSE 0 END) AS yes_count,
+        SUM(CASE WHEN vote = 0 THEN 1 ELSE 0 END) AS no_count
+      FROM custom_game_votes
+      WHERE game_id = ?
+    `,
+    [gameId]
+  );
+
+  const game = await dbGet(
+    db,
+    `
+      SELECT status, vote_status, vote_opened_at, vote_ends_at
+      FROM custom_games
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [gameId]
+  );
+
+  const myVoteRow =
+    userId && Number(userId)
+      ? await dbGet(
+          db,
+          `SELECT vote FROM custom_game_votes WHERE game_id = ? AND user_id = ? LIMIT 1`,
+          [gameId, Number(userId)]
+        )
+      : null;
+
+  const yesCount = Number(counts?.yes_count || 0);
+  const noCount = Number(counts?.no_count || 0);
+  const castCount = yesCount + noCount;
+  const onlineTotal = await countEligibleVoteUsers(db);
+  const total = Math.max(onlineTotal, castCount);
+  const voteEndsAt = game?.vote_ends_at ? String(game.vote_ends_at) : null;
+  const nowMs = Date.now();
+  const expired = !!voteEndsAt && Number.isFinite(Date.parse(voteEndsAt)) && Date.parse(voteEndsAt) <= nowMs;
+
+  return {
+    yesCount,
+    noCount,
+    total,
+    castCount,
+    onlineTotal,
+    myVote: myVoteRow?.vote === 0 || myVoteRow?.vote === 1 ? Number(myVoteRow.vote) : null,
+    voteStatus: String(game?.vote_status || "none"),
+    gameStatus: String(game?.status || ""),
+    voteOpenedAt: game?.vote_opened_at ? String(game.vote_opened_at) : null,
+    voteEndsAt,
+    expired,
+  };
+}
+
+async function createCustomGameRun(db: DB, game: any, mapRow: any) {
+  const existing = await getActiveRun(db, Number(game.id || 0));
+  if (existing?.id) {
+    return { runId: Number(existing.id), created: false };
+  }
+
+  const mapSnapshot = buildRunMapSnapshot(mapRow?.map_data);
+  const stageConfigs = Array.isArray((mapSnapshot as any)?.stageConfigs)
+    ? (mapSnapshot as any).stageConfigs
+    : [];
+  const totalStages = Math.max(
+    1,
+    Number((mapSnapshot as any)?.totalStages || stageConfigs.length || 3)
+  );
+  const ts = now();
+
+  const ret = await dbRun(
+    db,
+    `
+      INSERT INTO custom_game_runs(
+        game_id, status, current_stage, total_stages, stage_configs, map_snapshot,
+        creator_user_id, started_at, created_at, updated_at
+      )
+      VALUES (?, 'running', 1, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      Number(game.id || 0),
+      totalStages,
+      toJson(stageConfigs, []),
+      toJson(mapSnapshot, {}),
+      Number(game.creator_user_id || 0),
+      ts,
+      ts,
+      ts,
+    ]
+  );
+
+  const runId = Number(ret.lastID || 0);
+
+  await dbRun(
+    db,
+    `UPDATE custom_games SET status = 'running', vote_status = 'passed', updated_at = ? WHERE id = ?`,
+    [ts, Number(game.id || 0)]
+  );
+
+  await dbRun(
+    db,
+    `
+      INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
+      VALUES (?, NULL, 'run_start', ?, ?, ?)
+    `,
+    [
+      runId,
+      `副本 ${String(game.title || `#${game.id}`)} 已开启`,
+      toJson(
+        {
+          gameId: Number(game.id || 0),
+          mapId: Number(mapRow?.id || 0),
+          mapName: String((mapSnapshot as any)?.mapName || ""),
+        },
+        {}
+      ),
+      ts,
+    ]
+  );
+
+  await createAnnouncement(
+    db,
+    "game_start",
+    `副本 ${String(game.title || `#${game.id}`)} 已开启`,
+    `${String((mapSnapshot as any)?.mapName || "创作者地图")} 已开放进入。`,
+    {
+      gameId: Number(game.id || 0),
+      runId,
+      mapId: Number(mapRow?.id || 0),
+      mapName: String((mapSnapshot as any)?.mapName || ""),
+    }
+  );
+
+  return { runId, created: true };
+}
+
 function runDeleteByIds(db: DB, table: string, column: string, ids: Array<number | string>) {
   const clean = ids
     .map((x) => (typeof x === "number" ? x : String(x).trim()))
@@ -238,7 +417,7 @@ function requireAdminFactory(db: DB) {
 /** -------------------- Announcement Helper -------------------- */
 async function createAnnouncement(
   db: DB,
-  type: "vote_open" | "game_start",
+  type: "vote_open" | "game_start" | "custom_game_result",
   title: string,
   content: string,
   payload: any
@@ -275,6 +454,108 @@ async function createAnnouncement(
      VALUES (?, ?, ?, ?, ?)`,
     [type, title, content, payloadJson, now()]
   );
+}
+
+async function ensureColumn(db: DB, table: string, column: string, typeSql: string) {
+  if (!/^[a-zA-Z0-9_]+$/.test(table) || !/^[a-zA-Z0-9_]+$/.test(column)) return;
+  try {
+    await dbRun(db, `ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`);
+  } catch {
+    // ignore duplicate column / unsupported alter error
+  }
+}
+
+async function tableExists(db: DB, tableName: string) {
+  try {
+    const row = await dbGet(
+      db,
+      `SELECT name FROM sqlite_master WHERE type='table' AND name = ?`,
+      [tableName]
+    );
+    return !!row?.name;
+  } catch {
+    return false;
+  }
+}
+
+async function buildPlayerWorldSnapshot(db: DB, userId: number) {
+  const user = await dbGet(
+    db,
+    `
+      SELECT
+        id, name, age, role, faction, mentalRank, physicalRank, gold, ability,
+        spiritName, spiritType, spiritIntimacy, spiritLevel, spiritImageUrl, spiritAppearance,
+        avatarUrl, status, deathDescription, profileText, currentLocation, homeLocation, job,
+        hp, maxHp, mp, maxMp, mentalProgress, workCount, trainCount, fury, guideStability, partyId
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [userId]
+  );
+
+  const inventory = (await tableExists(db, "inventory"))
+    ? await dbAll(
+        db,
+        `
+          SELECT name, description, qty, itemType, effectValue
+          FROM inventory
+          WHERE userId = ?
+          ORDER BY id ASC
+        `,
+        [userId]
+      )
+    : [];
+
+  const skills = (await tableExists(db, "user_skills"))
+    ? await dbAll(
+        db,
+        `
+          SELECT
+            us.skillId,
+            us.level,
+            s.name,
+            s.faction,
+            s.tier
+          FROM user_skills us
+          LEFT JOIN skills s ON s.id = us.skillId
+          WHERE us.userId = ?
+          ORDER BY us.id ASC
+        `,
+        [userId]
+      )
+    : [];
+
+  const guildBank =
+    (await tableExists(db, "guild_bank_accounts"))
+      ? await dbGet(
+          db,
+          `
+            SELECT balance, lastInterestDate
+            FROM guild_bank_accounts
+            WHERE userId = ?
+            LIMIT 1
+          `,
+          [userId]
+        )
+      : null;
+
+  return {
+    capturedAt: now(),
+    user: user || null,
+    inventory,
+    skills,
+    guildBank: guildBank || null,
+  };
+}
+
+function formatSettlementAnnouncement(gameTitle: string, mapName: string, rank: Array<{ rank: number; name: string; score: number }>) {
+  const header = `${gameTitle} 已结算，地图【${mapName || "未命名地图"}】本局排名如下：`;
+  if (!Array.isArray(rank) || rank.length === 0) {
+    return `${header}\n本局暂无有效积分记录。`;
+  }
+  const topLines = rank.slice(0, 10).map((item) => `#${item.rank} ${item.name} ${item.score}分`);
+  return `${header}\n${topLines.join("\n")}`;
 }
 
 /** -------------------- Review Quorum (for custom game) -------------------- */
@@ -547,6 +828,9 @@ async function ensureTables(db: DB) {
     await dbRun(db, ddl);
   }
 
+  await ensureColumn(db, "custom_game_run_players", "world_snapshot", "TEXT");
+  await ensureColumn(db, "custom_game_run_players", "returned_at", "TEXT");
+
   await dbRun(db, `CREATE INDEX IF NOT EXISTS idx_custom_games_creator ON custom_games(creator_user_id)`);
   await dbRun(db, `CREATE INDEX IF NOT EXISTS idx_custom_maps_game ON custom_game_maps(game_id)`);
   await dbRun(db, `CREATE INDEX IF NOT EXISTS idx_custom_runs_game_status ON custom_game_runs(game_id, status)`);
@@ -579,6 +863,7 @@ async function getLatestRunningRun(db: DB) {
 /** -------------------- Router -------------------- */
 export function createCustomGameRouter(db: DB) {
   const router = Router();
+  const getReqUser = getReqUserFactory(db);
   const requireAuth = requireAuthFactory(db);
   const requireAdmin = requireAdminFactory(db);
 
@@ -822,6 +1107,24 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
+  router.get("/admin/review/votes/queue", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await dbAll(
+        db,
+        `
+          SELECT *
+          FROM custom_games
+          WHERE status IN ('ready_for_start', 'ready_for_vote', 'vote_failed')
+             OR vote_status = 'open'
+          ORDER BY datetime(updated_at) DESC, id DESC
+        `
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "query failed" });
+    }
+  });
+
   router.delete("/admin/review/game/:gameId", requireAdmin, async (req, res) => {
     try {
       const gameId = Number(req.params.gameId || 0);
@@ -998,17 +1301,23 @@ export function createCustomGameRouter(db: DB) {
       if (!game) return res.status(404).json({ message: "game not found" });
 
       // 只有会签通过后才能进入开局投票
-      if (!["ready_for_vote", "ready_for_start"].includes(String(game.status))) {
-        return res.status(400).json({ message: "game not in ready_for_vote/ready_for_start" });
+      if (!["ready_for_vote", "ready_for_start", "vote_failed"].includes(String(game.status))) {
+        return res.status(400).json({ message: "game not in ready_for_vote/ready_for_start/vote_failed" });
+      }
+      if (String(game.vote_status || "") === "open") {
+        return res.status(400).json({ message: "vote already open" });
       }
 
       const openAt = now();
       const endAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
 
+      await dbRun(db, `DELETE FROM custom_game_votes WHERE game_id = ?`, [gameId]);
+
       await dbRun(
         db,
         `UPDATE custom_games
-            SET vote_status = 'open',
+            SET status = 'ready_for_vote',
+                vote_status = 'open',
                 vote_opened_at = ?,
                 vote_ends_at = ?,
                 updated_at = ?
@@ -1027,6 +1336,145 @@ export function createCustomGameRouter(db: DB) {
       res.json({ message: "vote opened", voteEndsAt: endAt });
     } catch (e: any) {
       res.status(500).json({ message: e?.message || "close vote failed" });
+    }
+  });
+
+  router.get("/:id/vote/status", async (req, res) => {
+    try {
+      const gameId = Number(req.params.id);
+      const game = await dbGet(db, `SELECT id FROM custom_games WHERE id = ? LIMIT 1`, [gameId]);
+      if (!game) return res.status(404).json({ message: "game not found" });
+
+      const user = getReqUser(req);
+      const snapshot = await getVoteSnapshot(db, gameId, user?.id);
+      res.json(snapshot);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "vote status failed" });
+    }
+  });
+
+  router.post("/:id/vote/cast", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).authUser as AuthUser;
+      const gameId = Number(req.params.id);
+      const vote = Number(req.body?.vote);
+      if (vote !== 0 && vote !== 1) {
+        return res.status(400).json({ message: "vote must be 0 or 1" });
+      }
+
+      const game = await dbGet(db, `SELECT * FROM custom_games WHERE id = ? LIMIT 1`, [gameId]);
+      if (!game) return res.status(404).json({ message: "game not found" });
+      if (String(game.vote_status || "") !== "open") {
+        return res.status(400).json({ message: "vote is not open" });
+      }
+      if (game.vote_ends_at && Number.isFinite(Date.parse(String(game.vote_ends_at))) && Date.parse(String(game.vote_ends_at)) <= Date.now()) {
+        return res.status(400).json({ message: "vote has ended" });
+      }
+
+      const ts = now();
+      await dbRun(
+        db,
+        `
+          INSERT INTO custom_game_votes(game_id, user_id, vote, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(game_id, user_id) DO UPDATE SET
+            vote = excluded.vote,
+            updated_at = excluded.updated_at
+        `,
+        [gameId, user.id, vote, ts, ts]
+      );
+
+      const snapshot = await getVoteSnapshot(db, gameId, user.id);
+      res.json({ message: "vote cast", ...snapshot });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "vote cast failed" });
+    }
+  });
+
+  router.post("/:id/vote/close-and-judge", requireAdmin, async (req, res) => {
+    try {
+      const gameId = Number(req.params.id);
+      const game = await dbGet(db, `SELECT * FROM custom_games WHERE id = ? LIMIT 1`, [gameId]);
+      if (!game) return res.status(404).json({ message: "game not found" });
+      if (String(game.vote_status || "") !== "open") {
+        return res.status(400).json({ message: "vote is not open" });
+      }
+
+      const snapshot = await getVoteSnapshot(db, gameId, null);
+      const passed =
+        snapshot.total > 0 ? snapshot.yesCount * 2 >= snapshot.total : snapshot.yesCount >= snapshot.noCount;
+      const ts = now();
+
+      if (!passed) {
+        await dbRun(
+          db,
+          `
+            UPDATE custom_games
+            SET status = 'vote_failed',
+                vote_status = 'rejected',
+                vote_ends_at = ?,
+                updated_at = ?
+            WHERE id = ?
+          `,
+          [ts, ts, gameId]
+        );
+        return res.json({
+          message: "vote rejected",
+          passed: false,
+          yesCount: snapshot.yesCount,
+          noCount: snapshot.noCount,
+          total: snapshot.total,
+          voteStatus: "rejected",
+        });
+      }
+
+      const mapId = Number(game.current_map_id || 0);
+      const mapRow =
+        (mapId
+          ? await dbGet(db, `SELECT * FROM custom_game_maps WHERE id = ? LIMIT 1`, [mapId])
+          : null) ||
+        (await dbGet(
+          db,
+          `
+            SELECT *
+            FROM custom_game_maps
+            WHERE game_id = ? AND status = 'approved'
+            ORDER BY version DESC, id DESC
+            LIMIT 1
+          `,
+          [gameId]
+        ));
+
+      if (!mapRow) {
+        return res.status(400).json({ message: "approved map not found" });
+      }
+
+      await dbRun(
+        db,
+        `
+          UPDATE custom_games
+          SET vote_status = 'closed',
+              vote_ends_at = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        [ts, ts, gameId]
+      );
+
+      const run = await createCustomGameRun(db, game, mapRow);
+      const finalSnapshot = await getVoteSnapshot(db, gameId, null);
+
+      res.json({
+        message: "vote passed",
+        passed: true,
+        runId: Number(run.runId || 0),
+        yesCount: finalSnapshot.yesCount,
+        noCount: finalSnapshot.noCount,
+        total: finalSnapshot.total,
+        voteStatus: "passed",
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "close and judge failed" });
     }
   });
 
@@ -1074,25 +1522,67 @@ export function createCustomGameRouter(db: DB) {
 
       const existing = await dbGet(
         db,
-        `SELECT id FROM custom_game_run_players WHERE run_id = ? AND user_id = ?`,
+        `SELECT id, world_snapshot, returned_at FROM custom_game_run_players WHERE run_id = ? AND user_id = ?`,
         [run.id, user.id]
       );
 
       if (!existing) {
+        const worldSnapshot = await buildPlayerWorldSnapshot(db, user.id);
         await dbRun(
           db,
           `INSERT INTO custom_game_run_players(
-            run_id, user_id, name, hp, energy, score, alive, joined_at, updated_at
-          ) VALUES (?, ?, ?, 100, 100, 0, 1, ?, ?)`,
-          [run.id, user.id, name, ts, ts]
+            run_id, user_id, name, hp, energy, score, alive, joined_at, updated_at, world_snapshot, returned_at
+          ) VALUES (?, ?, ?, 100, 100, 0, 1, ?, ?, ?, NULL)`,
+          [run.id, user.id, name, ts, ts, toJson(worldSnapshot, {})]
         );
 
         await dbRun(
           db,
           `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
            VALUES (?, ?, 'join', ?, ?, ?)`,
-          [run.id, user.id, `${name} ????`, toJson({ userId: user.id }, {}), ts]
+          [
+            run.id,
+            user.id,
+            `${name} 进入灾厄副本，主世界数据已切换为隔离模式`,
+            toJson({ userId: user.id, isolated: true }, {}),
+            ts,
+          ]
         );
+      } else {
+        const patchSql: string[] = [];
+        const patchParams: any[] = [];
+
+        if (!existing.world_snapshot) {
+          const worldSnapshot = await buildPlayerWorldSnapshot(db, user.id);
+          patchSql.push(`world_snapshot = ?`);
+          patchParams.push(toJson(worldSnapshot, {}));
+        }
+        if (existing.returned_at) {
+          patchSql.push(`returned_at = NULL`);
+        }
+        if (patchSql.length > 0) {
+          patchParams.push(ts, run.id, user.id);
+          await dbRun(
+            db,
+            `UPDATE custom_game_run_players SET ${patchSql.join(", ")}, updated_at = ? WHERE run_id = ? AND user_id = ?`,
+            patchParams
+          );
+        }
+
+        if (existing.returned_at) {
+          await dbRun(
+            db,
+            `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
+             VALUES (?, ?, 'rejoin', ?, ?, ?)`,
+            [
+              run.id,
+              user.id,
+              `${name} 重新进入灾厄副本，继续使用本局临时数据`,
+              toJson({ userId: user.id, resumed: true }, {}),
+              ts,
+            ]
+          );
+        }
       }
 
       res.json({ message: "joined", runId: Number(run.id) });
@@ -1130,13 +1620,14 @@ export function createCustomGameRouter(db: DB) {
 
       const me = await dbGet(
         db,
-        `SELECT score, hp, energy FROM custom_game_run_players WHERE run_id = ? AND user_id = ?`,
+        `SELECT score, hp, energy, returned_at, world_snapshot FROM custom_game_run_players WHERE run_id = ? AND user_id = ?`,
         [run.id, user.id]
       );
 
       const stageConfigs = fromJson<any[]>(run.stage_configs, []);
       const currentStage = Number(run.current_stage || 1);
       const stageMeta = stageConfigs.find((s) => Number(s.index) === currentStage) || null;
+      const worldSnapshot = fromJson<any>(me?.world_snapshot, null as any);
 
       res.json({
         runId: Number(run.id),
@@ -1156,6 +1647,9 @@ export function createCustomGameRouter(db: DB) {
         isJoined: !!me,
         canControl: !!(user.isAdmin || Number(run.creator_user_id) === user.id),
         creatorUserId: Number(run.creator_user_id),
+        worldDataMode: me ? "isolated" : "not_joined",
+        worldSnapshotCapturedAt: worldSnapshot?.capturedAt ? String(worldSnapshot.capturedAt) : null,
+        returnedAt: me?.returned_at ? String(me.returned_at) : null,
       });
     } catch (e: any) {
       res.status(500).json({ message: e?.message || "state failed" });
@@ -1218,6 +1712,53 @@ export function createCustomGameRouter(db: DB) {
     }
   });
 
+  router.post("/:id/run/leave", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).authUser as AuthUser;
+      const gameId = Number(req.params.id);
+      const run = await dbGet(db, `SELECT * FROM custom_game_runs WHERE game_id = ? ORDER BY id DESC LIMIT 1`, [gameId]);
+      if (!run) return res.status(404).json({ message: "run not found" });
+
+      const row = await dbGet(
+        db,
+        `SELECT name, world_snapshot, returned_at FROM custom_game_run_players WHERE run_id = ? AND user_id = ? LIMIT 1`,
+        [run.id, user.id]
+      );
+      if (!row) return res.status(404).json({ message: "player not joined" });
+
+      const ts = now();
+      if (!row.returned_at) {
+        await dbRun(
+          db,
+          `UPDATE custom_game_run_players SET returned_at = ?, updated_at = ? WHERE run_id = ? AND user_id = ?`,
+          [ts, ts, run.id, user.id]
+        );
+        await dbRun(
+          db,
+          `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
+           VALUES (?, ?, 'leave', ?, ?, ?)`,
+          [
+            run.id,
+            user.id,
+            `${String(row.name || user.nickname || user.username || `U${user.id}`)} 返回主世界，原世界数据已恢复`,
+            toJson({ userId: user.id, restored: true }, {}),
+            ts,
+          ]
+        );
+      }
+
+      const worldSnapshot = fromJson<any>(row.world_snapshot, null as any);
+      res.json({
+        success: true,
+        restored: true,
+        returnedAt: row.returned_at ? String(row.returned_at) : ts,
+        worldSnapshotCapturedAt: worldSnapshot?.capturedAt ? String(worldSnapshot.capturedAt) : null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "leave run failed" });
+    }
+  });
+
   router.get("/:id/run/rank", requireAuth, async (req, res) => {
     try {
       const gameId = Number(req.params.id);
@@ -1235,6 +1776,38 @@ export function createCustomGameRouter(db: DB) {
       res.json(rows.map((r, i) => ({ ...r, rank: i + 1 })));
     } catch (e: any) {
       res.status(500).json({ message: e?.message || "rank failed" });
+    }
+  });
+
+  router.get("/leaderboard", requireAuth, async (req, res) => {
+    try {
+      const limit = Math.max(1, Math.min(100, Number(req.query.limit || 30)));
+      const rows = await dbAll(
+        db,
+        `
+          SELECT
+            s.user_id as userId,
+            u.name as name,
+            s.total_points as totalPoints,
+            s.total_runs as totalRuns,
+            s.total_wins as totalWins,
+            s.updated_at as updatedAt
+          FROM custom_game_player_stats s
+          LEFT JOIN users u ON u.id = s.user_id
+          ORDER BY s.total_points DESC, s.total_wins DESC, s.total_runs ASC, s.user_id ASC
+          LIMIT ?
+        `,
+        [limit]
+      );
+      res.json(
+        rows.map((row, index) => ({
+          ...row,
+          name: String(row?.name || `U${row?.userId || 0}`),
+          rank: index + 1,
+        }))
+      );
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "leaderboard failed" });
     }
   });
 
@@ -1447,6 +2020,23 @@ export function createCustomGameRouter(db: DB) {
         `INSERT INTO custom_game_run_events(run_id, actor_user_id, event_type, message, payload, created_at)
          VALUES (?, ?, 'run_end', ?, ?, ?)`,
         [run.id, user.id, "副本已结算", toJson({ rank }, {}), endAt]
+      );
+
+      const game = await dbGet(db, `SELECT title FROM custom_games WHERE id = ? LIMIT 1`, [gameId]);
+      const mapSnapshot = fromJson<any>(run.map_snapshot, {});
+      const gameTitle = String(game?.title || `灾厄游戏#${gameId}`);
+      const mapName = String(mapSnapshot?.mapName || "创作者地图");
+      await createAnnouncement(
+        db,
+        "custom_game_result",
+        `${gameTitle} 结算公报`,
+        formatSettlementAnnouncement(gameTitle, mapName, rank),
+        {
+          gameId,
+          runId: Number(run.id),
+          mapName,
+          rank,
+        }
       );
 
       res.json({ runId: Number(run.id), endedAt: endAt, result: "settled", rank });

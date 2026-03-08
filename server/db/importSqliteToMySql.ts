@@ -1,10 +1,13 @@
 import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import { createMySqlDatabase, createSqliteDatabase } from './client';
 import { runSchema } from './schema';
 import { runMigrate } from './migrate';
 import { runSeed } from './seed';
+
+dotenv.config();
 
 const require = createRequire(import.meta.url);
 const SyncMySql = require('sync-mysql');
