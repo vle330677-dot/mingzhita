@@ -38,8 +38,8 @@ const ADVENTURER_LEVELS = [
 ] as const;
 const OBSERVER_JOBS = new Set(['观察者首领', '情报搜集员', '情报处理员']);
 
-function ensureTables(db: any) {
-  db.exec(`
+async function ensureTables(db: any) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS inventory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
@@ -182,34 +182,34 @@ function isObserverJob(jobRaw: any) {
   return OBSERVER_JOBS.has(String(jobRaw || '').trim());
 }
 
-function getUser(db: any, userId: number) {
-  return db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+async function getUser(db: any, userId: number) {
+  return await db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
 }
 
-function ensureBankAccount(db: any, userId: number) {
-  db.prepare(`
+async function ensureBankAccount(db: any, userId: number) {
+  await db.prepare(`
     INSERT OR IGNORE INTO guild_bank_accounts(userId, balance, lastInterestDate, updatedAt)
     VALUES (?, 0, '', ?)
   `).run(userId, nowIso());
-  return db.prepare(`SELECT * FROM guild_bank_accounts WHERE userId = ? LIMIT 1`).get(userId) as AnyRow;
+  return await db.prepare(`SELECT * FROM guild_bank_accounts WHERE userId = ? LIMIT 1`).get(userId) as AnyRow;
 }
 
-function addInventoryItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
-  const row = db
+async function addInventoryItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
+  const row = await db
     .prepare(`SELECT id FROM inventory WHERE userId = ? AND name = ? AND itemType = ? LIMIT 1`)
     .get(userId, name, itemType) as AnyRow | undefined;
   if (row?.id) {
-    db.prepare(`UPDATE inventory SET qty = qty + ? WHERE id = ?`).run(Math.max(1, qty), Number(row.id));
+    await db.prepare(`UPDATE inventory SET qty = qty + ? WHERE id = ?`).run(Math.max(1, qty), Number(row.id));
     return;
   }
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO inventory(userId, name, description, qty, itemType, effectValue, createdAt)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(userId, name, description, Math.max(1, qty), itemType, Number(effectValue || 0), nowIso());
 }
 
-function markDailyLimit(db: any, userId: number, action: string, add = 1, day = todayKey()) {
-  db.prepare(`
+async function markDailyLimit(db: any, userId: number, action: string, add = 1, day = todayKey()) {
+  await db.prepare(`
     INSERT INTO guild_daily_limits(userId, dateKey, action, count, updatedAt)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(userId, dateKey, action)
@@ -217,8 +217,8 @@ function markDailyLimit(db: any, userId: number, action: string, add = 1, day = 
   `).run(userId, day, action, Math.max(1, add), nowIso());
 }
 
-function getDailyCount(db: any, userId: number, action: string, day = todayKey()) {
-  const row = db.prepare(`
+async function getDailyCount(db: any, userId: number, action: string, day = todayKey()) {
+  const row = await db.prepare(`
     SELECT count
     FROM guild_daily_limits
     WHERE userId = ? AND dateKey = ? AND action = ?
@@ -245,21 +245,21 @@ function levelByScore(score: number): (typeof ADVENTURER_LEVELS)[number] {
   return picked;
 }
 
-function ensureAdventurerStats(db: any, userId: number) {
-  db.prepare(`
+async function ensureAdventurerStats(db: any, userId: number) {
+  await db.prepare(`
     INSERT OR IGNORE INTO guild_adventurer_stats(
       userId, level, title, score, completedTotal,
       completedD, completedC, completedB, completedA, completedS, updatedAt
     )
     VALUES (?, 1, '见习冒险者', 0, 0, 0, 0, 0, 0, 0, ?)
   `).run(userId, nowIso());
-  return db.prepare(`SELECT * FROM guild_adventurer_stats WHERE userId = ? LIMIT 1`).get(userId) as AnyRow;
+  return await db.prepare(`SELECT * FROM guild_adventurer_stats WHERE userId = ? LIMIT 1`).get(userId) as AnyRow;
 }
 
-function archiveAuctionToObserverLibrary(db: any, row: AnyRow, finalPrice: number, winnerId: number, winnerName: string) {
+async function archiveAuctionToObserverLibrary(db: any, row: AnyRow, finalPrice: number, winnerId: number, winnerName: string) {
   const sellerId = Number(row.sellerUserId || 0);
-  const sellerName = sellerId > 0 ? String((getUser(db, sellerId)?.name || '')) : '';
-  db.prepare(`
+  const sellerName = sellerId > 0 ? String((await getUser(db, sellerId))?.name || '') : '';
+  await db.prepare(`
     INSERT INTO observer_library_auction_logs(
       auctionId, channel, title, itemName, itemDescription, itemTier, itemType, finalPrice,
       winnerUserId, winnerName, sellerUserId, sellerName, status, archivedAt, extraJson
@@ -290,7 +290,7 @@ function archiveAuctionToObserverLibrary(db: any, row: AnyRow, finalPrice: numbe
   );
 }
 
-function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
+async function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
   const tavernSql = `
     SELECT id, name, description, itemType, tier, effectValue, price
     FROM items
@@ -336,9 +336,9 @@ function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
     LIMIT 1
   `;
   const sql = mode === 'tavern' ? tavernSql : mode === 'bank' ? bankSql : dailySql;
-  const row = db.prepare(sql).get() as AnyRow | undefined;
+  const row = await db.prepare(sql).get() as AnyRow | undefined;
   if (row) return row;
-  const fallback = db.prepare(fallbackSql).get() as AnyRow | undefined;
+  const fallback = await db.prepare(fallbackSql).get() as AnyRow | undefined;
   if (fallback) return fallback;
   return {
     id: 0,
@@ -351,7 +351,7 @@ function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
   };
 }
 
-function createAuction(
+async function createAuction(
   db: any,
   payload: {
     channel: string;
@@ -371,7 +371,7 @@ function createAuction(
 ) {
   const endAt = afterSecondsIso(Math.max(10, toInt(payload.durationSec)));
   const now = nowIso();
-  const ret = db.prepare(`
+  const ret = await db.prepare(`
     INSERT INTO guild_auctions(
       channel, title, sourceType, sellerUserId, itemId, itemName, itemDescription,
       itemType, itemTier, effectValue, startPrice, minIncrement, currentPrice,
@@ -398,9 +398,9 @@ function createAuction(
   return Number(ret.lastInsertRowid || 0);
 }
 
-function settleEndedAuctions(db: any) {
+async function settleEndedAuctions(db: any) {
   const now = nowIso();
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT *
     FROM guild_auctions
     WHERE status = 'open'
@@ -414,7 +414,7 @@ function settleEndedAuctions(db: any) {
   for (const auction of rows) {
     const auctionId = Number(auction.id || 0);
     if (!auctionId) continue;
-    const bids = db.prepare(`
+    const bids = await db.prepare(`
       SELECT id, userId, bidAmount
       FROM guild_auction_bids
       WHERE auctionId = ?
@@ -427,7 +427,7 @@ function settleEndedAuctions(db: any) {
       const bidderId = Number(bid.userId || 0);
       const bidAmount = Math.max(0, Number(bid.bidAmount || 0));
       if (!bidderId || !bidAmount) continue;
-      const bidder = getUser(db, bidderId);
+      const bidder = await getUser(db, bidderId);
       if (!bidder) continue;
       if (Number(bidder.gold || 0) < bidAmount) continue;
       winner = bidder;
@@ -439,9 +439,9 @@ function settleEndedAuctions(db: any) {
     const sourceType = String(auction.sourceType || 'npc');
 
     if (!winner || finalPrice <= 0) {
-      const txExpire = db.transaction(() => {
+      const txExpire = db.transaction(async () => {
         if (sellerUserId > 0 && (sourceType === 'player' || sourceType === 'custom')) {
-          addInventoryItem(
+          await addInventoryItem(
             db,
             sellerUserId,
             String(auction.itemName || '神秘道具'),
@@ -451,30 +451,30 @@ function settleEndedAuctions(db: any) {
             Number(auction.effectValue || 0)
           );
         }
-        db.prepare(`
+        await db.prepare(`
           UPDATE guild_auctions
           SET status = 'expired',
               updatedAt = ?
           WHERE id = ?
         `).run(nowIso(), auctionId);
-        archiveAuctionToObserverLibrary(db, { ...auction, status: 'expired' }, 0, 0, '');
+        await archiveAuctionToObserverLibrary(db, { ...auction, status: 'expired' }, 0, 0, '');
       });
-      txExpire();
+      await txExpire();
       continue;
     }
 
-    const txClose = db.transaction(() => {
+    const txClose = db.transaction(async () => {
       const winnerId = Number(winner?.id || 0);
-      db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(finalPrice, nowIso(), winnerId);
+      await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(finalPrice, nowIso(), winnerId);
 
       if (sellerUserId > 0 && sellerUserId !== winnerId && (sourceType === 'player' || sourceType === 'custom')) {
         const sellerIncome = Math.max(0, Math.floor(finalPrice * (1 - PLAYER_SALE_TAX_RATE)));
         if (sellerIncome > 0) {
-          db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(sellerIncome, nowIso(), sellerUserId);
+          await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(sellerIncome, nowIso(), sellerUserId);
         }
       }
 
-      addInventoryItem(
+      await addInventoryItem(
         db,
         winnerId,
         String(auction.itemName || '神秘道具'),
@@ -484,7 +484,7 @@ function settleEndedAuctions(db: any) {
         Number(auction.effectValue || 0)
       );
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE guild_auctions
         SET status = 'closed',
             highestBidderId = ?,
@@ -492,17 +492,17 @@ function settleEndedAuctions(db: any) {
             updatedAt = ?
         WHERE id = ?
       `).run(winnerId, finalPrice, nowIso(), auctionId);
-      archiveAuctionToObserverLibrary(db, { ...auction, status: 'closed' }, finalPrice, winnerId, String(winner?.name || ''));
+      await archiveAuctionToObserverLibrary(db, { ...auction, status: 'closed' }, finalPrice, winnerId, String(winner?.name || ''));
     });
-    txClose();
+    await txClose();
   }
 }
 
-function ensureAutoAuctions(db: any) {
+async function ensureAutoAuctions(db: any) {
   const now = nowIso();
   const day = todayKey();
 
-  const openTavern = db.prepare(`
+  const openTavern = await db.prepare(`
     SELECT id
     FROM guild_auctions
     WHERE channel = 'tavern'
@@ -511,9 +511,9 @@ function ensureAutoAuctions(db: any) {
     LIMIT 1
   `).get(now) as AnyRow | undefined;
   if (!openTavern?.id) {
-    const item = pickItemForAuction(db, 'tavern');
+    const item = await pickItemForAuction(db, 'tavern');
     const startPrice = Math.max(50, Number([50, 100][Math.floor(Math.random() * 2)] || 50));
-    createAuction(db, {
+    await createAuction(db, {
       channel: 'tavern',
       title: '酒馆临时竞拍（90秒）',
       sourceType: 'npc',
@@ -529,9 +529,9 @@ function ensureAutoAuctions(db: any) {
     });
   }
 
-  if (getDailyCount(db, 0, 'bank_daily_auction', day) <= 0) {
-    const item = pickItemForAuction(db, 'bank');
-    createAuction(db, {
+  if (await getDailyCount(db, 0, 'bank_daily_auction', day) <= 0) {
+    const item = await pickItemForAuction(db, 'bank');
+    await createAuction(db, {
       channel: 'bank_daily',
       title: '银行每日珍稀竞拍（300秒）',
       sourceType: 'npc',
@@ -545,12 +545,12 @@ function ensureAutoAuctions(db: any) {
       minIncrement: 15,
       durationSec: BANK_RARE_AUCTION_SECONDS
     });
-    markDailyLimit(db, 0, 'bank_daily_auction', 1, day);
+    await markDailyLimit(db, 0, 'bank_daily_auction', 1, day);
   }
 
-  if (getDailyCount(db, 0, 'auction_house_daily', day) <= 0) {
-    const item = pickItemForAuction(db, 'daily');
-    createAuction(db, {
+  if (await getDailyCount(db, 0, 'auction_house_daily', day) <= 0) {
+    const item = await pickItemForAuction(db, 'daily');
+    await createAuction(db, {
       channel: 'auction_house_daily',
       title: '拍卖行每日系统上新（24h）',
       sourceType: 'npc',
@@ -564,12 +564,12 @@ function ensureAutoAuctions(db: any) {
       minIncrement: 10,
       durationSec: AUCTION_HOUSE_DAILY_SECONDS
     });
-    markDailyLimit(db, 0, 'auction_house_daily', 1, day);
+    await markDailyLimit(db, 0, 'auction_house_daily', 1, day);
   }
 }
 
-function getActiveStall(db: any, userId: number) {
-  const row = db.prepare(`
+async function getActiveStall(db: any, userId: number) {
+  const row = await db.prepare(`
     SELECT id, userId, expiresAt, status, createdAt, updatedAt
     FROM guild_market_stalls
     WHERE userId = ?
@@ -578,14 +578,14 @@ function getActiveStall(db: any, userId: number) {
   if (!row) return null;
   const expired = Date.parse(String(row.expiresAt || '')) <= Date.now();
   if (expired && String(row.status || '') === 'active') {
-    db.prepare(`UPDATE guild_market_stalls SET status = 'expired', updatedAt = ? WHERE id = ?`).run(nowIso(), Number(row.id));
+    await db.prepare(`UPDATE guild_market_stalls SET status = 'expired', updatedAt = ? WHERE id = ?`).run(nowIso(), Number(row.id));
     return { ...row, status: 'expired' };
   }
   return row;
 }
 
-function ensureCommissionSeeds(db: any) {
-  const hasOpen = db.prepare(`SELECT id FROM guild_commissions WHERE status = 'open' LIMIT 1`).get() as AnyRow | undefined;
+async function ensureCommissionSeeds(db: any) {
+  const hasOpen = await db.prepare(`SELECT id FROM guild_commissions WHERE status = 'open' LIMIT 1`).get() as AnyRow | undefined;
   if (hasOpen?.id) return;
 
   const now = nowIso();
@@ -635,12 +635,12 @@ function ensureCommissionSeeds(db: any) {
     VALUES (0, '公会事务员', ?, ?, ?, ?, ?, 'open', 0, '', '', '', ?, ?)
   `);
   for (const x of seedRows) {
-    stmt.run(x.title, x.content, x.grade, x.kind, x.rewardGold, now, now);
+    await stmt.run(x.title, x.content, x.grade, x.kind, x.rewardGold, now, now);
   }
 }
 
-function ensureObserverBookSeeds(db: any) {
-  const hasAny = db.prepare(`SELECT id FROM observer_library_books LIMIT 1`).get() as AnyRow | undefined;
+async function ensureObserverBookSeeds(db: any) {
+  const hasAny = await db.prepare(`SELECT id FROM observer_library_books LIMIT 1`).get() as AnyRow | undefined;
   if (hasAny?.id) return;
   const now = nowIso();
   const seedRows = [
@@ -660,34 +660,34 @@ function ensureObserverBookSeeds(db: any) {
     VALUES (?, ?, 0, ?, ?, ?)
   `);
   for (const row of seedRows) {
-    stmt.run(String(row.title || ''), String(row.content || ''), String(row.authorName || ''), now, now);
+    await stmt.run(String(row.title || ''), String(row.content || ''), String(row.authorName || ''), now, now);
   }
 }
 
-export function createGuildRouter(ctx: AppContext) {
+export async function createGuildRouter(ctx: AppContext) {
   const r = Router();
   const { db } = ctx;
 
-  ensureTables(db);
-  settleEndedAuctions(db);
-  ensureAutoAuctions(db);
-  ensureCommissionSeeds(db);
-  ensureObserverBookSeeds(db);
+  await ensureTables(db);
+  await settleEndedAuctions(db);
+  await ensureAutoAuctions(db);
+  await ensureCommissionSeeds(db);
+  await ensureObserverBookSeeds(db);
 
-  r.get('/guild/state', (req, res) => {
+  r.get('/guild/state', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
-      settleEndedAuctions(db);
-      ensureAutoAuctions(db);
+      await settleEndedAuctions(db);
+      await ensureAutoAuctions(db);
 
-      const bank = ensureBankAccount(db, userId);
-      const stall = getActiveStall(db, userId);
+      const bank = await ensureBankAccount(db, userId);
+      const stall = await getActiveStall(db, userId);
 
-      const openRows = db.prepare(`
+      const openRows = await db.prepare(`
         SELECT a.*, hb.name AS highestBidderName, su.name AS sellerName
         FROM guild_auctions a
         LEFT JOIN users hb ON hb.id = a.highestBidderId
@@ -697,7 +697,7 @@ export function createGuildRouter(ctx: AppContext) {
         LIMIT 80
       `).all() as AnyRow[];
 
-      const recentRows = db.prepare(`
+      const recentRows = await db.prepare(`
         SELECT a.*, hb.name AS highestBidderName, su.name AS sellerName
         FROM guild_auctions a
         LEFT JOIN users hb ON hb.id = a.highestBidderId
@@ -707,7 +707,7 @@ export function createGuildRouter(ctx: AppContext) {
         LIMIT 1
       `).all() as AnyRow[];
 
-      const myBidRows = db.prepare(`
+      const myBidRows = await db.prepare(`
         SELECT auctionId, MAX(bidAmount) AS myBid
         FROM guild_auction_bids
         WHERE userId = ?
@@ -740,7 +740,7 @@ export function createGuildRouter(ctx: AppContext) {
         secondsLeft: Math.max(0, Math.floor((Date.parse(String(row.endAt || '')) - Date.now()) / 1000))
       });
 
-      const lastAlley = db.prepare(`
+      const lastAlley = await db.prepare(`
         SELECT id, resultType, resultText, rolledAt
         FROM guild_alley_logs
         WHERE userId = ?
@@ -775,7 +775,7 @@ export function createGuildRouter(ctx: AppContext) {
           lastResultText: String(lastAlley?.resultText || '')
         },
         limits: {
-          listingToday: getDailyCount(db, userId, 'auction_player_listing'),
+          listingToday: await getDailyCount(db, userId, 'auction_player_listing'),
           listingMax: 1
         },
         permissions: {
@@ -788,25 +788,25 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/bank/deposit', (req, res) => {
+  r.post('/guild/bank/deposit', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const amount = clamp(toInt(req.body?.amount), 1, 99999999);
       if (!userId || !amount) return res.status(400).json({ success: false, message: 'userId/amount invalid' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
       if (Number(user.gold || 0) < amount) return res.status(400).json({ success: false, message: '金币不足，无法存入' });
 
-      const tx = db.transaction(() => {
-        ensureBankAccount(db, userId);
-        db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), userId);
-        db.prepare(`UPDATE guild_bank_accounts SET balance = balance + ?, updatedAt = ? WHERE userId = ?`).run(amount, nowIso(), userId);
+      const tx = db.transaction(async () => {
+        await ensureBankAccount(db, userId);
+        await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), userId);
+        await db.prepare(`UPDATE guild_bank_accounts SET balance = balance + ?, updatedAt = ? WHERE userId = ?`).run(amount, nowIso(), userId);
       });
-      tx();
+      await tx();
 
-      const bank = ensureBankAccount(db, userId);
-      const freshUser = getUser(db, userId);
+      const bank = await ensureBankAccount(db, userId);
+      const freshUser = await getUser(db, userId);
       res.json({
         success: true,
         message: `已存入 ${amount}G`,
@@ -818,25 +818,25 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/bank/withdraw', (req, res) => {
+  r.post('/guild/bank/withdraw', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const amount = clamp(toInt(req.body?.amount), 1, 99999999);
       if (!userId || !amount) return res.status(400).json({ success: false, message: 'userId/amount invalid' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
-      const bank = ensureBankAccount(db, userId);
+      const bank = await ensureBankAccount(db, userId);
       if (Number(bank.balance || 0) < amount) return res.status(400).json({ success: false, message: '银行余额不足，无法取出' });
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE guild_bank_accounts SET balance = balance - ?, updatedAt = ? WHERE userId = ?`).run(amount, nowIso(), userId);
-        db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), userId);
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE guild_bank_accounts SET balance = balance - ?, updatedAt = ? WHERE userId = ?`).run(amount, nowIso(), userId);
+        await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), userId);
       });
-      tx();
+      await tx();
 
-      const freshBank = ensureBankAccount(db, userId);
-      const freshUser = getUser(db, userId);
+      const freshBank = await ensureBankAccount(db, userId);
+      const freshUser = await getUser(db, userId);
       res.json({
         success: true,
         message: `已取出 ${amount}G`,
@@ -848,16 +848,16 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/bank/interest/claim', (req, res) => {
+  r.post('/guild/bank/interest/claim', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId invalid' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
-      const bank = ensureBankAccount(db, userId);
+      const bank = await ensureBankAccount(db, userId);
       const day = todayKey();
-      if (getDailyCount(db, userId, 'bank_interest_claim', day) > 0) {
+      if (await getDailyCount(db, userId, 'bank_interest_claim', day) > 0) {
         return res.status(409).json({ success: false, message: '今日利息已领取' });
       }
 
@@ -865,16 +865,16 @@ export function createGuildRouter(ctx: AppContext) {
       if (balance <= 0) return res.status(400).json({ success: false, message: '银行余额为 0，无法结算利息' });
 
       const interest = Math.max(1, Math.floor(balance * BANK_INTEREST_RATE));
-      db.prepare(`
+      await db.prepare(`
         UPDATE guild_bank_accounts
         SET balance = balance + ?,
             lastInterestDate = ?,
             updatedAt = ?
         WHERE userId = ?
       `).run(interest, day, nowIso(), userId);
-      markDailyLimit(db, userId, 'bank_interest_claim', 1, day);
+      await markDailyLimit(db, userId, 'bank_interest_claim', 1, day);
 
-      const fresh = ensureBankAccount(db, userId);
+      const fresh = await ensureBankAccount(db, userId);
       res.json({
         success: true,
         message: `今日利息到账 ${interest}G（0.1%）`,
@@ -886,15 +886,15 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/stalls/rent', (req, res) => {
+  r.post('/guild/stalls/rent', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId invalid' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
-      const active = getActiveStall(db, userId);
+      const active = await getActiveStall(db, userId);
       if (active && String(active.status || '') === 'active' && Date.parse(String(active.expiresAt || '')) > Date.now()) {
         return res.json({
           success: true,
@@ -908,18 +908,18 @@ export function createGuildRouter(ctx: AppContext) {
       }
 
       const expiresAt = afterSecondsIso(24 * 3600);
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(STALL_RENT_GOLD, nowIso(), userId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(STALL_RENT_GOLD, nowIso(), userId);
+        await db.prepare(`
           INSERT INTO guild_market_stalls(userId, expiresAt, status, createdAt, updatedAt)
           VALUES (?, ?, 'active', ?, ?)
           ON CONFLICT(userId)
           DO UPDATE SET expiresAt = excluded.expiresAt, status = 'active', updatedAt = excluded.updatedAt
         `).run(userId, expiresAt, nowIso(), nowIso());
       });
-      tx();
+      await tx();
 
-      const freshUser = getUser(db, userId);
+      const freshUser = await getUser(db, userId);
       res.json({
         success: true,
         message: `租摊成功，已扣除 ${STALL_RENT_GOLD}G（有效期24小时）`,
@@ -931,7 +931,7 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/auctions/bid', (req, res) => {
+  r.post('/guild/auctions/bid', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const auctionId = Number(req.body?.auctionId || 0);
@@ -940,17 +940,17 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'userId/auctionId/bidAmount invalid' });
       }
 
-      settleEndedAuctions(db);
-      ensureAutoAuctions(db);
+      await settleEndedAuctions(db);
+      await ensureAutoAuctions(db);
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
-      const auction = db.prepare(`SELECT * FROM guild_auctions WHERE id = ? LIMIT 1`).get(auctionId) as AnyRow | undefined;
+      const auction = await db.prepare(`SELECT * FROM guild_auctions WHERE id = ? LIMIT 1`).get(auctionId) as AnyRow | undefined;
       if (!auction) return res.status(404).json({ success: false, message: '拍卖不存在' });
       if (String(auction.status || '') !== 'open') return res.status(409).json({ success: false, message: '该拍卖已结束' });
 
       if (Date.parse(String(auction.endAt || '')) <= Date.now()) {
-        settleEndedAuctions(db);
+        await settleEndedAuctions(db);
         return res.status(409).json({ success: false, message: '该拍卖已到结算时间' });
       }
 
@@ -965,11 +965,11 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '金币不足，无法喊价' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO guild_auction_bids(auctionId, userId, bidAmount, createdAt)
         VALUES (?, ?, ?, ?)
       `).run(auctionId, userId, bidAmount, nowIso());
-      db.prepare(`
+      await db.prepare(`
         UPDATE guild_auctions
         SET currentPrice = ?,
             highestBidderId = ?,
@@ -988,24 +988,24 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/auctions/listing', (req, res) => {
+  r.post('/guild/auctions/listing', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const mode = String(req.body?.mode || '').trim(); // inventory | custom
       if (!userId || !mode) return res.status(400).json({ success: false, message: 'userId/mode invalid' });
       if (!['inventory', 'custom'].includes(mode)) return res.status(400).json({ success: false, message: 'mode invalid' });
 
-      settleEndedAuctions(db);
-      ensureAutoAuctions(db);
+      await settleEndedAuctions(db);
+      await ensureAutoAuctions(db);
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
-      const stall = getActiveStall(db, userId);
+      const stall = await getActiveStall(db, userId);
       const stallActive = !!stall && String(stall.status || '') === 'active' && Date.parse(String(stall.expiresAt || '')) > Date.now();
       if (!stallActive) return res.status(403).json({ success: false, message: '请先在自由集市租摊后再上架' });
 
       const day = todayKey();
-      if (getDailyCount(db, userId, 'auction_player_listing', day) >= 1) {
+      if (await getDailyCount(db, userId, 'auction_player_listing', day) >= 1) {
         return res.status(409).json({ success: false, message: '每位玩家每天最多上架 1 件物品' });
       }
 
@@ -1020,11 +1020,11 @@ export function createGuildRouter(ctx: AppContext) {
       let effectValue = 0;
       let sourceType: 'player' | 'custom' = mode === 'custom' ? 'custom' : 'player';
 
-      const tx = db.transaction(() => {
+      const tx = db.transaction(async () => {
         if (mode === 'inventory') {
           const inventoryId = Number(req.body?.inventoryId || 0);
           if (!inventoryId) throw new Error('inventoryId required');
-          const inv = db.prepare(`
+          const inv = await db.prepare(`
             SELECT id, name, description, qty, itemType, effectValue
             FROM inventory
             WHERE id = ? AND userId = ? AND qty > 0
@@ -1041,9 +1041,9 @@ export function createGuildRouter(ctx: AppContext) {
           sourceType = 'player';
 
           if (Number(inv.qty || 1) <= 1) {
-            db.prepare(`DELETE FROM inventory WHERE id = ?`).run(Number(inv.id));
+            await db.prepare(`DELETE FROM inventory WHERE id = ?`).run(Number(inv.id));
           } else {
-            db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id = ?`).run(Number(inv.id));
+            await db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id = ?`).run(Number(inv.id));
           }
         } else {
           sourceType = 'custom';
@@ -1054,10 +1054,10 @@ export function createGuildRouter(ctx: AppContext) {
           itemTier = String(req.body?.itemTier || '中阶').trim() || '中阶';
           effectValue = clamp(toInt(req.body?.effectValue || 0), 0, 9999);
           if (Number(user.gold || 0) < CUSTOM_LISTING_FEE) throw new Error(`自定义上架需支付 ${CUSTOM_LISTING_FEE}G 手续费`);
-          db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(CUSTOM_LISTING_FEE, nowIso(), userId);
+          await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(CUSTOM_LISTING_FEE, nowIso(), userId);
         }
 
-        createAuction(db, {
+        await createAuction(db, {
           channel: 'auction_player',
           title: sourceType === 'custom' ? '玩家自定义寄售' : '玩家寄售',
           sourceType,
@@ -1073,11 +1073,11 @@ export function createGuildRouter(ctx: AppContext) {
           durationSec
         });
 
-        markDailyLimit(db, userId, 'auction_player_listing', 1, day);
+        await markDailyLimit(db, userId, 'auction_player_listing', 1, day);
       });
-      tx();
+      await tx();
 
-      const freshUser = getUser(db, userId);
+      const freshUser = await getUser(db, userId);
       res.json({
         success: true,
         message: sourceType === 'custom'
@@ -1090,11 +1090,11 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/observer/library/books', (req, res) => {
+  r.get('/observer/library/books', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       const limit = clamp(toInt(req.query.limit || 120), 1, 400);
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, title, content, authorUserId, authorName, createdAt, updatedAt
         FROM observer_library_books
         ORDER BY datetime(updatedAt) DESC, id DESC
@@ -1124,11 +1124,11 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/observer/library/books', (req, res) => {
+  r.post('/observer/library/books', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法写入图书馆' });
@@ -1143,13 +1143,13 @@ export function createGuildRouter(ctx: AppContext) {
       const content = rawContent.slice(0, 20000);
       const ts = nowIso();
 
-      const ret = db.prepare(`
+      const ret = await db.prepare(`
         INSERT INTO observer_library_books(title, content, authorUserId, authorName, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(title, content, userId, String(me.name || ''), ts, ts);
 
       const id = Number(ret.lastInsertRowid || 0);
-      const row = db.prepare(`
+      const row = await db.prepare(`
         SELECT id, title, content, authorUserId, authorName, createdAt, updatedAt
         FROM observer_library_books
         WHERE id = ?
@@ -1178,13 +1178,13 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.patch('/observer/library/books/:id', (req, res) => {
+  r.patch('/observer/library/books/:id', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
       if (!id || !userId) return res.status(400).json({ success: false, message: 'id/userId invalid' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法编辑文献' });
@@ -1193,7 +1193,7 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '只有观察者成员可以编辑文献' });
       }
 
-      const row = db.prepare(`
+      const row = await db.prepare(`
         SELECT id, title, content, authorUserId, authorName, createdAt, updatedAt
         FROM observer_library_books
         WHERE id = ?
@@ -1214,13 +1214,13 @@ export function createGuildRouter(ctx: AppContext) {
       const nextContent = hasContent ? String(req.body?.content ?? '').slice(0, 20000) : String(row.content || '');
       const ts = nowIso();
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE observer_library_books
         SET title = ?, content = ?, updatedAt = ?
         WHERE id = ?
       `).run(nextTitle, nextContent, ts, id);
 
-      const fresh = db.prepare(`
+      const fresh = await db.prepare(`
         SELECT id, title, content, authorUserId, authorName, createdAt, updatedAt
         FROM observer_library_books
         WHERE id = ?
@@ -1249,13 +1249,13 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.delete('/observer/library/books/:id', (req, res) => {
+  r.delete('/observer/library/books/:id', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
       if (!id || !userId) return res.status(400).json({ success: false, message: 'id/userId invalid' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法删除文献' });
@@ -1264,23 +1264,23 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '只有观察者成员可以删除文献' });
       }
 
-      const row = db.prepare(`SELECT id, authorUserId FROM observer_library_books WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT id, authorUserId FROM observer_library_books WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: '文献不存在' });
       if (Number(row.authorUserId || 0) !== userId) {
         return res.status(403).json({ success: false, message: '你不能删除别人写的文献' });
       }
 
-      db.prepare(`DELETE FROM observer_library_books WHERE id = ?`).run(id);
+      await db.prepare(`DELETE FROM observer_library_books WHERE id = ?`).run(id);
       res.json({ success: true, message: '文献已删除' });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'delete observer book failed' });
     }
   });
 
-  r.get('/observer/library/auctions', (req, res) => {
+  r.get('/observer/library/auctions', async (req, res) => {
     try {
       const limit = clamp(toInt(req.query.limit || 50), 1, 200);
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, auctionId, channel, title, itemName, itemDescription, itemTier, itemType,
                finalPrice, winnerUserId, winnerName, sellerUserId, sellerName, status, archivedAt
         FROM observer_library_auction_logs
@@ -1312,15 +1312,15 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/guild/commissions', (req, res) => {
+  r.get('/guild/commissions', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
-      const me = userId ? getUser(db, userId) : null;
+      const me = userId ? await getUser(db, userId) : null;
       const myJob = String(me?.job || '');
       const myStatus = String(me?.status || '');
       const isAdventurer = myJob === '冒险者' && ['approved', 'ghost'].includes(myStatus);
 
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, publisherUserId, publisherName, title, content, grade, kind, rewardGold,
                status, assigneeUserId, assigneeName, acceptedAt, completedAt, createdAt, updatedAt
         FROM guild_commissions
@@ -1334,8 +1334,8 @@ export function createGuildRouter(ctx: AppContext) {
       const myAccepted = rows.filter((x) => String(x.status || '') === 'accepted' && Number(x.assigneeUserId || 0) === userId);
       let profile: any = null;
       if (userId) {
-        const statsExisting = db.prepare(`SELECT * FROM guild_adventurer_stats WHERE userId = ? LIMIT 1`).get(userId) as AnyRow | undefined;
-        const stats = statsExisting || (isAdventurer ? ensureAdventurerStats(db, userId) : null);
+        const statsExisting = await db.prepare(`SELECT * FROM guild_adventurer_stats WHERE userId = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+        const stats = statsExisting || (isAdventurer ? await ensureAdventurerStats(db, userId) : null);
         if (stats) {
         const lv = levelByScore(Number(stats.score || 0));
         profile = {
@@ -1357,7 +1357,7 @@ export function createGuildRouter(ctx: AppContext) {
         }
       }
 
-      const board = db.prepare(`
+      const board = await db.prepare(`
         SELECT s.userId, s.level, s.title, s.score, s.completedTotal,
                s.completedD, s.completedC, s.completedB, s.completedA, s.completedS,
                u.name
@@ -1410,7 +1410,7 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/commissions/publish', (req, res) => {
+  r.post('/guild/commissions/publish', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const title = String(req.body?.title || '').trim();
@@ -1419,7 +1419,7 @@ export function createGuildRouter(ctx: AppContext) {
       const kind = normalizeCommissionKind(req.body?.kind);
       if (!userId || !title) return res.status(400).json({ success: false, message: 'userId/title required' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       const status = String(me.status || '');
       if (!['approved', 'ghost'].includes(status)) {
@@ -1435,9 +1435,9 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: `发布该委托至少需要 ${rewardGold}G` });
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(rewardGold, nowIso(), userId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(rewardGold, nowIso(), userId);
+        await db.prepare(`
           INSERT INTO guild_commissions(
             publisherUserId, publisherName, title, content, grade, kind, rewardGold,
             status, assigneeUserId, assigneeName, acceptedAt, completedAt, createdAt, updatedAt
@@ -1455,7 +1455,7 @@ export function createGuildRouter(ctx: AppContext) {
           nowIso()
         );
       });
-      tx();
+      await tx();
 
       res.json({
         success: true,
@@ -1469,13 +1469,13 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/commissions/:id/accept', (req, res) => {
+  r.post('/guild/commissions/:id/accept', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
       if (!id || !userId) return res.status(400).json({ success: false, message: 'id/userId invalid' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法接取委托' });
@@ -1484,11 +1484,11 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '只有职业为冒险者的玩家可以接取委托' });
       }
 
-      const row = db.prepare(`SELECT * FROM guild_commissions WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM guild_commissions WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: '委托不存在' });
       if (String(row.status || '') !== 'open') return res.status(409).json({ success: false, message: '该委托已被接取或已结束' });
 
-      const existingAccepted = db.prepare(`
+      const existingAccepted = await db.prepare(`
         SELECT id
         FROM guild_commissions
         WHERE assigneeUserId = ? AND status = 'accepted'
@@ -1498,7 +1498,7 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(409).json({ success: false, message: '你已有进行中的委托，完成后再接新任务' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE guild_commissions
         SET status = 'accepted',
             assigneeUserId = ?,
@@ -1514,13 +1514,13 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/commissions/:id/complete', (req, res) => {
+  r.post('/guild/commissions/:id/complete', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
       if (!id || !userId) return res.status(400).json({ success: false, message: 'id/userId invalid' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法完成委托' });
@@ -1529,7 +1529,7 @@ export function createGuildRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '只有冒险者可以完成委托' });
       }
 
-      const row = db.prepare(`SELECT * FROM guild_commissions WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM guild_commissions WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: '委托不存在' });
       if (String(row.status || '') !== 'accepted' || Number(row.assigneeUserId || 0) !== userId) {
         return res.status(409).json({ success: false, message: '该委托未处于你的进行中状态' });
@@ -1541,16 +1541,16 @@ export function createGuildRouter(ctx: AppContext) {
       const scoreAdd = Math.max(1, cfg.score * (kind === 'assassination' ? 2 : 1));
       const baseReward = Math.max(cfg.minReward, Number(row.rewardGold || cfg.minReward));
 
-      const prevStats = ensureAdventurerStats(db, userId);
+      const prevStats = await ensureAdventurerStats(db, userId);
       const nextScore = Number(prevStats.score || 0) + scoreAdd;
       const lv = levelByScore(nextScore);
       const rewardBonusRate = lv.rewardBonusRate;
       const finalReward = Math.max(1, Math.round(baseReward * (1 + rewardBonusRate)));
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(finalReward, nowIso(), userId);
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(finalReward, nowIso(), userId);
 
-        db.prepare(`
+        await db.prepare(`
           UPDATE guild_commissions
           SET status = 'completed',
               completedAt = ?,
@@ -1566,7 +1566,7 @@ export function createGuildRouter(ctx: AppContext) {
           S: Number(prevStats.completedS || 0) + (grade === 'S' ? 1 : 0)
         };
 
-        db.prepare(`
+        await db.prepare(`
           UPDATE guild_adventurer_stats
           SET level = ?,
               title = ?,
@@ -1592,9 +1592,9 @@ export function createGuildRouter(ctx: AppContext) {
           userId
         );
       });
-      tx();
+      await tx();
 
-      const freshStats = ensureAdventurerStats(db, userId);
+      const freshStats = await ensureAdventurerStats(db, userId);
       res.json({
         success: true,
         message: `委托完成，获得 ${finalReward}G（等级加成 ${(rewardBonusRate * 100).toFixed(0)}%）`,
@@ -1619,14 +1619,14 @@ export function createGuildRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guild/alley/wander', (req, res) => {
+  r.post('/guild/alley/wander', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId invalid' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
-      const last = db.prepare(`
+      const last = await db.prepare(`
         SELECT rolledAt
         FROM guild_alley_logs
         WHERE userId = ?
@@ -1647,7 +1647,7 @@ export function createGuildRouter(ctx: AppContext) {
 
       const roll = Math.random();
       if (roll < 0.35) {
-        const drop = db.prepare(`
+        const drop = await db.prepare(`
           SELECT id, name, description, itemType, effectValue, tier
           FROM items
           WHERE (
@@ -1661,7 +1661,7 @@ export function createGuildRouter(ctx: AppContext) {
         `).get() as AnyRow | undefined;
 
         if (drop) {
-          addInventoryItem(
+          await addInventoryItem(
             db,
             userId,
             String(drop.name || '神秘道具'),
@@ -1680,23 +1680,23 @@ export function createGuildRouter(ctx: AppContext) {
           };
         } else {
           gainedGold = clamp(Math.floor(Math.random() * 22) + 8, 8, 30);
-          db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(gainedGold, nowIso(), userId);
+          await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(gainedGold, nowIso(), userId);
           resultType = 'gold';
           resultText = `你在小巷捡到了 ${gainedGold}G`;
         }
       } else if (roll < 0.75) {
         gainedGold = clamp(Math.floor(Math.random() * 18) + 6, 6, 24);
-        db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(gainedGold, nowIso(), userId);
+        await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(gainedGold, nowIso(), userId);
         resultType = 'gold';
         resultText = `你在小巷接了个跑腿活，赚到 ${gainedGold}G`;
       }
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO guild_alley_logs(userId, resultType, resultText, rolledAt)
         VALUES (?, ?, ?, ?)
       `).run(userId, resultType, resultText, nowIso());
 
-      const freshUser = getUser(db, userId);
+      const freshUser = await getUser(db, userId);
       res.json({
         success: true,
         message: resultText,

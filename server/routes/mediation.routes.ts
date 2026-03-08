@@ -19,7 +19,7 @@ export function createMediationRouter(ctx: AppContext) {
       }
 
       // 检查是否已有待处理的评理请求
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT * FROM mediation_requests 
         WHERE sessionId = ? AND status = 'pending'
       `).get(sessionId);
@@ -29,7 +29,7 @@ export function createMediationRouter(ctx: AppContext) {
       }
 
       // 创建评理请求
-      const result = db.prepare(`
+      const result = await db.prepare(`
         INSERT INTO mediation_requests 
         (sessionId, requesterUserId, requesterName, targetUserId, targetName, reason, status, reward, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, 'pending', 1000, ?, ?)
@@ -56,13 +56,13 @@ export function createMediationRouter(ctx: AppContext) {
       }
 
       // 检查是否是军队成员
-      const user = db.prepare('SELECT job FROM users WHERE id = ?').get(Number(userId));
+      const user = await db.prepare('SELECT job FROM users WHERE id = ?').get(Number(userId));
       if (!user || !ARMY_JOBS.has(user.job)) {
         return res.status(403).json({ success: false, message: '只有军队成员可以接取评理请求' });
       }
 
       // 获取待处理的评理请求
-      const requests = db.prepare(`
+      const requests = await db.prepare(`
         SELECT * FROM mediation_requests 
         WHERE status = 'pending'
         ORDER BY createdAt ASC
@@ -83,13 +83,13 @@ export function createMediationRouter(ctx: AppContext) {
       const { userId, userName } = req.body;
 
       // 检查是否是军队成员
-      const user = db.prepare('SELECT job FROM users WHERE id = ?').get(userId);
+      const user = await db.prepare('SELECT job FROM users WHERE id = ?').get(userId);
       if (!user || !ARMY_JOBS.has(user.job)) {
         return res.status(403).json({ success: false, message: '只有军队成员可以接取评理请求' });
       }
 
       // 检查请求是否存在且待处理
-      const request = db.prepare(`
+      const request = await db.prepare(`
         SELECT * FROM mediation_requests WHERE id = ? AND status = 'pending'
       `).get(requestId);
 
@@ -98,7 +98,7 @@ export function createMediationRouter(ctx: AppContext) {
       }
 
       // 更新请求状态
-      db.prepare(`
+      await db.prepare(`
         UPDATE mediation_requests 
         SET status = 'in_progress', mediatorUserId = ?, mediatorName = ?, updatedAt = ?
         WHERE id = ?
@@ -125,7 +125,7 @@ export function createMediationRouter(ctx: AppContext) {
       const { requestId } = req.params;
       const { userId } = req.body;
 
-      const request = db.prepare(`
+      const request = await db.prepare(`
         SELECT * FROM mediation_requests 
         WHERE id = ? AND mediatorUserId = ? AND status = 'in_progress'
       `).get(requestId, userId);
@@ -135,10 +135,10 @@ export function createMediationRouter(ctx: AppContext) {
       }
 
       // 发放奖励
-      db.prepare('UPDATE users SET gold = gold + ? WHERE id = ?').run(request.reward, userId);
+      await db.prepare('UPDATE users SET gold = gold + ? WHERE id = ?').run(request.reward, userId);
 
       // 更新请求状态
-      db.prepare(`
+      await db.prepare(`
         UPDATE mediation_requests SET status = 'completed', updatedAt = ? WHERE id = ?
       `).run(nowIso(), requestId);
 
@@ -159,7 +159,7 @@ export function createMediationRouter(ctx: AppContext) {
       const { requestId } = req.params;
       const { userId } = req.body;
 
-      const request = db.prepare(`
+      const request = await db.prepare(`
         SELECT * FROM mediation_requests 
         WHERE id = ? AND mediatorUserId = ? AND status = 'in_progress'
       `).get(requestId, userId);
@@ -169,7 +169,7 @@ export function createMediationRouter(ctx: AppContext) {
       }
 
       // 重置为待处理状态
-      db.prepare(`
+      await db.prepare(`
         UPDATE mediation_requests 
         SET status = 'pending', mediatorUserId = 0, mediatorName = '', updatedAt = ?
         WHERE id = ?
@@ -194,7 +194,7 @@ export function createMediationRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '缺少用户ID' });
       }
 
-      const records = db.prepare(`
+      const records = await db.prepare(`
         SELECT * FROM mediation_requests 
         WHERE mediatorUserId = ?
         ORDER BY createdAt DESC

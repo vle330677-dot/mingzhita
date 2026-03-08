@@ -8,12 +8,12 @@ const nowIso = () => new Date().toISOString();
 const MATERIALIZATION_MP_COST = 20;
 const ETHEREAL_MP_COST = 10;
 
-function getUser(db: any, userId: number) {
-  return db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+async function getUser(db: any, userId: number) {
+  return await db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
 }
 
-function getGhostState(db: any, userId: number) {
-  const row = db.prepare(`
+async function getGhostState(db: any, userId: number) {
+  const row = await db.prepare(`
     SELECT userId, state, lastToggleAt, mpCost, updatedAt
     FROM ghost_materialization
     WHERE userId = ?
@@ -21,7 +21,7 @@ function getGhostState(db: any, userId: number) {
   `).get(userId) as AnyRow | undefined;
 
   if (!row) {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO ghost_materialization(userId, state, lastToggleAt, mpCost, updatedAt)
       VALUES (?, 'ethereal', ?, 0, ?)
     `).run(userId, nowIso(), nowIso());
@@ -36,12 +36,12 @@ export function createGhostRouter(ctx: AppContext) {
   const { db } = ctx;
 
   // 获取鬼魂状态
-  r.get('/ghost/state', (req, res) => {
+  r.get('/ghost/state', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (String(user.status || '') !== 'ghost') {
@@ -53,7 +53,7 @@ export function createGhostRouter(ctx: AppContext) {
         });
       }
 
-      const ghostState = getGhostState(db, userId);
+      const ghostState = await getGhostState(db, userId);
 
       res.json({
         success: true,
@@ -72,7 +72,7 @@ export function createGhostRouter(ctx: AppContext) {
   });
 
   // 切换实体化/半实体化
-  r.post('/ghost/toggle', (req, res) => {
+  r.post('/ghost/toggle', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const targetState = String(req.body?.targetState || '').trim(); // 'materialized' | 'ethereal'
@@ -85,14 +85,14 @@ export function createGhostRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'invalid targetState' });
       }
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (String(user.status || '') !== 'ghost') {
         return res.status(403).json({ success: false, message: '只有鬼魂可以切换实体化状态' });
       }
 
-      const ghostState = getGhostState(db, userId);
+      const ghostState = await getGhostState(db, userId);
       const currentState = String(ghostState.state || 'ethereal');
 
       if (currentState === targetState) {
@@ -113,9 +113,9 @@ export function createGhostRouter(ctx: AppContext) {
         });
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET mp = mp - ?, updatedAt = ? WHERE id = ?`).run(cost, nowIso(), userId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET mp = mp - ?, updatedAt = ? WHERE id = ?`).run(cost, nowIso(), userId);
+        await db.prepare(`
           UPDATE ghost_materialization
           SET state = ?,
               lastToggleAt = ?,
@@ -124,9 +124,9 @@ export function createGhostRouter(ctx: AppContext) {
           WHERE userId = ?
         `).run(targetState, nowIso(), cost, nowIso(), userId);
       });
-      tx();
+      await tx();
 
-      const freshUser = getUser(db, userId);
+      const freshUser = await getUser(db, userId);
       const stateName = targetState === 'materialized' ? '实体化' : '半实体化';
       const stateDesc = targetState === 'materialized'
         ? '你现在可以与普通人对话和交易'
@@ -145,24 +145,24 @@ export function createGhostRouter(ctx: AppContext) {
   });
 
   // 检查鬼魂是否可见（供其他玩家调用）
-  r.get('/ghost/visible/:targetUserId', (req, res) => {
+  r.get('/ghost/visible/:targetUserId', async (req, res) => {
     try {
       const targetUserId = Number(req.params.targetUserId || 0);
       const viewerUserId = Number(req.query.viewerUserId || 0);
 
       if (!targetUserId) return res.status(400).json({ success: false, message: 'targetUserId required' });
 
-      const target = getUser(db, targetUserId);
+      const target = await getUser(db, targetUserId);
       if (!target) return res.status(404).json({ success: false, message: 'target user not found' });
 
-      const viewer = viewerUserId ? getUser(db, viewerUserId) : null;
+      const viewer = viewerUserId ? await getUser(db, viewerUserId) : null;
 
       // 如果目标不是鬼魂，总是可见
       if (String(target.status || '') !== 'ghost') {
         return res.json({ success: true, visible: true, reason: 'not_ghost' });
       }
 
-      const ghostState = getGhostState(db, targetUserId);
+      const ghostState = await getGhostState(db, targetUserId);
       const state = String(ghostState.state || 'ethereal');
 
       // 实体化状态：所有人可见

@@ -215,11 +215,11 @@ function inferFactionName(user: any) {
   return raw;
 }
 
-export function createLegacyRouter(ctx: AppContext) {
+export async function createLegacyRouter(ctx: AppContext) {
   const r = Router();
   const { db } = ctx;
 
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS tower_school_delegation (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       status TEXT DEFAULT 'none',
@@ -230,20 +230,20 @@ export function createLegacyRouter(ctx: AppContext) {
       updatedAt TEXT
     );
   `);
-  db.prepare(`
+  await db.prepare(`
     INSERT OR IGNORE INTO tower_school_delegation (id, status, updatedAt)
     VALUES (1, 'none', ?)
   `).run(nowIso());
 
-  const getDelegationRow = () =>
-    db.prepare(`
+  const getDelegationRow = async () =>
+    await db.prepare(`
       SELECT id, status, requestedByUserId, reviewedByUserId, requestedAt, reviewedAt, updatedAt
       FROM tower_school_delegation
       WHERE id = 1
       LIMIT 1
     `).get() as any;
 
-  const isDelegationActive = () => String(getDelegationRow()?.status || '') === 'approved';
+  const isDelegationActive = async () => String((await getDelegationRow())?.status || '') === 'approved';
 
   const hasKickAuthority = (operatorJob: string, meta: FactionMeta, delegationActive: boolean) => {
     if (!meta.kickEnabled) return false;
@@ -259,13 +259,13 @@ export function createLegacyRouter(ctx: AppContext) {
     return delegationActive ? '圣子/圣女（已授权守塔会会长）' : '圣子/圣女';
   };
 
-  const loadUserName = (id: number | null | undefined) => {
+  const loadUserName = async (id: number | null | undefined) => {
     if (!id) return '';
-    const row = db.prepare(`SELECT name FROM users WHERE id = ? LIMIT 1`).get(id) as any;
+    const row = await db.prepare(`SELECT name FROM users WHERE id = ? LIMIT 1`).get(id) as any;
     return String(row?.name || '');
   };
 
-  r.post('/tower/join', (req, res) => {
+  r.post('/tower/join', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       const rawJob = String(req.body?.jobName || '').trim();
@@ -275,7 +275,7 @@ export function createLegacyRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'userId/jobName invalid' });
       }
 
-      const u = db.prepare(`
+      const u = await db.prepare(`
         SELECT id, name, age, gold, role, job, faction, homeLocation, currentLocation
         FROM users
         WHERE id = ?
@@ -326,7 +326,7 @@ export function createLegacyRouter(ctx: AppContext) {
       }
 
       const nextFactionName = nextMeta?.name || currentFaction || '无';
-      db.prepare(`UPDATE users SET job = ?, faction = ?, updatedAt = ? WHERE id = ?`).run(jobName, nextFactionName, nowIso(), userId);
+      await db.prepare(`UPDATE users SET job = ?, faction = ?, updatedAt = ? WHERE id = ?`).run(jobName, nextFactionName, nowIso(), userId);
 
       let nextHome: HomeLoc | null = resolveHomeByJob(jobName);
       if (!nextHome) {
@@ -342,7 +342,7 @@ export function createLegacyRouter(ctx: AppContext) {
         }
       }
 
-      db.prepare(`UPDATE users SET homeLocation = ?, updatedAt = ? WHERE id = ?`).run(nextHome, nowIso(), userId);
+      await db.prepare(`UPDATE users SET homeLocation = ?, updatedAt = ? WHERE id = ?`).run(nextHome, nowIso(), userId);
 
       return res.json({
         success: true,
@@ -355,12 +355,12 @@ export function createLegacyRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/tower/quit', (req, res) => {
+  r.post('/tower/quit', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       if (!Number.isFinite(userId)) return res.status(400).json({ success: false, message: 'userId invalid' });
       const noPenalty = Boolean(req.body?.noPenalty);
-      const u = db.prepare(`
+      const u = await db.prepare(`
         SELECT id, job, faction, gold
         FROM users
         WHERE id = ?
@@ -371,7 +371,7 @@ export function createLegacyRouter(ctx: AppContext) {
       const curFaction = inferFactionName(u);
       if (!curJob || curJob === '无') {
         if (curFaction) {
-          db.prepare(`UPDATE users SET faction = '无', updatedAt = ? WHERE id = ?`).run(nowIso(), userId);
+          await db.prepare(`UPDATE users SET faction = '无', updatedAt = ? WHERE id = ?`).run(nowIso(), userId);
         }
         return res.json({ success: true, penalty: 0, message: '当前无可退出职位' });
       }
@@ -387,7 +387,7 @@ export function createLegacyRouter(ctx: AppContext) {
       }
 
       const nextGold = Math.max(0, currentGold - penalty);
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET job = '无',
             faction = '无',
@@ -405,14 +405,14 @@ export function createLegacyRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/faction/delegation/status', (req, res) => {
+  r.get('/faction/delegation/status', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       let canApply = false;
       let canReview = false;
 
       if (userId) {
-        const me = db.prepare(`SELECT id, job FROM users WHERE id = ? LIMIT 1`).get(userId) as any;
+        const me = await db.prepare(`SELECT id, job FROM users WHERE id = ? LIMIT 1`).get(userId) as any;
         if (me) {
           const myJob = String(me.job || '').trim();
           canApply = myJob === GUARD_CHIEF_JOB;
@@ -420,7 +420,7 @@ export function createLegacyRouter(ctx: AppContext) {
         }
       }
 
-      const row = getDelegationRow();
+      const row = await getDelegationRow();
       const status = String(row?.status || 'none');
       return res.json({
         success: true,
@@ -430,9 +430,9 @@ export function createLegacyRouter(ctx: AppContext) {
           status,
           active: status === 'approved',
           requestedByUserId: Number(row?.requestedByUserId || 0) || null,
-          requestedByName: loadUserName(Number(row?.requestedByUserId || 0) || null) || '',
+          requestedByName: await loadUserName(Number(row?.requestedByUserId || 0) || null) || '',
           reviewedByUserId: Number(row?.reviewedByUserId || 0) || null,
-          reviewedByName: loadUserName(Number(row?.reviewedByUserId || 0) || null) || '',
+          reviewedByName: await loadUserName(Number(row?.reviewedByUserId || 0) || null) || '',
           requestedAt: String(row?.requestedAt || ''),
           reviewedAt: String(row?.reviewedAt || ''),
           updatedAt: String(row?.updatedAt || '')
@@ -443,18 +443,18 @@ export function createLegacyRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/faction/delegation/request', (req, res) => {
+  r.post('/faction/delegation/request', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
 
-      const me = db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(userId) as any;
+      const me = await db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(userId) as any;
       if (!me) return res.status(404).json({ success: false, message: '玩家不存在' });
       if (String(me.job || '') !== GUARD_CHIEF_JOB) {
         return res.status(403).json({ success: false, message: '仅守塔会会长可发起接管申请' });
       }
 
-      const row = getDelegationRow();
+      const row = await getDelegationRow();
       const status = String(row?.status || 'none');
       if (status === 'pending') {
         return res.status(409).json({ success: false, message: '已有待审批的接管申请' });
@@ -464,7 +464,7 @@ export function createLegacyRouter(ctx: AppContext) {
       }
 
       const now = nowIso();
-      db.prepare(`
+      await db.prepare(`
         UPDATE tower_school_delegation
         SET status = 'pending',
             requestedByUserId = ?,
@@ -481,7 +481,7 @@ export function createLegacyRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/faction/delegation/review', (req, res) => {
+  r.post('/faction/delegation/review', async (req, res) => {
     try {
       const reviewerId = Number(req.body?.reviewerId || 0);
       const action = String(req.body?.action || '').trim();
@@ -489,13 +489,13 @@ export function createLegacyRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'reviewerId/action invalid' });
       }
 
-      const reviewer = db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(reviewerId) as any;
+      const reviewer = await db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(reviewerId) as any;
       if (!reviewer) return res.status(404).json({ success: false, message: '玩家不存在' });
       if (!TOWER_GOVERNOR_JOBS.has(String(reviewer.job || ''))) {
         return res.status(403).json({ success: false, message: '仅命之塔圣子/圣女可审批三塔管理权' });
       }
 
-      const row = getDelegationRow();
+      const row = await getDelegationRow();
       const status = String(row?.status || 'none');
       if ((action === 'approve' || action === 'reject') && status !== 'pending') {
         return res.status(409).json({ success: false, message: '当前没有待审批的接管申请' });
@@ -506,7 +506,7 @@ export function createLegacyRouter(ctx: AppContext) {
 
       const now = nowIso();
       const nextStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'revoked';
-      db.prepare(`
+      await db.prepare(`
         UPDATE tower_school_delegation
         SET status = ?,
             reviewedByUserId = ?,
@@ -526,7 +526,7 @@ export function createLegacyRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/faction/roster', (req, res) => {
+  r.get('/faction/roster', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       const locationId = String(req.query.locationId || '').trim();
@@ -534,7 +534,7 @@ export function createLegacyRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'userId/locationId required' });
       }
 
-      const requester = db.prepare(`
+      const requester = await db.prepare(`
         SELECT id, name, job, faction, status
         FROM users
         WHERE id = ?
@@ -557,7 +557,7 @@ export function createLegacyRouter(ctx: AppContext) {
       }
 
       const placeholders = meta.jobs.map(() => '?').join(',');
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, name, job, faction, currentLocation
         FROM users
         WHERE status IN ('approved', 'ghost')
@@ -580,7 +580,7 @@ export function createLegacyRouter(ctx: AppContext) {
         currentLocation: String(x.currentLocation || '')
       }));
 
-      const delegationActive = isDelegationActive();
+      const delegationActive = await isDelegationActive();
       const canManage = hasKickAuthority(String(requester.job || ''), meta, delegationActive);
       return res.json({
         success: true,
@@ -596,7 +596,7 @@ export function createLegacyRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/faction/kick', (req, res) => {
+  r.post('/faction/kick', async (req, res) => {
     try {
       const operatorId = Number(req.body?.operatorId || 0);
       const targetUserId = Number(req.body?.targetUserId || 0);
@@ -614,10 +614,10 @@ export function createLegacyRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '该区域不允许辞退成员' });
       }
 
-      const operator = db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(operatorId) as any;
-      const target = db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(targetUserId) as any;
+      const operator = await db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(operatorId) as any;
+      const target = await db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(targetUserId) as any;
       if (!operator || !target) return res.status(404).json({ success: false, message: '玩家不存在' });
-      const delegationActive = isDelegationActive();
+      const delegationActive = await isDelegationActive();
       const operatorJob = String(operator.job || '');
       if (!hasKickAuthority(operatorJob, meta, delegationActive)) {
         if (isSchoolLocation(meta.locationId)) {
@@ -637,7 +637,7 @@ export function createLegacyRouter(ctx: AppContext) {
         }
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET job = '无',
             faction = '无',

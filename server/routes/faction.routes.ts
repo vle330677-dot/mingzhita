@@ -64,14 +64,14 @@ function getFactionAssets() {
   }
 }
 
-function loadUserName(db: any, id: number | null | undefined) {
+async function loadUserName(db: any, id: number | null | undefined) {
   if (!id) return '';
-  const row = db.prepare(`SELECT name FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+  const row = await db.prepare(`SELECT name FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
   return String(row?.name || '');
 }
 
-function ensureDelegationTable(db: any) {
-  db.exec(`
+async function ensureDelegationTable(db: any) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS tower_school_delegation (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       status TEXT DEFAULT 'none',
@@ -82,14 +82,14 @@ function ensureDelegationTable(db: any) {
       updatedAt TEXT
     );
   `);
-  db.prepare(`
+  await db.prepare(`
     INSERT OR IGNORE INTO tower_school_delegation (id, status, updatedAt)
     VALUES (1, 'none', ?)
   `).run(nowIso());
 }
 
-function getDelegationRow(db: any) {
-  return db.prepare(`
+async function getDelegationRow(db: any) {
+  return await db.prepare(`
     SELECT id, status, requestedByUserId, reviewedByUserId, requestedAt, reviewedAt, updatedAt
     FROM tower_school_delegation
     WHERE id = 1
@@ -97,20 +97,20 @@ function getDelegationRow(db: any) {
   `).get() as AnyRow | undefined;
 }
 
-function isDelegationActive(db: any) {
-  return String(getDelegationRow(db)?.status || '') === 'approved';
+async function isDelegationActive(db: any) {
+  return String((await getDelegationRow(db))?.status || '') === 'approved';
 }
 
-function getCustomFactionById(db: any, factionId: string) {
-  return db.prepare(`SELECT * FROM custom_factions WHERE id = ? LIMIT 1`).get(factionId) as AnyRow | undefined;
+async function getCustomFactionById(db: any, factionId: string) {
+  return await db.prepare(`SELECT * FROM custom_factions WHERE id = ? LIMIT 1`).get(factionId) as AnyRow | undefined;
 }
 
-function getCustomFactionByName(db: any, name: string) {
-  return db.prepare(`SELECT * FROM custom_factions WHERE name = ? LIMIT 1`).get(String(name || '').trim()) as AnyRow | undefined;
+async function getCustomFactionByName(db: any, name: string) {
+  return await db.prepare(`SELECT * FROM custom_factions WHERE name = ? LIMIT 1`).get(String(name || '').trim()) as AnyRow | undefined;
 }
 
-function getActiveCustomRoles(db: any, locationId: string) {
-  return db.prepare(`
+async function getActiveCustomRoles(db: any, locationId: string) {
+  return await db.prepare(`
     SELECT id, locationId, factionName, title, description, minAge, minMentalRank, minPhysicalRank, maxMembers, salary, createdByUserId, isActive, createdAt, updatedAt
     FROM faction_custom_roles
     WHERE locationId = ? AND isActive = 1
@@ -118,8 +118,8 @@ function getActiveCustomRoles(db: any, locationId: string) {
   `).all(locationId) as AnyRow[];
 }
 
-function getCustomRoleByTitle(db: any, locationId: string, title: string) {
-  return db.prepare(`
+async function getCustomRoleByTitle(db: any, locationId: string, title: string) {
+  return await db.prepare(`
     SELECT id, locationId, factionName, title, description, minAge, minMentalRank, minPhysicalRank, maxMembers, salary, createdByUserId, isActive, createdAt, updatedAt
     FROM faction_custom_roles
     WHERE locationId = ? AND title = ? AND isActive = 1
@@ -127,8 +127,8 @@ function getCustomRoleByTitle(db: any, locationId: string, title: string) {
   `).get(locationId, title) as AnyRow | undefined;
 }
 
-function countRoleMembers(db: any, factionName: string, title: string) {
-  const row = db.prepare(`
+async function countRoleMembers(db: any, factionName: string, title: string) {
+  const row = await db.prepare(`
     SELECT COUNT(*) AS cnt
     FROM users
     WHERE status IN ('approved', 'ghost')
@@ -138,11 +138,11 @@ function countRoleMembers(db: any, factionName: string, title: string) {
   return Number(row?.cnt || 0);
 }
 
-function findCustomRoleByUser(db: any, user: AnyRow | undefined | null) {
+async function findCustomRoleByUser(db: any, user: AnyRow | undefined | null) {
   const factionName = String(user?.faction || '').trim();
   const job = String(user?.job || '').trim();
   if (!factionName || !job || isNoJob(job)) return null;
-  const customFaction = getCustomFactionByName(db, factionName);
+  const customFaction = await getCustomFactionByName(db, factionName);
   if (!customFaction) return null;
   if (job === String(customFaction.leaderTitle || '掌权者')) {
     return {
@@ -151,7 +151,7 @@ function findCustomRoleByUser(db: any, user: AnyRow | undefined | null) {
       salary: DEFAULT_CUSTOM_FACTION_SALARY,
     };
   }
-  const role = getCustomRoleByTitle(db, String(customFaction.id || ''), job);
+  const role = await getCustomRoleByTitle(db, String(customFaction.id || ''), job);
   if (!role) return null;
   return {
     role,
@@ -160,17 +160,17 @@ function findCustomRoleByUser(db: any, user: AnyRow | undefined | null) {
   };
 }
 
-function calcQuitPenaltyForUser(db: any, user: AnyRow) {
+async function calcQuitPenaltyForUser(db: any, user: AnyRow) {
   const builtinPenalty = calcQuitPenalty(String(user?.job || ''));
   if (builtinPenalty > 0) return builtinPenalty;
 
-  const customRoleState = findCustomRoleByUser(db, user);
+  const customRoleState = await findCustomRoleByUser(db, user);
   if (!customRoleState) return 0;
   const salary = Math.max(1000, Number(customRoleState.salary || DEFAULT_CUSTOM_FACTION_SALARY));
   return Math.max(100, Math.round(salary * 0.1));
 }
 
-function customRolePayload(db: any, role: AnyRow) {
+async function customRolePayload(db: any, role: AnyRow) {
   return {
     id: Number(role.id || 0),
     title: String(role.title || ''),
@@ -180,17 +180,17 @@ function customRolePayload(db: any, role: AnyRow) {
     minPhysicalRank: String(role.minPhysicalRank || ''),
     maxMembers: Math.max(0, Number(role.maxMembers || 0)),
     salary: Math.max(0, Number(role.salary || 0)),
-    currentMembers: countRoleMembers(db, String(role.factionName || ''), String(role.title || '')),
+    currentMembers: await countRoleMembers(db, String(role.factionName || ''), String(role.title || '')),
   };
 }
 
-export function createFactionRouter(ctx: AppContext) {
+export async function createFactionRouter(ctx: AppContext) {
   const r = Router();
   const { db } = ctx;
 
-  ensureDelegationTable(db);
+  await ensureDelegationTable(db);
 
-  r.post('/tower/join', (req, res) => {
+  r.post('/tower/join', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const rawJob = String(req.body?.jobName || '').trim();
@@ -201,7 +201,7 @@ export function createFactionRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '缺少 userId 或职位名称' });
       }
 
-      const user = db.prepare(`
+      const user = await db.prepare(`
         SELECT id, name, age, role, job, faction, gold, mentalRank, physicalRank, homeLocation, currentLocation
         FROM users
         WHERE id = ?
@@ -212,8 +212,8 @@ export function createFactionRouter(ctx: AppContext) {
       let jobName = rawJob;
       let targetFactionName = '';
       let targetLocationId = locationId;
-      const customFaction = isCustomFactionLocationId(locationId) ? getCustomFactionById(db, locationId) : undefined;
-      const customRole = locationId ? getCustomRoleByTitle(db, locationId, rawJob) : undefined;
+      const customFaction = isCustomFactionLocationId(locationId) ? await getCustomFactionById(db, locationId) : undefined;
+      const customRole = locationId ? await getCustomRoleByTitle(db, locationId, rawJob) : undefined;
       let builtinMeta = resolveBuiltinFactionByJob(jobName);
 
       if (customRole) {
@@ -280,7 +280,7 @@ export function createFactionRouter(ctx: AppContext) {
         }
         const maxMembers = Math.max(0, Number(customRole.maxMembers || 0));
         if (maxMembers > 0) {
-          const currentMembers = countRoleMembers(db, targetFactionName, String(customRole.title || ''));
+          const currentMembers = await countRoleMembers(db, targetFactionName, String(customRole.title || ''));
           const alreadyInRole = String(user.job || '').trim() === String(customRole.title || '').trim();
           if (!alreadyInRole && currentMembers >= maxMembers) {
             return res.status(409).json({ success: false, message: '该职位名额已满。' });
@@ -292,7 +292,7 @@ export function createFactionRouter(ctx: AppContext) {
       } else if (builtinMeta) {
         const uniqueJobs = new Set(Array.isArray(builtinMeta.uniqueJobs) ? builtinMeta.uniqueJobs : []);
         if (uniqueJobs.has(jobName)) {
-          const holder = db.prepare(`
+          const holder = await db.prepare(`
             SELECT id, name
             FROM users
             WHERE status IN ('approved', 'ghost')
@@ -325,7 +325,7 @@ export function createFactionRouter(ctx: AppContext) {
         }
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET job = ?, faction = ?, homeLocation = ?, updatedAt = ?
         WHERE id = ?
@@ -348,25 +348,25 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/tower/quit', (req, res) => {
+  r.post('/tower/quit', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: '缺少 userId' });
 
       const noPenalty = Boolean(req.body?.noPenalty);
-      const user = db.prepare(`SELECT id, job, faction, gold FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, job, faction, gold FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: '未找到该玩家' });
 
       const currentJob = String(user.job || '').trim();
       const currentFaction = inferFactionName(user);
       if (isNoJob(currentJob)) {
         if (currentFaction) {
-          db.prepare(`UPDATE users SET faction = '无', updatedAt = ? WHERE id = ?`).run(nowIso(), userId);
+          await db.prepare(`UPDATE users SET faction = '无', updatedAt = ? WHERE id = ?`).run(nowIso(), userId);
         }
         return res.json({ success: true, penalty: 0, message: '当前没有可退出的职位。' });
       }
 
-      const penalty = noPenalty ? 0 : calcQuitPenaltyForUser(db, user);
+      const penalty = noPenalty ? 0 : await calcQuitPenaltyForUser(db, user);
       const currentGold = Math.max(0, Number(user.gold || 0));
       if (penalty > 0 && currentGold < penalty) {
         return res.status(409).json({
@@ -376,7 +376,7 @@ export function createFactionRouter(ctx: AppContext) {
         });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET job = '无', faction = '无', gold = ?, updatedAt = ?
         WHERE id = ?
@@ -392,14 +392,14 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/faction/delegation/status', (req, res) => {
+  r.get('/faction/delegation/status', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       let canApply = false;
       let canReview = false;
 
       if (userId) {
-        const me = db.prepare(`SELECT id, job FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+        const me = await db.prepare(`SELECT id, job FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
         if (me) {
           const myJob = String(me.job || '').trim();
           canApply = myJob === GUARD_CHIEF_JOB;
@@ -407,7 +407,7 @@ export function createFactionRouter(ctx: AppContext) {
         }
       }
 
-      const row = getDelegationRow(db);
+      const row = await getDelegationRow(db);
       const status = String(row?.status || 'none');
       return res.json({
         success: true,
@@ -417,9 +417,9 @@ export function createFactionRouter(ctx: AppContext) {
           status,
           active: status === 'approved',
           requestedByUserId: Number(row?.requestedByUserId || 0) || null,
-          requestedByName: loadUserName(db, Number(row?.requestedByUserId || 0) || null),
+          requestedByName: await loadUserName(db, Number(row?.requestedByUserId || 0) || null),
           reviewedByUserId: Number(row?.reviewedByUserId || 0) || null,
-          reviewedByName: loadUserName(db, Number(row?.reviewedByUserId || 0) || null),
+          reviewedByName: await loadUserName(db, Number(row?.reviewedByUserId || 0) || null),
           requestedAt: String(row?.requestedAt || ''),
           reviewedAt: String(row?.reviewedAt || ''),
           updatedAt: String(row?.updatedAt || ''),
@@ -430,18 +430,18 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/faction/delegation/request', (req, res) => {
+  r.post('/faction/delegation/request', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: '缺少 userId' });
 
-      const user = db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: '未找到该玩家' });
       if (String(user.job || '').trim() !== GUARD_CHIEF_JOB) {
         return res.status(403).json({ success: false, message: '只有守塔会会长可以发起三塔接管申请。' });
       }
 
-      const row = getDelegationRow(db);
+      const row = await getDelegationRow(db);
       const status = String(row?.status || 'none');
       if (status === 'pending') {
         return res.status(409).json({ success: false, message: '当前已有待审批的接管申请。' });
@@ -451,7 +451,7 @@ export function createFactionRouter(ctx: AppContext) {
       }
 
       const ts = nowIso();
-      db.prepare(`
+      await db.prepare(`
         UPDATE tower_school_delegation
         SET status = 'pending',
             requestedByUserId = ?,
@@ -468,7 +468,7 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/faction/delegation/review', (req, res) => {
+  r.post('/faction/delegation/review', async (req, res) => {
     try {
       const reviewerId = Number(req.body?.reviewerId || 0);
       const action = String(req.body?.action || '').trim();
@@ -476,13 +476,13 @@ export function createFactionRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '参数无效' });
       }
 
-      const reviewer = db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(reviewerId) as AnyRow | undefined;
+      const reviewer = await db.prepare(`SELECT id, name, job FROM users WHERE id = ? LIMIT 1`).get(reviewerId) as AnyRow | undefined;
       if (!reviewer) return res.status(404).json({ success: false, message: '未找到该玩家' });
       if (!TOWER_GOVERNOR_JOBS.has(String(reviewer.job || '').trim())) {
         return res.status(403).json({ success: false, message: '只有圣子或圣女可以审批三塔授权。' });
       }
 
-      const row = getDelegationRow(db);
+      const row = await getDelegationRow(db);
       const status = String(row?.status || 'none');
       if ((action === 'approve' || action === 'reject') && status !== 'pending') {
         return res.status(409).json({ success: false, message: '当前没有待审批的授权申请。' });
@@ -493,7 +493,7 @@ export function createFactionRouter(ctx: AppContext) {
 
       const nextStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'revoked';
       const ts = nowIso();
-      db.prepare(`
+      await db.prepare(`
         UPDATE tower_school_delegation
         SET status = ?,
             reviewedByUserId = ?,
@@ -512,7 +512,7 @@ export function createFactionRouter(ctx: AppContext) {
       return res.status(500).json({ success: false, message: error?.message || '审批授权失败' });
     }
   });
-  r.get('/faction/roster', (req, res) => {
+  r.get('/faction/roster', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       const locationId = String(req.query.locationId || '').trim();
@@ -520,16 +520,16 @@ export function createFactionRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '缺少 userId 或 locationId' });
       }
 
-      const requester = db.prepare(`SELECT id, name, job, faction, status FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const requester = await db.prepare(`SELECT id, name, job, faction, status FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!requester) return res.status(404).json({ success: false, message: '未找到该玩家' });
 
       if (isCustomFactionLocationId(locationId)) {
-        const customFaction = getCustomFactionById(db, locationId);
+        const customFaction = await getCustomFactionById(db, locationId);
         if (!customFaction) {
           return res.status(404).json({ success: false, message: '未找到该自定义势力' });
         }
 
-        const members = (db.prepare(`
+        const members = (await db.prepare(`
           SELECT id, name, job, faction, currentLocation
           FROM users
           WHERE status IN ('approved', 'ghost')
@@ -550,7 +550,7 @@ export function createFactionRouter(ctx: AppContext) {
           kickEnabled: true,
           canManage: Number(customFaction.ownerUserId || 0) === userId,
           canManageRoles: Number(customFaction.ownerUserId || 0) === userId,
-          customRoles: getActiveCustomRoles(db, locationId).map((role) => customRolePayload(db, role)),
+          customRoles: await Promise.all((await getActiveCustomRoles(db, locationId)).map((role) => customRolePayload(db, role))),
           members,
         });
       }
@@ -569,13 +569,13 @@ export function createFactionRouter(ctx: AppContext) {
         });
       }
 
-      const roleRows = getActiveCustomRoles(db, locationId);
-      const delegationActive = isDelegationActive(db);
+      const roleRows = await getActiveCustomRoles(db, locationId);
+      const delegationActive = await isDelegationActive(db);
       const canManage = canManageFactionRoster(String(requester.job || ''), locationId, Boolean(meta.kickEnabled), delegationActive);
       const canManageRolesFlag = canManageCustomRoles(String(requester.job || ''), locationId);
       const titles = [...meta.jobs, ...roleRows.map((row) => String(row.title || '').trim()).filter(Boolean)];
       const placeholders = titles.map(() => '?').join(',');
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, name, job, faction, currentLocation
         FROM users
         WHERE status IN ('approved', 'ghost')
@@ -616,7 +616,7 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/faction/kick', (req, res) => {
+  r.post('/faction/kick', async (req, res) => {
     try {
       const operatorId = Number(req.body?.operatorId || 0);
       const targetUserId = Number(req.body?.targetUserId || 0);
@@ -628,12 +628,12 @@ export function createFactionRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '不能辞退自己。' });
       }
 
-      const operator = db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(operatorId) as AnyRow | undefined;
-      const target = db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(targetUserId) as AnyRow | undefined;
+      const operator = await db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(operatorId) as AnyRow | undefined;
+      const target = await db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(targetUserId) as AnyRow | undefined;
       if (!operator || !target) return res.status(404).json({ success: false, message: '未找到目标玩家' });
 
       if (isCustomFactionLocationId(locationId)) {
-        const customFaction = getCustomFactionById(db, locationId);
+        const customFaction = await getCustomFactionById(db, locationId);
         if (!customFaction) return res.status(404).json({ success: false, message: '未找到该自定义势力' });
         if (Number(customFaction.ownerUserId || 0) !== operatorId) {
           return res.status(403).json({ success: false, message: '只有该势力创建者可以辞退成员。' });
@@ -649,7 +649,7 @@ export function createFactionRouter(ctx: AppContext) {
         if (!meta) return res.status(404).json({ success: false, message: '未找到阵营配置' });
         if (!meta.kickEnabled) return res.status(403).json({ success: false, message: '该区域不允许辞退成员。' });
 
-        const delegationActive = isDelegationActive(db);
+        const delegationActive = await isDelegationActive(db);
         if (!canManageFactionRoster(String(operator.job || ''), locationId, meta.kickEnabled, delegationActive)) {
           return res.status(403).json({ success: false, message: '当前职位没有辞退权限。' });
         }
@@ -661,14 +661,14 @@ export function createFactionRouter(ctx: AppContext) {
         }
       }
 
-      db.prepare(`UPDATE users SET job = '无', faction = '无', updatedAt = ? WHERE id = ?`).run(nowIso(), targetUserId);
+      await db.prepare(`UPDATE users SET job = '无', faction = '无', updatedAt = ? WHERE id = ?`).run(nowIso(), targetUserId);
       return res.json({ success: true, message: `${String(target.name || '该玩家')} 已被移出阵营。` });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || '辞退成员失败' });
     }
   });
 
-  r.post('/faction/custom-roles', (req, res) => {
+  r.post('/faction/custom-roles', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const locationId = String(req.body?.locationId || '').trim();
@@ -684,12 +684,12 @@ export function createFactionRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '缺少必要字段' });
       }
 
-      const user = db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: '未找到该玩家' });
 
       let factionName = '';
       if (isCustomFactionLocationId(locationId)) {
-        const customFaction = getCustomFactionById(db, locationId);
+        const customFaction = await getCustomFactionById(db, locationId);
         if (!customFaction) return res.status(404).json({ success: false, message: '未找到该自定义势力' });
         if (Number(customFaction.ownerUserId || 0) !== userId) {
           return res.status(403).json({ success: false, message: '只有该势力创建者可以新增职位。' });
@@ -713,43 +713,43 @@ export function createFactionRouter(ctx: AppContext) {
         factionName = meta.name;
       }
 
-      const exists = db.prepare(`SELECT id FROM faction_custom_roles WHERE locationId = ? AND title = ? LIMIT 1`).get(locationId, title) as AnyRow | undefined;
+      const exists = await db.prepare(`SELECT id FROM faction_custom_roles WHERE locationId = ? AND title = ? LIMIT 1`).get(locationId, title) as AnyRow | undefined;
       if (exists) return res.status(409).json({ success: false, message: '该自定义职位已存在。' });
 
       const ts = nowIso();
-      const result = db.prepare(`
+      const result = await db.prepare(`
         INSERT INTO faction_custom_roles (
           locationId, factionName, title, description, minAge, minMentalRank, minPhysicalRank, maxMembers, salary, createdByUserId, isActive, createdAt, updatedAt
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).run(locationId, factionName, title, description, minAge, minMentalRank, minPhysicalRank, maxMembers, salary, userId, ts, ts);
 
-      const role = db.prepare(`SELECT * FROM faction_custom_roles WHERE id = ? LIMIT 1`).get(Number(result.lastInsertRowid || 0)) as AnyRow | undefined;
-      return res.json({ success: true, message: `已新增职位：${title}`, role: role ? customRolePayload(db, role) : null });
+      const role = await db.prepare(`SELECT * FROM faction_custom_roles WHERE id = ? LIMIT 1`).get(Number(result.lastInsertRowid || 0)) as AnyRow | undefined;
+      return res.json({ success: true, message: `已新增职位：${title}`, role: role ? await customRolePayload(db, role) : null });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || '新增自定义职位失败' });
     }
   });
 
-  r.delete('/faction/custom-roles/:id', (req, res) => {
+  r.delete('/faction/custom-roles/:id', async (req, res) => {
     try {
       const roleId = Number(req.params.id || 0);
       const userId = Number(req.query.userId || req.body?.userId || 0);
       if (!roleId || !userId) return res.status(400).json({ success: false, message: '缺少必要参数' });
 
-      const role = db.prepare(`SELECT * FROM faction_custom_roles WHERE id = ? LIMIT 1`).get(roleId) as AnyRow | undefined;
+      const role = await db.prepare(`SELECT * FROM faction_custom_roles WHERE id = ? LIMIT 1`).get(roleId) as AnyRow | undefined;
       if (!role) return res.status(404).json({ success: false, message: '未找到该自定义职位' });
 
-      const user = db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, name, job, faction FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: '未找到该玩家' });
 
-      const currentMembers = countRoleMembers(db, String(role.factionName || ''), String(role.title || ''));
+      const currentMembers = await countRoleMembers(db, String(role.factionName || ''), String(role.title || ''));
       if (currentMembers > 0) {
         return res.status(409).json({ success: false, message: '该职位仍有人在任，无法删除。' });
       }
 
       const roleLocationId = String(role.locationId || '').trim();
       if (isCustomFactionLocationId(roleLocationId)) {
-        const customFaction = getCustomFactionById(db, roleLocationId);
+        const customFaction = await getCustomFactionById(db, roleLocationId);
         if (!customFaction || Number(customFaction.ownerUserId || 0) !== userId) {
           return res.status(403).json({ success: false, message: '只有该势力创建者可以删除职位。' });
         }
@@ -757,7 +757,7 @@ export function createFactionRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '当前职位没有删除自定义职位的权限。' });
       }
 
-      db.prepare(`DELETE FROM faction_custom_roles WHERE id = ?`).run(roleId);
+      await db.prepare(`DELETE FROM faction_custom_roles WHERE id = ?`).run(roleId);
       return res.json({ success: true, message: `已删除职位：${String(role.title || '')}` });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || '删除自定义职位失败' });
@@ -767,9 +767,9 @@ export function createFactionRouter(ctx: AppContext) {
     res.json({ success: true, assets: getFactionAssets() });
   });
 
-  r.get('/custom-factions', (_req, res) => {
+  r.get('/custom-factions', async (_req, res) => {
     try {
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, name, description, ownerUserId, ownerName, leaderTitle, pointX, pointY, mapImageUrl, pointType, createdAt, updatedAt
         FROM custom_factions
         ORDER BY datetime(updatedAt) DESC, datetime(createdAt) DESC
@@ -796,7 +796,7 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/custom-factions', (req, res) => {
+  r.post('/custom-factions', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const name = String(req.body?.name || '').trim();
@@ -806,7 +806,7 @@ export function createFactionRouter(ctx: AppContext) {
       const pointY = clamp(Number(req.body?.y || 0), 4, 96);
       if (!userId || !name) return res.status(400).json({ success: false, message: '缺少创建参数' });
 
-      const user = db.prepare(`SELECT id, name, gold, faction, job, age, role, homeLocation FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, name, gold, faction, job, age, role, homeLocation FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: '未找到该玩家' });
       if (!isNoJob(String(user.job || '')) || !isNoJob(String(user.faction || ''))) {
         return res.status(409).json({ success: false, message: '请先退出当前阵营，再创建新的自定义势力。' });
@@ -814,23 +814,23 @@ export function createFactionRouter(ctx: AppContext) {
       if (Number(user.gold || 0) < CUSTOM_FACTION_COST) {
         return res.status(409).json({ success: false, message: `创建势力需要 ${CUSTOM_FACTION_COST}G，当前金币不足。` });
       }
-      const exists = db.prepare(`SELECT id FROM custom_factions WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
+      const exists = await db.prepare(`SELECT id FROM custom_factions WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
       if (exists) return res.status(409).json({ success: false, message: '该势力名称已存在，请更换名称。' });
 
       const factionId = buildCustomFactionId(name);
       const ts = nowIso();
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO custom_factions (id, name, description, ownerUserId, ownerName, leaderTitle, pointX, pointY, mapImageUrl, pointType, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, '掌权者', ?, ?, ?, 'safe', ?, ?)
       `).run(factionId, name, description, userId, String(user.name || ''), pointX, pointY, mapImageUrl, ts, ts);
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO faction_custom_roles (
           locationId, factionName, title, description, minAge, minMentalRank, minPhysicalRank, maxMembers, salary, createdByUserId, isActive, createdAt, updatedAt
         ) VALUES (?, ?, ?, ?, ?, '', '', 0, ?, ?, 1, ?, ?)
       `).run(factionId, name, DEFAULT_CUSTOM_MEMBER_TITLE, '默认开放职位，可供其他玩家加入。', 16, 5000, userId, ts, ts);
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET gold = ?, faction = ?, job = '掌权者', updatedAt = ?
         WHERE id = ?
@@ -858,13 +858,13 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/custom-factions/:locationId', (req, res) => {
+  r.get('/custom-factions/:locationId', async (req, res) => {
     try {
       const locationId = String(req.params.locationId || '').trim();
-      const faction = getCustomFactionById(db, locationId);
+      const faction = await getCustomFactionById(db, locationId);
       if (!faction) return res.status(404).json({ success: false, message: '未找到该自定义势力' });
 
-      const nodes = (db.prepare(`
+      const nodes = (await db.prepare(`
         SELECT id, factionId, name, description, x, y, dailyInteractionLimit, salary, createdByUserId, createdAt, updatedAt
         FROM custom_faction_nodes
         WHERE factionId = ?
@@ -905,19 +905,19 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/custom-factions/:locationId/settings', (req, res) => {
+  r.post('/custom-factions/:locationId/settings', async (req, res) => {
     try {
       const locationId = String(req.params.locationId || '').trim();
       const userId = Number(req.body?.userId || 0);
       const description = String(req.body?.description || '').trim();
       const mapImageUrl = String(req.body?.mapImageUrl || '').trim();
-      const faction = getCustomFactionById(db, locationId);
+      const faction = await getCustomFactionById(db, locationId);
       if (!faction) return res.status(404).json({ success: false, message: '未找到该自定义势力' });
       if (Number(faction.ownerUserId || 0) !== userId) {
         return res.status(403).json({ success: false, message: '只有该势力创建者可以修改设置。' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE custom_factions
         SET description = ?, mapImageUrl = ?, updatedAt = ?
         WHERE id = ?
@@ -927,7 +927,7 @@ export function createFactionRouter(ctx: AppContext) {
       return res.status(500).json({ success: false, message: error?.message || '保存自定义势力设置失败' });
     }
   });
-  r.post('/custom-factions/:locationId/nodes', (req, res) => {
+  r.post('/custom-factions/:locationId/nodes', async (req, res) => {
     try {
       const locationId = String(req.params.locationId || '').trim();
       const userId = Number(req.body?.userId || 0);
@@ -939,7 +939,7 @@ export function createFactionRouter(ctx: AppContext) {
       const salary = Math.max(0, Number(req.body?.salary || 0));
       if (!userId || !name) return res.status(400).json({ success: false, message: '缺少地点信息' });
 
-      const faction = getCustomFactionById(db, locationId);
+      const faction = await getCustomFactionById(db, locationId);
       if (!faction) return res.status(404).json({ success: false, message: '未找到该自定义势力' });
       if (Number(faction.ownerUserId || 0) !== userId) {
         return res.status(403).json({ success: false, message: '只有该势力创建者可以新增地点。' });
@@ -947,7 +947,7 @@ export function createFactionRouter(ctx: AppContext) {
 
       const nodeId = buildNodeId(locationId);
       const ts = nowIso();
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO custom_faction_nodes (id, factionId, name, description, x, y, dailyInteractionLimit, salary, createdByUserId, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(nodeId, locationId, name, description, x, y, dailyInteractionLimit, salary, userId, ts, ts);
@@ -957,45 +957,45 @@ export function createFactionRouter(ctx: AppContext) {
     }
   });
 
-  r.delete('/custom-factions/:locationId/nodes/:nodeId', (req, res) => {
+  r.delete('/custom-factions/:locationId/nodes/:nodeId', async (req, res) => {
     try {
       const locationId = String(req.params.locationId || '').trim();
       const nodeId = String(req.params.nodeId || '').trim();
       const userId = Number(req.query.userId || req.body?.userId || 0);
       if (!locationId || !nodeId || !userId) return res.status(400).json({ success: false, message: '缺少必要参数' });
 
-      const faction = getCustomFactionById(db, locationId);
+      const faction = await getCustomFactionById(db, locationId);
       if (!faction) return res.status(404).json({ success: false, message: '未找到该自定义势力' });
       if (Number(faction.ownerUserId || 0) !== userId) {
         return res.status(403).json({ success: false, message: '只有该势力创建者可以删除地点。' });
       }
 
-      db.prepare(`DELETE FROM custom_faction_nodes WHERE id = ? AND factionId = ?`).run(nodeId, locationId);
-      db.prepare(`DELETE FROM custom_faction_node_logs WHERE nodeId = ?`).run(nodeId);
+      await db.prepare(`DELETE FROM custom_faction_nodes WHERE id = ? AND factionId = ?`).run(nodeId, locationId);
+      await db.prepare(`DELETE FROM custom_faction_node_logs WHERE nodeId = ?`).run(nodeId);
       return res.json({ success: true, message: '已删除该地点。' });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || '删除自定义地点失败' });
     }
   });
 
-  r.post('/custom-factions/:locationId/nodes/:nodeId/interact', (req, res) => {
+  r.post('/custom-factions/:locationId/nodes/:nodeId/interact', async (req, res) => {
     try {
       const locationId = String(req.params.locationId || '').trim();
       const nodeId = String(req.params.nodeId || '').trim();
       const userId = Number(req.body?.userId || 0);
       if (!locationId || !nodeId || !userId) return res.status(400).json({ success: false, message: '缺少必要参数' });
 
-      const node = db.prepare(`SELECT * FROM custom_faction_nodes WHERE id = ? AND factionId = ? LIMIT 1`).get(nodeId, locationId) as AnyRow | undefined;
+      const node = await db.prepare(`SELECT * FROM custom_faction_nodes WHERE id = ? AND factionId = ? LIMIT 1`).get(nodeId, locationId) as AnyRow | undefined;
       if (!node) return res.status(404).json({ success: false, message: '未找到该地点' });
 
-      const user = db.prepare(`SELECT id, gold, currentLocation FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, gold, currentLocation FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: '未找到该玩家' });
       if (String(user.currentLocation || '') !== locationId) {
         return res.status(409).json({ success: false, message: '请先进入该势力地图后再互动。' });
       }
 
       const dateKey = todayKey();
-      const log = db.prepare(`
+      const log = await db.prepare(`
         SELECT id, interactionCount
         FROM custom_faction_node_logs
         WHERE nodeId = ? AND factionId = ? AND userId = ? AND dateKey = ?
@@ -1011,9 +1011,9 @@ export function createFactionRouter(ctx: AppContext) {
       const nextCount = currentCount + 1;
       const ts = nowIso();
       if (log) {
-        db.prepare(`UPDATE custom_faction_node_logs SET interactionCount = ?, updatedAt = ? WHERE id = ?`).run(nextCount, ts, Number(log.id || 0));
+        await db.prepare(`UPDATE custom_faction_node_logs SET interactionCount = ?, updatedAt = ? WHERE id = ?`).run(nextCount, ts, Number(log.id || 0));
       } else {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO custom_faction_node_logs (nodeId, factionId, userId, dateKey, interactionCount, updatedAt)
           VALUES (?, ?, ?, ?, ?, ?)
         `).run(nodeId, locationId, userId, dateKey, nextCount, ts);
@@ -1021,7 +1021,7 @@ export function createFactionRouter(ctx: AppContext) {
 
       const salary = Math.max(0, Number(node.salary || 0));
       if (salary > 0) {
-        db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(salary, ts, userId);
+        await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(salary, ts, userId);
       }
 
       return res.json({

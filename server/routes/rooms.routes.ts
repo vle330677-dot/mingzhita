@@ -27,8 +27,8 @@ function parseParticipantIds(raw: any): number[] {
   }
 }
 
-function getOwnerReplayArchives(db: any, ownerId: number, ownerName: string) {
-  const rows = db.prepare(`
+async function getOwnerReplayArchives(db: any, ownerId: number, ownerName: string) {
+  const rows = await db.prepare(`
     SELECT id, title, locationId, locationName, participants, participantNames, createdAt
     FROM rp_archives
     ORDER BY datetime(createdAt) DESC, id DESC
@@ -59,28 +59,28 @@ function getOwnerReplayArchives(db: any, ownerId: number, ownerName: string) {
   });
 }
 
-export function createRoomsRouter(ctx: AppContext) {
+export async function createRoomsRouter(ctx: AppContext) {
   const r = Router();
   const { db, auth } = ctx;
 
   // 轻量迁移：新增 roomVisible（若不存在）
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN roomVisible INTEGER DEFAULT 1`);
+    await db.exec(`ALTER TABLE users ADD COLUMN roomVisible INTEGER DEFAULT 1`);
   } catch {
     // ignore duplicate column
   }
   try {
-    db.exec(`UPDATE users SET roomVisible = 1 WHERE roomVisible IS NULL`);
+    await db.exec(`UPDATE users SET roomVisible = 1 WHERE roomVisible IS NULL`);
   } catch {
     // ignore
   }
 
   // 初始化房间（幂等）
-  r.post('/rooms/init', (req, res) => {
+  r.post('/rooms/init', async (req, res) => {
     const userId = Number(req.body?.userId);
     if (!Number.isFinite(userId)) return res.status(400).json({ success: false, message: 'userId 无效' });
 
-    const u = db.prepare(`
+    const u = await db.prepare(`
       SELECT id, age, gold, role, homeLocation, allowVisit, roomVisible, roomBgImage, roomDescription
       FROM users WHERE id=?
     `).get(userId) as any;
@@ -93,31 +93,31 @@ export function createRoomsRouter(ctx: AppContext) {
     // 如果 home 无效，按规则初始化
     if (!ROOM_ZONES.has(home as any)) {
       home = resolveHomeByRule(Number(u.age || 18), Number(u.gold || 0), String(u.role || ''));
-      db.prepare(`UPDATE users SET homeLocation=? WHERE id=?`).run(home, userId);
+      await db.prepare(`UPDATE users SET homeLocation=? WHERE id=?`).run(home, userId);
     } else if (shouldForceSanctuary && home !== 'sanctuary') {
       // 未分化/未成年强制圣所
       home = 'sanctuary';
-      db.prepare(`UPDATE users SET homeLocation=? WHERE id=?`).run(home, userId);
+      await db.prepare(`UPDATE users SET homeLocation=? WHERE id=?`).run(home, userId);
     }
 
     // 默认访问、可见开关
     if (u.allowVisit === null || u.allowVisit === undefined) {
-      db.prepare(`UPDATE users SET allowVisit=1 WHERE id=?`).run(userId);
+      await db.prepare(`UPDATE users SET allowVisit=1 WHERE id=?`).run(userId);
     }
     if (u.roomVisible === null || u.roomVisible === undefined) {
-      db.prepare(`UPDATE users SET roomVisible=1 WHERE id=?`).run(userId);
+      await db.prepare(`UPDATE users SET roomVisible=1 WHERE id=?`).run(userId);
     }
 
     res.json({ success: true, homeLocation: home });
   });
 
   // 某区域房间入口（锁门也显示，点进去可看信息）
-  r.get('/rooms/entrances', (req, res) => {
+  r.get('/rooms/entrances', async (req, res) => {
     const locationId = String(req.query.locationId || '').trim();
     const viewerId = Number(req.query.viewerId || 0);
     if (!ROOM_ZONES.has(locationId as any)) return res.json({ success: true, rows: [] });
 
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT id, name, avatarUrl, job, role, homeLocation, allowVisit, roomVisible, roomDescription
       FROM users
       WHERE homeLocation = ?
@@ -160,11 +160,11 @@ export function createRoomsRouter(ctx: AppContext) {
   });
 
   // 房间详情（锁门可看简介；是否可进入由 canEnter 决定）
-  r.get('/rooms/:ownerId', auth.requireUserAuth, (req: any, res) => {
+  r.get('/rooms/:ownerId', auth.requireUserAuth, async (req: any, res) => {
     const ownerId = Number(req.params.ownerId);
     const viewerId = Number(req.user.id);
 
-    const owner = db.prepare(`
+    const owner = await db.prepare(`
       SELECT id, name, avatarUrl, job, role, homeLocation, roomBgImage, roomDescription, allowVisit, roomVisible, roomPasswordHash
       FROM users WHERE id=?
     `).get(ownerId) as any;
@@ -201,17 +201,17 @@ export function createRoomsRouter(ctx: AppContext) {
   });
 
   // 回顾：读取自己参与过的对戏档案
-  r.get('/rooms/:ownerId/replays', auth.requireUserAuth, (req: any, res) => {
+  r.get('/rooms/:ownerId/replays', auth.requireUserAuth, async (req: any, res) => {
     try {
       const ownerId = Number(req.params.ownerId);
       const uid = Number(req.user?.id || 0);
       if (!ownerId) return res.status(400).json({ success: false, message: 'ownerId 无效' });
       if (uid !== ownerId) return res.status(403).json({ success: false, message: '仅房主本人可查看回顾' });
 
-      const owner = db.prepare(`SELECT id, name FROM users WHERE id = ?`).get(ownerId) as any;
+      const owner = await db.prepare(`SELECT id, name FROM users WHERE id = ?`).get(ownerId) as any;
       if (!owner) return res.status(404).json({ success: false, message: '房主不存在' });
 
-      const archives = getOwnerReplayArchives(db, ownerId, String(owner.name || ''));
+      const archives = await getOwnerReplayArchives(db, ownerId, String(owner.name || ''));
       return res.json({ success: true, archives });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || '读取回顾失败', archives: [] });
@@ -219,7 +219,7 @@ export function createRoomsRouter(ctx: AppContext) {
   });
 
   // 回顾：删除指定档案（仅本人）
-  r.delete('/rooms/:ownerId/replays/:archiveId', auth.requireUserAuth, (req: any, res) => {
+  r.delete('/rooms/:ownerId/replays/:archiveId', auth.requireUserAuth, async (req: any, res) => {
     try {
       const ownerId = Number(req.params.ownerId);
       const archiveId = String(req.params.archiveId || '').trim();
@@ -227,18 +227,18 @@ export function createRoomsRouter(ctx: AppContext) {
       if (!ownerId || !archiveId) return res.status(400).json({ success: false, message: '参数无效' });
       if (uid !== ownerId) return res.status(403).json({ success: false, message: '仅房主本人可删除回顾' });
 
-      const owner = db.prepare(`SELECT id, name FROM users WHERE id = ?`).get(ownerId) as any;
+      const owner = await db.prepare(`SELECT id, name FROM users WHERE id = ?`).get(ownerId) as any;
       if (!owner) return res.status(404).json({ success: false, message: '房主不存在' });
 
-      const archives = getOwnerReplayArchives(db, ownerId, String(owner.name || ''));
+      const archives = await getOwnerReplayArchives(db, ownerId, String(owner.name || ''));
       const matched = archives.find((x: any) => String(x.id) === archiveId);
       if (!matched) return res.status(404).json({ success: false, message: '未找到该回顾或无权限删除' });
 
-      const tx = db.transaction(() => {
-        db.prepare(`DELETE FROM rp_archive_messages WHERE archiveId = ?`).run(archiveId);
-        db.prepare(`DELETE FROM rp_archives WHERE id = ?`).run(archiveId);
+      const tx = db.transaction(async () => {
+        await db.prepare(`DELETE FROM rp_archive_messages WHERE archiveId = ?`).run(archiveId);
+        await db.prepare(`DELETE FROM rp_archives WHERE id = ?`).run(archiveId);
       });
-      tx();
+      await tx();
       return res.json({ success: true, message: '回顾已删除' });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || '删除回顾失败' });
@@ -246,18 +246,18 @@ export function createRoomsRouter(ctx: AppContext) {
   });
 
   // 回顾：导出 TXT（仅本人）
-  r.get('/rooms/:ownerId/replays/export', auth.requireUserAuth, (req: any, res) => {
+  r.get('/rooms/:ownerId/replays/export', auth.requireUserAuth, async (req: any, res) => {
     try {
       const ownerId = Number(req.params.ownerId);
       const uid = Number(req.user?.id || 0);
       if (!ownerId) return res.status(400).json({ success: false, message: 'ownerId 无效' });
       if (uid !== ownerId) return res.status(403).json({ success: false, message: '仅房主本人可导出回顾' });
 
-      const owner = db.prepare(`SELECT id, name FROM users WHERE id = ?`).get(ownerId) as any;
+      const owner = await db.prepare(`SELECT id, name FROM users WHERE id = ?`).get(ownerId) as any;
       if (!owner) return res.status(404).json({ success: false, message: '房主不存在' });
 
       const ownerName = String(owner.name || `U${ownerId}`);
-      const archives = getOwnerReplayArchives(db, ownerId, ownerName);
+      const archives = await getOwnerReplayArchives(db, ownerId, ownerName);
       if (!archives.length) return res.status(404).json({ success: false, message: '暂无可导出的回顾记录' });
 
       const lines: string[] = [];
@@ -273,7 +273,7 @@ export function createRoomsRouter(ctx: AppContext) {
         lines.push(`【时间】${arc.createdAt || ''}`);
         lines.push('----------------------------------------');
 
-        const messages = db.prepare(`
+        const messages = await db.prepare(`
           SELECT senderId, senderName, content, type, createdAt
           FROM rp_archive_messages
           WHERE archiveId = ?
@@ -311,7 +311,7 @@ export function createRoomsRouter(ctx: AppContext) {
     const viewerId = Number(req.user.id);
     const inputPassword = String(req.body?.password || '');
 
-    const owner = db.prepare(`
+    const owner = await db.prepare(`
       SELECT id, name, homeLocation, allowVisit, roomVisible, roomPasswordHash
       FROM users WHERE id=?
     `).get(ownerId) as any;
@@ -369,7 +369,7 @@ export function createRoomsRouter(ctx: AppContext) {
     }
 
     // 先更新基础字段
-    db.prepare(`
+    await db.prepare(`
       UPDATE users
       SET roomVisible = COALESCE(?, roomVisible),
           allowVisit = COALESCE(?, allowVisit),
@@ -386,9 +386,9 @@ export function createRoomsRouter(ctx: AppContext) {
 
     // 密码单独处理（支持清空）
     if (clearRoomPassword) {
-      db.prepare(`UPDATE users SET roomPasswordHash = NULL WHERE id = ?`).run(ownerId);
+      await db.prepare(`UPDATE users SET roomPasswordHash = NULL WHERE id = ?`).run(ownerId);
     } else if (roomHash) {
-      db.prepare(`UPDATE users SET roomPasswordHash = ? WHERE id = ?`).run(roomHash, ownerId);
+      await db.prepare(`UPDATE users SET roomPasswordHash = ? WHERE id = ?`).run(roomHash, ownerId);
     }
 
     res.json({ success: true });
@@ -399,7 +399,7 @@ export function createRoomsRouter(ctx: AppContext) {
     const ownerId = Number(req.params.ownerId);
     const password = String(req.body?.password || '');
 
-    const owner = db.prepare(`SELECT roomPasswordHash FROM users WHERE id=?`).get(ownerId) as any;
+    const owner = await db.prepare(`SELECT roomPasswordHash FROM users WHERE id=?`).get(ownerId) as any;
     if (!owner) return res.status(404).json({ success: false, message: '房主不存在' });
     if (!owner.roomPasswordHash) return res.json({ success: true, pass: true });
 

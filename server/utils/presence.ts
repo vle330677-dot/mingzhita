@@ -1,3 +1,4 @@
+import type { AppDatabase } from '../db/types';
 import type { PresenceSnapshot } from '../realtime';
 
 type AnyRow = Record<string, any>;
@@ -9,8 +10,8 @@ function mapPresenceRow(row: AnyRow | undefined | null): PresenceSnapshot | null
   return {
     id: Number(row.id || 0),
     name: String(row.name || row.userName || ''),
-    role: String(row.role || '\u672a\u5206\u5316'),
-    job: String(row.job || '\u65e0'),
+    role: String(row.role || '未分化'),
+    job: String(row.job || '无'),
     status: String(row.status || ''),
     currentLocation: String(row.currentLocation || row.locationId || ''),
     partyId: row.partyId ? String(row.partyId) : null,
@@ -44,8 +45,8 @@ function basePresenceSql(whereClause: string) {
   `;
 }
 
-export function loadPresenceByUserId(db: any, userId: number) {
-  const row = db.prepare(`
+export async function loadPresenceByUserId(db: AppDatabase, userId: number) {
+  const row = await db.prepare(`
     ${basePresenceSql(`
       WHERE u.id = ?
         AND u.status IN ('approved', 'ghost')
@@ -55,11 +56,11 @@ export function loadPresenceByUserId(db: any, userId: number) {
   return mapPresenceRow(row);
 }
 
-export function loadPresenceByUserIds(db: any, userIds: number[]) {
+export async function loadPresenceByUserIds(db: AppDatabase, userIds: number[]) {
   const ids = Array.from(new Set((Array.isArray(userIds) ? userIds : []).map((value) => Number(value || 0)).filter(Boolean)));
   if (!ids.length) return [] as PresenceSnapshot[];
   const placeholders = ids.map(() => '?').join(',');
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     ${basePresenceSql(`
       WHERE u.id IN (${placeholders})
         AND u.status IN ('approved', 'ghost')
@@ -69,8 +70,8 @@ export function loadPresenceByUserIds(db: any, userIds: number[]) {
   return rows.map(mapPresenceRow).filter(Boolean) as PresenceSnapshot[];
 }
 
-export function loadOnlinePresenceFallback(db: any, onlineWindowSeconds = ONLINE_WINDOW_SECONDS) {
-  const rows = db.prepare(`
+export async function loadOnlinePresenceFallback(db: AppDatabase, onlineWindowSeconds = ONLINE_WINDOW_SECONDS) {
+  const rows = await db.prepare(`
     ${basePresenceSql(`
       WHERE u.status IN ('approved', 'ghost')
         AND COALESCE(u.currentLocation, '') <> ''

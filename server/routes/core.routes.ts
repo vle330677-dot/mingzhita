@@ -100,23 +100,23 @@ function safeJson(res: Response, code: number, body: any) {
   return res.status(code).json(body);
 }
 
-function deleteByIds(db: any, table: string, column: string, ids: Array<number | string>) {
+async function deleteByIds(db: any, table: string, column: string, ids: Array<number | string>) {
   const clean = ids
     .map((x) => (typeof x === 'number' ? x : String(x).trim()))
     .filter((x) => x !== '' && x !== 0);
   if (!clean.length) return;
   const placeholders = clean.map(() => '?').join(', ');
-  db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...clean);
+  await db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...clean);
 }
 
-function deleteCustomGameCascadeInTx(db: any, gameId: number) {
-  const mapIds = (db.prepare(`SELECT id FROM custom_game_maps WHERE game_id = ?`).all(gameId) as AnyRow[])
+async function deleteCustomGameCascadeInTx(db: any, gameId: number) {
+  const mapIds = (await db.prepare(`SELECT id FROM custom_game_maps WHERE game_id = ?`).all(gameId) as AnyRow[])
     .map((row) => Number(row.id || 0))
     .filter((id) => id > 0);
-  const runIds = (db.prepare(`SELECT id FROM custom_game_runs WHERE game_id = ?`).all(gameId) as AnyRow[])
+  const runIds = (await db.prepare(`SELECT id FROM custom_game_runs WHERE game_id = ?`).all(gameId) as AnyRow[])
     .map((row) => Number(row.id || 0))
     .filter((id) => id > 0);
-  const gameTaskIds = (db.prepare(`
+  const gameTaskIds = (await db.prepare(`
     SELECT id
     FROM review_tasks
     WHERE target_type = 'game'
@@ -126,7 +126,7 @@ function deleteCustomGameCascadeInTx(db: any, gameId: number) {
     .map((row) => Number(row.id || 0))
     .filter((id) => id > 0);
   const mapTaskIds = mapIds.length
-    ? (db.prepare(`
+    ? (await db.prepare(`
         SELECT id
         FROM review_tasks
         WHERE target_type = 'map'
@@ -138,50 +138,50 @@ function deleteCustomGameCascadeInTx(db: any, gameId: number) {
     : [];
   const taskIds = [...gameTaskIds, ...mapTaskIds];
 
-  deleteByIds(db, 'review_votes', 'task_id', taskIds);
-  deleteByIds(db, 'review_tasks', 'id', taskIds);
-  db.prepare(`DELETE FROM custom_game_reviews WHERE game_id = ?`).run(gameId);
-  deleteByIds(db, 'custom_game_reviews', 'map_id', mapIds);
-  db.prepare(`DELETE FROM custom_game_votes WHERE game_id = ?`).run(gameId);
-  deleteByIds(db, 'custom_game_run_events', 'run_id', runIds);
-  deleteByIds(db, 'custom_game_run_players', 'run_id', runIds);
-  db.prepare(`DELETE FROM custom_game_runs WHERE game_id = ?`).run(gameId);
-  db.prepare(`DELETE FROM custom_game_maps WHERE game_id = ?`).run(gameId);
-  db.prepare(`DELETE FROM custom_games WHERE id = ?`).run(gameId);
+  await deleteByIds(db, 'review_votes', 'task_id', taskIds);
+  await deleteByIds(db, 'review_tasks', 'id', taskIds);
+  await db.prepare(`DELETE FROM custom_game_reviews WHERE game_id = ?`).run(gameId);
+  await deleteByIds(db, 'custom_game_reviews', 'map_id', mapIds);
+  await db.prepare(`DELETE FROM custom_game_votes WHERE game_id = ?`).run(gameId);
+  await deleteByIds(db, 'custom_game_run_events', 'run_id', runIds);
+  await deleteByIds(db, 'custom_game_run_players', 'run_id', runIds);
+  await db.prepare(`DELETE FROM custom_game_runs WHERE game_id = ?`).run(gameId);
+  await db.prepare(`DELETE FROM custom_game_maps WHERE game_id = ?`).run(gameId);
+  await db.prepare(`DELETE FROM custom_games WHERE id = ?`).run(gameId);
 }
 
-function cleanupDeletedUserCustomGameData(db: any, userId: number) {
+async function cleanupDeletedUserCustomGameData(db: any, userId: number) {
   try {
-    const gameIds = (db.prepare(`SELECT id FROM custom_games WHERE creator_user_id = ?`).all(userId) as AnyRow[])
+    const gameIds = (await db.prepare(`SELECT id FROM custom_games WHERE creator_user_id = ?`).all(userId) as AnyRow[])
       .map((row) => Number(row.id || 0))
       .filter((id) => id > 0);
     for (const gameId of gameIds) {
-      deleteCustomGameCascadeInTx(db, gameId);
+      await deleteCustomGameCascadeInTx(db, gameId);
     }
 
-    db.prepare(`DELETE FROM custom_game_votes WHERE user_id = ?`).run(userId);
-    db.prepare(`DELETE FROM custom_game_run_players WHERE user_id = ?`).run(userId);
-    db.prepare(`DELETE FROM custom_game_player_stats WHERE user_id = ?`).run(userId);
-    db.prepare(`DELETE FROM custom_game_reviews WHERE reviewer_user_id = ?`).run(userId);
+    await db.prepare(`DELETE FROM custom_game_votes WHERE user_id = ?`).run(userId);
+    await db.prepare(`DELETE FROM custom_game_run_players WHERE user_id = ?`).run(userId);
+    await db.prepare(`DELETE FROM custom_game_player_stats WHERE user_id = ?`).run(userId);
+    await db.prepare(`DELETE FROM custom_game_reviews WHERE reviewer_user_id = ?`).run(userId);
 
-    const creatorTaskIds = (db.prepare(`SELECT id FROM review_tasks WHERE creator_user_id = ?`).all(userId) as AnyRow[])
+    const creatorTaskIds = (await db.prepare(`SELECT id FROM review_tasks WHERE creator_user_id = ?`).all(userId) as AnyRow[])
       .map((row) => Number(row.id || 0))
       .filter((id) => id > 0);
-    deleteByIds(db, 'review_votes', 'task_id', creatorTaskIds);
-    deleteByIds(db, 'review_tasks', 'id', creatorTaskIds);
+    await deleteByIds(db, 'review_votes', 'task_id', creatorTaskIds);
+    await deleteByIds(db, 'review_tasks', 'id', creatorTaskIds);
   } catch {
     // Custom-game tables may be absent during early bootstrap.
   }
 }
 
-export function createCoreRouter(ctx: AppContext) {
+export async function createCoreRouter(ctx: AppContext) {
   const router = Router();
   const db = ctx.db;
   const auth = ctx.auth;
   const runtime = ctx.runtime;
 
-  function ensureTables() {
-    db.exec(`
+  async function ensureTables() {
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE,
@@ -256,89 +256,89 @@ export function createCoreRouter(ctx: AppContext) {
       );
     `);
 
-    const ensureColumn = (table: string, column: string, definition: string) => {
-      const cols = db.prepare(`PRAGMA table_info(${table})`).all() as AnyRow[];
+    const ensureColumn = async (table: string, column: string, definition: string) => {
+      const cols = await db.prepare(`PRAGMA table_info(${table})`).all() as AnyRow[];
       if (!cols.some((row) => String(row.name || '') === column)) {
-        db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+        await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
       }
     };
 
-    ensureColumn('users', 'faction', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'ability', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'spiritName', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'spiritType', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'avatarUrl', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'avatarUpdatedAt', `TEXT`);
-    ensureColumn('users', 'deathDescription', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'profileText', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'isHidden', `INTEGER DEFAULT 0`);
-    ensureColumn('users', 'currentLocation', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'homeLocation', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'job', `TEXT DEFAULT '无'`);
-    ensureColumn('users', 'hp', `INTEGER DEFAULT 100`);
-    ensureColumn('users', 'maxHp', `INTEGER DEFAULT 100`);
-    ensureColumn('users', 'mp', `INTEGER DEFAULT 100`);
-    ensureColumn('users', 'maxMp', `INTEGER DEFAULT 100`);
-    ensureColumn('users', 'erosionLevel', `INTEGER DEFAULT 0`);
-    ensureColumn('users', 'bleedingLevel', `INTEGER DEFAULT 0`);
-    ensureColumn('users', 'mentalProgress', `REAL DEFAULT 0`);
-    ensureColumn('users', 'physicalProgress', `REAL DEFAULT 0`);
-    ensureColumn('users', 'workCount', `INTEGER DEFAULT 0`);
-    ensureColumn('users', 'trainCount', `INTEGER DEFAULT 0`);
-    ensureColumn('users', 'password', `TEXT`);
-    ensureColumn('users', 'loginPasswordHash', `TEXT`);
-    ensureColumn('users', 'roomPasswordHash', `TEXT`);
-    ensureColumn('users', 'roomBgImage', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'roomDescription', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'allowVisit', `INTEGER DEFAULT 1`);
-    ensureColumn('users', 'roomVisible', `INTEGER DEFAULT 1`);
-    ensureColumn('users', 'fury', `INTEGER DEFAULT 0`);
-    ensureColumn('users', 'guideStability', `INTEGER DEFAULT 100`);
-    ensureColumn('users', 'partyId', `TEXT DEFAULT NULL`);
-    ensureColumn('users', 'adminAvatarUrl', `TEXT DEFAULT ''`);
-    ensureColumn('users', 'forceOfflineAt', `TEXT`);
-    ensureColumn('users', 'createdAt', `DATETIME DEFAULT CURRENT_TIMESTAMP`);
-    ensureColumn('users', 'updatedAt', `DATETIME DEFAULT CURRENT_TIMESTAMP`);
+    await ensureColumn('users', 'faction', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'ability', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'spiritName', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'spiritType', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'avatarUrl', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'avatarUpdatedAt', `TEXT`);
+    await ensureColumn('users', 'deathDescription', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'profileText', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'isHidden', `INTEGER DEFAULT 0`);
+    await ensureColumn('users', 'currentLocation', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'homeLocation', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'job', `TEXT DEFAULT '无'`);
+    await ensureColumn('users', 'hp', `INTEGER DEFAULT 100`);
+    await ensureColumn('users', 'maxHp', `INTEGER DEFAULT 100`);
+    await ensureColumn('users', 'mp', `INTEGER DEFAULT 100`);
+    await ensureColumn('users', 'maxMp', `INTEGER DEFAULT 100`);
+    await ensureColumn('users', 'erosionLevel', `INTEGER DEFAULT 0`);
+    await ensureColumn('users', 'bleedingLevel', `INTEGER DEFAULT 0`);
+    await ensureColumn('users', 'mentalProgress', `REAL DEFAULT 0`);
+    await ensureColumn('users', 'physicalProgress', `REAL DEFAULT 0`);
+    await ensureColumn('users', 'workCount', `INTEGER DEFAULT 0`);
+    await ensureColumn('users', 'trainCount', `INTEGER DEFAULT 0`);
+    await ensureColumn('users', 'password', `TEXT`);
+    await ensureColumn('users', 'loginPasswordHash', `TEXT`);
+    await ensureColumn('users', 'roomPasswordHash', `TEXT`);
+    await ensureColumn('users', 'roomBgImage', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'roomDescription', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'allowVisit', `INTEGER DEFAULT 1`);
+    await ensureColumn('users', 'roomVisible', `INTEGER DEFAULT 1`);
+    await ensureColumn('users', 'fury', `INTEGER DEFAULT 0`);
+    await ensureColumn('users', 'guideStability', `INTEGER DEFAULT 100`);
+    await ensureColumn('users', 'partyId', `TEXT DEFAULT NULL`);
+    await ensureColumn('users', 'adminAvatarUrl', `TEXT DEFAULT ''`);
+    await ensureColumn('users', 'forceOfflineAt', `TEXT`);
+    await ensureColumn('users', 'createdAt', `DATETIME DEFAULT CURRENT_TIMESTAMP`);
+    await ensureColumn('users', 'updatedAt', `DATETIME DEFAULT CURRENT_TIMESTAMP`);
 
-    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name ON users(name)`).run();
-    db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)`).run();
-    db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_sessions_user_role ON user_sessions(userId, role, revokedAt)`).run();
-    db.prepare(`
+    await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name ON users(name)`).run();
+    await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_sessions_user_role ON user_sessions(userId, role, revokedAt)`).run();
+    await db.prepare(`
       INSERT OR IGNORE INTO admin_whitelist(name, code_name, enabled)
       VALUES ('塔', 'tower_admin', 1)
     `).run();
   }
 
-  ensureTables();
+  await ensureTables();
 
-  const tableExists = (tableName: string) => {
-    const row = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`).get(tableName) as AnyRow | undefined;
+  const tableExists = async (tableName: string) => {
+    const row = await db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`).get(tableName) as AnyRow | undefined;
     return !!row;
   };
 
-  const runIfTableExists = (tableName: string, sql: string, params: any[] = []) => {
-    if (!tableExists(tableName)) return;
-    db.prepare(sql).run(...params);
+  const runIfTableExists = async (tableName: string, sql: string, params: any[] = []) => {
+    if (!await tableExists(tableName)) return;
+    await db.prepare(sql).run(...params);
   };
 
-  function getUserByName(name: string) {
-    return db.prepare(`SELECT * FROM users WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
+  async function getUserByName(name: string) {
+    return await db.prepare(`SELECT * FROM users WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
   }
 
-  function getUserById(id: number) {
-    return db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+  async function getUserById(id: number) {
+    return await db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
   }
 
-  function issueSessionToken(userId: number, userName: string, role: 'player' | 'admin') {
+  async function issueSessionToken(userId: number, userName: string, role: 'player' | 'admin') {
     const token = auth.issueToken();
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO user_sessions(token, userId, userName, role, revokedAt, lastSeenAt, createdAt)
       VALUES (?, ?, ?, ?, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `).run(token, userId, userName, role);
     return token;
   }
 
-  function syncUserHome(user: AnyRow | undefined | null) {
+  async function syncUserHome(user: AnyRow | undefined | null) {
     if (!user) return user;
     const nextHome = resolveHomeLocationByRule(user.age, user.gold, user.role, user.homeLocation);
     const prevHome = normalizeName(user.homeLocation);
@@ -346,9 +346,9 @@ export function createCoreRouter(ctx: AppContext) {
     if (nextHome === prevHome) return user;
 
     const nextCurrent = !prevCurrent || prevCurrent === prevHome ? nextHome : prevCurrent;
-    db.prepare(`UPDATE users SET homeLocation = ?, currentLocation = ?, updatedAt = ? WHERE id = ?`)
+    await db.prepare(`UPDATE users SET homeLocation = ?, currentLocation = ?, updatedAt = ? WHERE id = ?`)
       .run(nextHome, nextCurrent, nowIso(), Number(user.id));
-    return getUserById(Number(user.id)) || user;
+    return await getUserById(Number(user.id)) || user;
   }
 
   function mapUser(u: AnyRow | undefined | null) {
@@ -410,12 +410,12 @@ export function createCoreRouter(ctx: AppContext) {
     };
   }
 
-  router.post('/users/init', (req, res) => {
+  router.post('/users/init', async (req, res) => {
     try {
       const name = normalizeName(req.body?.name ?? req.body?.userName);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
 
-      const existed = syncUserHome(getUserByName(name));
+      const existed = await syncUserHome(await getUserByName(name));
       if (existed) {
         return safeJson(res, 200, { success: true, existed: true, user: mapUser(existed) });
       }
@@ -427,7 +427,7 @@ export function createCoreRouter(ctx: AppContext) {
       const homeLocation = resolveHomeLocationByRule(age, gold, role, req.body?.homeLocation);
       const currentLocation = normalizeName(req.body?.currentLocation) || homeLocation;
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(name, role, status, age, gold, DEFAULT_JOB, DEFAULT_RANK, DEFAULT_RANK, currentLocation, homeLocation, nowIso(), nowIso());
@@ -435,19 +435,19 @@ export function createCoreRouter(ctx: AppContext) {
       return safeJson(res, 200, {
         success: true,
         existed: false,
-        user: mapUser(getUserByName(name))
+        user: mapUser(await getUserByName(name))
       });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'init user failed' });
     }
   });
 
-  router.post('/users', (req, res) => {
+  router.post('/users', async (req, res) => {
     try {
       const id = Number(req.body?.id ?? req.body?.userId ?? 0);
       const name = normalizeName(req.body?.name ?? req.body?.userName);
-      let user = id > 0 ? getUserById(id) : undefined;
-      if (!user && name) user = getUserByName(name);
+      let user = id > 0 ? await getUserById(id) : undefined;
+      if (!user && name) user = await getUserByName(name);
 
       if (!user && !name) {
         return safeJson(res, 400, { success: false, message: 'id or name required' });
@@ -461,7 +461,7 @@ export function createCoreRouter(ctx: AppContext) {
         const createHome = resolveHomeLocationByRule(createAge, createGold, createRole, req.body?.homeLocation);
         const createCurrent = normalizeName(req.body?.currentLocation) || createHome;
 
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, faction, ability, spiritName, spiritType, currentLocation, homeLocation, profileText, createdAt, updatedAt)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -483,7 +483,7 @@ export function createCoreRouter(ctx: AppContext) {
           nowIso(),
           nowIso()
         );
-        user = getUserByName(name);
+        user = await getUserByName(name);
       } else {
         const nextAge = Number(req.body?.age ?? user.age ?? 16);
         const nextGold = Number(req.body?.gold ?? user.gold ?? 0);
@@ -491,7 +491,7 @@ export function createCoreRouter(ctx: AppContext) {
         const nextHome = resolveHomeLocationByRule(nextAge, nextGold, nextRole, req.body?.homeLocation ?? user.homeLocation);
         const nextCurrent = normalizeName(req.body?.currentLocation ?? user.currentLocation) || nextHome;
 
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET role = ?,
               status = ?,
@@ -527,7 +527,7 @@ export function createCoreRouter(ctx: AppContext) {
           nowIso(),
           Number(user.id)
         );
-        user = getUserById(Number(user.id));
+        user = await getUserById(Number(user.id));
       }
 
       return safeJson(res, 200, { success: true, user: mapUser(user) });
@@ -536,21 +536,21 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/users', (_req, res) => {
+  router.get('/users', async (_req, res) => {
     try {
-      const rows = db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[];
+      const rows = await db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[];
       return safeJson(res, 200, { success: true, users: rows.map(mapUser) });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'query users failed', users: [] });
     }
   });
 
-  router.get('/users/:name', (req, res) => {
+  router.get('/users/:name', async (req, res) => {
     try {
       const name = normalizeName(req.params.name);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
 
-      const user = syncUserHome(getUserByName(name));
+      const user = await syncUserHome(await getUserByName(name));
       return safeJson(res, 200, {
         success: true,
         exists: !!user,
@@ -566,13 +566,13 @@ export function createCoreRouter(ctx: AppContext) {
       const name = normalizeName(req.body?.name ?? req.body?.userName);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
 
-      const user = getUserByName(name);
+      const user = await getUserByName(name);
       if (!user) return safeJson(res, 404, { success: false, message: '用户不存在，请先创建身份' });
       if (normalizeName(user.status) === 'banned') {
         return safeJson(res, 403, { success: false, message: '该账号已被封禁' });
       }
 
-      let effectiveUser = syncUserHome(user) || user;
+      let effectiveUser = await syncUserHome(user) || user;
       const inputPassword = typeof req.body?.password === 'string' ? req.body.password : '';
       const loginPasswordHash = normalizeName(effectiveUser.loginPasswordHash);
 
@@ -589,13 +589,13 @@ export function createCoreRouter(ctx: AppContext) {
             return safeJson(res, 401, { success: false, message: '密码错误' });
           }
           const migratedHash = await hashPassword(inputPassword);
-          db.prepare(`UPDATE users SET loginPasswordHash = ?, password = NULL, updatedAt = ? WHERE id = ?`)
+          await db.prepare(`UPDATE users SET loginPasswordHash = ?, password = NULL, updatedAt = ? WHERE id = ?`)
             .run(migratedHash, nowIso(), Number(effectiveUser.id));
-          effectiveUser = getUserById(Number(effectiveUser.id)) || effectiveUser;
+          effectiveUser = await getUserById(Number(effectiveUser.id)) || effectiveUser;
         }
       }
 
-      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'player' AND revokedAt IS NULL`)
+      await db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'player' AND revokedAt IS NULL`)
         .run(Number(effectiveUser.id));
       void runtime.publishUser(Number(effectiveUser.id), 'session.kicked', {
         userId: Number(effectiveUser.id),
@@ -603,7 +603,7 @@ export function createCoreRouter(ctx: AppContext) {
       });
       void runtime.removePresence(Number(effectiveUser.id));
       void runtime.publishBroadcast('presence.removed', { userId: Number(effectiveUser.id) });
-      const token = issueSessionToken(Number(effectiveUser.id), String(effectiveUser.name), 'player');
+      const token = await issueSessionToken(Number(effectiveUser.id), String(effectiveUser.name), 'player');
 
       return safeJson(res, 200, {
         success: true,
@@ -615,11 +615,11 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/auth/logout', auth.requireUserAuth, (req: Request, res) => {
+  router.post('/auth/logout', auth.requireUserAuth, async (req: Request, res) => {
     try {
       const token = auth.getBearerToken(req);
       if (token) {
-        db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+        await db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
       }
       const userId = Number((req as any).user?.id || 0);
       if (userId) {
@@ -632,7 +632,7 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/admin/auth/login', (req, res) => {
+  router.post('/admin/auth/login', async (req, res) => {
     try {
       const codeInput = normalizeName(req.body?.entryCode ?? req.body?.code ?? req.body?.adminCode ?? req.body?.password);
       const adminNameInput = normalizeName(req.body?.adminName ?? req.body?.name);
@@ -649,7 +649,7 @@ export function createCoreRouter(ctx: AppContext) {
       }
 
       let adminName = adminNameInput;
-      const whitelist = db.prepare(`SELECT name, code_name FROM admin_whitelist WHERE enabled = 1`).all() as AnyRow[];
+      const whitelist = await db.prepare(`SELECT name, code_name FROM admin_whitelist WHERE enabled = 1`).all() as AnyRow[];
       if (whitelist.length > 0) {
         const matched = whitelist.find((row) => {
           const name = normalizeName(row.name);
@@ -670,18 +670,18 @@ export function createCoreRouter(ctx: AppContext) {
         }
       }
 
-      let adminUser = getUserByName(adminName);
+      let adminUser = await getUserByName(adminName);
       if (!adminUser) {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO users(name, role, status, age, gold, job, physicalRank, mentalRank, currentLocation, homeLocation, createdAt, updatedAt)
           VALUES (?, ?, 'approved', 18, 0, ?, ?, ?, '', '', ?, ?)
         `).run(adminName, DEFAULT_ROLE_ADULT, '管理员', DEFAULT_RANK, DEFAULT_RANK, nowIso(), nowIso());
-        adminUser = getUserByName(adminName);
+        adminUser = await getUserByName(adminName);
       }
 
-      db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'admin' AND revokedAt IS NULL`)
+      await db.prepare(`UPDATE user_sessions SET revokedAt = CURRENT_TIMESTAMP WHERE userId = ? AND role = 'admin' AND revokedAt IS NULL`)
         .run(Number(adminUser!.id));
-      const token = issueSessionToken(Number(adminUser!.id), adminName, 'admin');
+      const token = await issueSessionToken(Number(adminUser!.id), adminName, 'admin');
 
       return safeJson(res, 200, {
         success: true,
@@ -695,11 +695,11 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/admin/meta', auth.requireAdminAuth, (req: any, res) => {
+  router.get('/admin/meta', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const currentAdminId = Number(req.admin?.userId || 0);
-      const currentAdmin = getUserById(currentAdminId);
-      const onlineAdmins = db.prepare(`
+      const currentAdmin = await getUserById(currentAdminId);
+      const onlineAdmins = await db.prepare(`
         SELECT DISTINCT
           u.id,
           u.name,
@@ -712,7 +712,7 @@ export function createCoreRouter(ctx: AppContext) {
           AND datetime(s.lastSeenAt) >= datetime('now', '-120 seconds')
         ORDER BY datetime(s.lastSeenAt) DESC, u.id DESC
       `).all() as AnyRow[];
-      const whitelist = db.prepare(`
+      const whitelist = await db.prepare(`
         SELECT name, code_name, enabled
         FROM admin_whitelist
         ORDER BY name ASC
@@ -744,7 +744,7 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/admin/whitelist', auth.requireAdminAuth, (req: any, res) => {
+  router.post('/admin/whitelist', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const adminName = normalizeName(req.body?.name ?? req.body?.adminName);
       const codeName = normalizeName(req.body?.codeName ?? req.body?.code_name);
@@ -753,7 +753,7 @@ export function createCoreRouter(ctx: AppContext) {
         return safeJson(res, 400, { success: false, message: '请输入管理员名字' });
       }
 
-      const existedByName = db.prepare(`
+      const existedByName = await db.prepare(`
         SELECT id, name
         FROM admin_whitelist
         WHERE name = ?
@@ -764,7 +764,7 @@ export function createCoreRouter(ctx: AppContext) {
       }
 
       if (codeName) {
-        const existedByCodeName = db.prepare(`
+        const existedByCodeName = await db.prepare(`
           SELECT id, code_name
           FROM admin_whitelist
           WHERE code_name = ?
@@ -775,13 +775,13 @@ export function createCoreRouter(ctx: AppContext) {
         }
       }
 
-      const result = db.prepare(`
+      const result = await db.prepare(`
         INSERT INTO admin_whitelist(name, code_name, enabled, createdAt)
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
       `).run(adminName, codeName || null, enabled);
 
       const operatorName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, operatorName, `新增管理员白名单 ${adminName}`, 'admin_whitelist', String(result.lastInsertRowid), {
+      await writeAdminLog(db, operatorName, `新增管理员白名单 ${adminName}`, 'admin_whitelist', String(result.lastInsertRowid), {
         name: adminName,
         codeName,
         enabled,
@@ -796,22 +796,22 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.put('/admin/profile', auth.requireAdminAuth, (req: any, res) => {
+  router.put('/admin/profile', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const adminUserId = Number(req.admin?.userId || 0);
       if (!adminUserId) return safeJson(res, 400, { success: false, message: 'invalid admin user id' });
 
-      const user = getUserById(adminUserId);
+      const user = await getUserById(adminUserId);
       if (!user) return safeJson(res, 404, { success: false, message: 'admin user not found' });
 
       const adminAvatarUrl = normalizeLongText(req.body?.adminAvatarUrl, String(user.adminAvatarUrl || ''));
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET adminAvatarUrl = ?, updatedAt = ?
         WHERE id = ?
       `).run(adminAvatarUrl, nowIso(), adminUserId);
 
-      const updated = getUserById(adminUserId);
+      const updated = await getUserById(adminUserId);
       return safeJson(res, 200, {
         success: true,
         message: `管理员 ${String(updated?.name || req.admin?.name || 'admin')} 已更新后台头像`,
@@ -828,24 +828,24 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/admin/users', auth.requireAdminAuth, (req: any, res) => {
+  router.get('/admin/users', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const status = normalizeName(req.query?.status);
       const rows = status
-        ? (db.prepare(`SELECT * FROM users WHERE status = ? ORDER BY id DESC`).all(status) as AnyRow[])
-        : (db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[]);
+        ? (await db.prepare(`SELECT * FROM users WHERE status = ? ORDER BY id DESC`).all(status) as AnyRow[])
+        : (await db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as AnyRow[]);
       return safeJson(res, 200, { success: true, users: rows.map(mapUser) });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'query admin users failed', users: [] });
     }
   });
 
-  router.post('/admin/users/:id/status', auth.requireAdminAuth, (req: any, res) => {
+  router.post('/admin/users/:id/status', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
 
-      const user = getUserById(id);
+      const user = await getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
       const status = normalizeAdminStatus(req.body?.status, String(user.status || 'pending'));
@@ -856,11 +856,11 @@ export function createCoreRouter(ctx: AppContext) {
       const params = status === 'banned'
         ? [status, nowIso(), nowIso(), id]
         : [status, nowIso(), id];
-      db.prepare(updateSql).run(...params);
+      await db.prepare(updateSql).run(...params);
 
-      const updated = getUserById(id);
+      const updated = await getUserById(id);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `修改玩家状态 ${String(user.name || id)} -> ${status}`, 'user', String(id), {
+      await writeAdminLog(db, adminName, `修改玩家状态 ${String(user.name || id)} -> ${status}`, 'user', String(id), {
         from: String(user.status || ''),
         to: status,
         reason,
@@ -882,7 +882,7 @@ export function createCoreRouter(ctx: AppContext) {
       const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
 
-      const user = getUserById(id);
+      const user = await getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
       const body = req.body || {};
@@ -893,7 +893,7 @@ export function createCoreRouter(ctx: AppContext) {
 
       const name = normalizeName(body.name ?? user.name);
       if (!name) return safeJson(res, 400, { success: false, message: 'name required' });
-      const dup = db.prepare(`SELECT id FROM users WHERE name = ? AND id <> ? LIMIT 1`).get(name, id) as AnyRow | undefined;
+      const dup = await db.prepare(`SELECT id FROM users WHERE name = ? AND id <> ? LIMIT 1`).get(name, id) as AnyRow | undefined;
       if (dup) return safeJson(res, 400, { success: false, message: 'name already exists' });
 
       const gold = Number(body.gold ?? user.gold ?? 0);
@@ -925,7 +925,7 @@ export function createCoreRouter(ctx: AppContext) {
         }
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET name = ?,
             role = ?,
@@ -971,16 +971,16 @@ export function createCoreRouter(ctx: AppContext) {
       );
 
       if (hasPasswordField) {
-        db.prepare(`UPDATE users SET loginPasswordHash = ?, password = NULL, updatedAt = ? WHERE id = ?`)
+        await db.prepare(`UPDATE users SET loginPasswordHash = ?, password = NULL, updatedAt = ? WHERE id = ?`)
           .run(nextLoginPasswordHash, nowIso(), id);
       }
       if (status === 'banned') {
-        db.prepare(`UPDATE users SET forceOfflineAt = ?, updatedAt = ? WHERE id = ?`).run(nowIso(), nowIso(), id);
+        await db.prepare(`UPDATE users SET forceOfflineAt = ?, updatedAt = ? WHERE id = ?`).run(nowIso(), nowIso(), id);
       }
 
-      const updated = getUserById(id);
+      const updated = await getUserById(id);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `编辑玩家资料 ${name}`, 'user', String(id), {
+      await writeAdminLog(db, adminName, `编辑玩家资料 ${name}`, 'user', String(id), {
         status,
         role,
         age,
@@ -999,46 +999,46 @@ export function createCoreRouter(ctx: AppContext) {
     }
   });
 
-  const deleteUserAndRelatedData = (id: number) => {
-    const tx = db.transaction(() => {
-      cleanupDeletedUserCustomGameData(db, id);
-      runIfTableExists('user_sessions', `DELETE FROM user_sessions WHERE userId = ?`, [id]);
-      runIfTableExists('user_skills', `DELETE FROM user_skills WHERE userId = ?`, [id]);
-      runIfTableExists('user_inventory', `DELETE FROM user_inventory WHERE userId = ?`, [id]);
-      runIfTableExists('inventory', `DELETE FROM inventory WHERE userId = ?`, [id]);
-      runIfTableExists('notes', `DELETE FROM notes WHERE ownerId = ? OR targetId = ?`, [id, id]);
-      runIfTableExists('interaction_reports', `DELETE FROM interaction_reports WHERE reporterId = ? OR targetId = ?`, [id, id]);
-      runIfTableExists('interaction_report_votes', `DELETE FROM interaction_report_votes WHERE adminUserId = ?`, [id]);
-      runIfTableExists('interaction_events', `DELETE FROM interaction_events WHERE userId = ? OR sourceUserId = ? OR targetUserId = ?`, [id, id, id]);
-      runIfTableExists('interaction_skip_requests', `DELETE FROM interaction_skip_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
-      runIfTableExists('interaction_trade_requests', `DELETE FROM interaction_trade_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
-      runIfTableExists('interaction_trade_logs', `DELETE FROM interaction_trade_logs WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
-      runIfTableExists('interaction_trade_offers', `DELETE FROM interaction_trade_offers WHERE userId = ?`, [id]);
-      runIfTableExists('interaction_trade_sessions', `DELETE FROM interaction_trade_sessions WHERE userAId = ? OR userBId = ?`, [id, id]);
-      runIfTableExists('party_requests', `DELETE FROM party_requests WHERE fromUserId = ? OR toUserId = ? OR targetUserId = ?`, [id, id, id]);
-      runIfTableExists('party_entanglements', `DELETE FROM party_entanglements WHERE userAId = ? OR userBId = ?`, [id, id]);
-      runIfTableExists('active_rp_members', `DELETE FROM active_rp_members WHERE userId = ?`, [id]);
-      runIfTableExists('active_rp_leaves', `DELETE FROM active_rp_leaves WHERE userId = ?`, [id]);
-      runIfTableExists('active_group_rp_members', `DELETE FROM active_group_rp_members WHERE userId = ?`, [id]);
-      runIfTableExists('rp_mediation_invites', `DELETE FROM rp_mediation_invites WHERE invitedUserId = ? OR requestedByUserId = ?`, [id, id]);
-      runIfTableExists('demon_gamble_requests', `DELETE FROM demon_gamble_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
-      runIfTableExists('rooms', `DELETE FROM rooms WHERE ownerId = ?`, [id]);
-      db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+  const deleteUserAndRelatedData = async (id: number) => {
+    const tx = db.transaction(async () => {
+      await cleanupDeletedUserCustomGameData(db, id);
+      await runIfTableExists('user_sessions', `DELETE FROM user_sessions WHERE userId = ?`, [id]);
+      await runIfTableExists('user_skills', `DELETE FROM user_skills WHERE userId = ?`, [id]);
+      await runIfTableExists('user_inventory', `DELETE FROM user_inventory WHERE userId = ?`, [id]);
+      await runIfTableExists('inventory', `DELETE FROM inventory WHERE userId = ?`, [id]);
+      await runIfTableExists('notes', `DELETE FROM notes WHERE ownerId = ? OR targetId = ?`, [id, id]);
+      await runIfTableExists('interaction_reports', `DELETE FROM interaction_reports WHERE reporterId = ? OR targetId = ?`, [id, id]);
+      await runIfTableExists('interaction_report_votes', `DELETE FROM interaction_report_votes WHERE adminUserId = ?`, [id]);
+      await runIfTableExists('interaction_events', `DELETE FROM interaction_events WHERE userId = ? OR sourceUserId = ? OR targetUserId = ?`, [id, id, id]);
+      await runIfTableExists('interaction_skip_requests', `DELETE FROM interaction_skip_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      await runIfTableExists('interaction_trade_requests', `DELETE FROM interaction_trade_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      await runIfTableExists('interaction_trade_logs', `DELETE FROM interaction_trade_logs WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      await runIfTableExists('interaction_trade_offers', `DELETE FROM interaction_trade_offers WHERE userId = ?`, [id]);
+      await runIfTableExists('interaction_trade_sessions', `DELETE FROM interaction_trade_sessions WHERE userAId = ? OR userBId = ?`, [id, id]);
+      await runIfTableExists('party_requests', `DELETE FROM party_requests WHERE fromUserId = ? OR toUserId = ? OR targetUserId = ?`, [id, id, id]);
+      await runIfTableExists('party_entanglements', `DELETE FROM party_entanglements WHERE userAId = ? OR userBId = ?`, [id, id]);
+      await runIfTableExists('active_rp_members', `DELETE FROM active_rp_members WHERE userId = ?`, [id]);
+      await runIfTableExists('active_rp_leaves', `DELETE FROM active_rp_leaves WHERE userId = ?`, [id]);
+      await runIfTableExists('active_group_rp_members', `DELETE FROM active_group_rp_members WHERE userId = ?`, [id]);
+      await runIfTableExists('rp_mediation_invites', `DELETE FROM rp_mediation_invites WHERE invitedUserId = ? OR requestedByUserId = ?`, [id, id]);
+      await runIfTableExists('demon_gamble_requests', `DELETE FROM demon_gamble_requests WHERE fromUserId = ? OR toUserId = ?`, [id, id]);
+      await runIfTableExists('rooms', `DELETE FROM rooms WHERE ownerId = ?`, [id]);
+      await db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
     });
-    tx();
+    await tx();
   };
 
-  const handleDeleteUser = (req: any, res: Response) => {
+  const handleDeleteUser = async (req: any, res: Response) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
 
-      const user = getUserById(id);
+      const user = await getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
-      deleteUserAndRelatedData(id);
+      await deleteUserAndRelatedData(id);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `删除玩家 ${String(user.name || id)}`, 'user', String(id));
+      await writeAdminLog(db, adminName, `删除玩家 ${String(user.name || id)}`, 'user', String(id));
 
       return safeJson(res, 200, {
         success: true,
@@ -1052,7 +1052,7 @@ export function createCoreRouter(ctx: AppContext) {
   router.delete('/admin/users/:id', auth.requireAdminAuth, handleDeleteUser);
   router.delete('/users/:id', auth.requireAdminAuth, handleDeleteUser);
 
-  router.put('/users/:id/home', auth.requireUserAuth, (req: any, res) => {
+  router.put('/users/:id/home', auth.requireUserAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return safeJson(res, 400, { success: false, message: 'invalid user id' });
@@ -1060,7 +1060,7 @@ export function createCoreRouter(ctx: AppContext) {
         return safeJson(res, 403, { success: false, message: '只能修改自己的住处' });
       }
 
-      const user = getUserById(id);
+      const user = await getUserById(id);
       if (!user) return safeJson(res, 404, { success: false, message: 'user not found' });
 
       const locationId = normalizeName(req.body?.locationId ?? req.body?.homeLocation);
@@ -1084,14 +1084,14 @@ export function createCoreRouter(ctx: AppContext) {
       const prevHome = normalizeName(user.homeLocation);
       const prevCurrent = normalizeName(user.currentLocation);
       const nextCurrent = !prevCurrent || prevCurrent === prevHome ? locationId : prevCurrent;
-      db.prepare(`UPDATE users SET homeLocation = ?, currentLocation = ?, updatedAt = ? WHERE id = ?`)
+      await db.prepare(`UPDATE users SET homeLocation = ?, currentLocation = ?, updatedAt = ? WHERE id = ?`)
         .run(locationId, nextCurrent, nowIso(), id);
 
       return safeJson(res, 200, {
         success: true,
         homeLocation: locationId,
         currentLocation: nextCurrent,
-        user: mapUser(getUserById(id))
+        user: mapUser(await getUserById(id))
       });
     } catch (e: any) {
       return safeJson(res, 500, { success: false, message: e?.message || 'update home failed' });

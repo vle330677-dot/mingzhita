@@ -18,41 +18,49 @@ export function createAuth(db: AppDatabase): AuthPack {
     return h.slice(7).trim();
   };
 
-  const requireAdminAuth = (req: any, res: any, next: any) => {
-    const token = getBearerToken(req);
-    if (!token) return res.status(401).json({ success: false, message: '\u7f3a\u5c11\u7ba1\u7406\u5458\u4ee4\u724c' });
+  const requireAdminAuth = async (req: any, res: any, next: any) => {
+    try {
+      const token = getBearerToken(req);
+      if (!token) return res.status(401).json({ success: false, message: '缺少管理员令牌' });
 
-    const s = db.prepare(`
-      SELECT * FROM user_sessions WHERE token = ? AND role='admin' AND revokedAt IS NULL
-    `).get(token) as any;
-    if (!s) return res.status(401).json({ success: false, message: '\u7ba1\u7406\u5458\u4f1a\u8bdd\u5931\u6548' });
+      const s = await db.prepare(`
+        SELECT * FROM user_sessions WHERE token = ? AND role='admin' AND revokedAt IS NULL
+      `).get(token) as any;
+      if (!s) return res.status(401).json({ success: false, message: '管理员会话失效' });
 
-    db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
-    req.admin = { userId: s.userId, name: s.userName, token: s.token };
-    next();
+      await db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+      req.admin = { userId: s.userId, name: s.userName, token: s.token };
+      next();
+    } catch (error) {
+      next(error);
+    }
   };
 
-  const requireUserAuth = (req: any, res: any, next: any) => {
-    const token = getBearerToken(req);
-    if (!token) return res.status(401).json({ success: false, message: '\u672a\u767b\u5f55' });
+  const requireUserAuth = async (req: any, res: any, next: any) => {
+    try {
+      const token = getBearerToken(req);
+      if (!token) return res.status(401).json({ success: false, message: '未登录' });
 
-    const s = db.prepare(`
-      SELECT * FROM user_sessions WHERE token = ? AND role='player' AND revokedAt IS NULL
-    `).get(token) as any;
-    if (!s) return res.status(401).json({ success: false, code: 'SESSION_REVOKED', message: '\u4f1a\u8bdd\u5931\u6548' });
+      const s = await db.prepare(`
+        SELECT * FROM user_sessions WHERE token = ? AND role='player' AND revokedAt IS NULL
+      `).get(token) as any;
+      if (!s) return res.status(401).json({ success: false, code: 'SESSION_REVOKED', message: '会话失效' });
 
-    const user = db.prepare(`SELECT forceOfflineAt FROM users WHERE id = ?`).get(s.userId) as any;
-    if (user?.forceOfflineAt) {
-      const forced = new Date(user.forceOfflineAt).getTime();
-      const created = new Date(s.createdAt).getTime();
-      if (forced > created) {
-        return res.status(401).json({ success: false, code: 'SESSION_KICKED', message: '\u5df2\u5728\u5176\u4ed6\u8bbe\u5907\u767b\u5f55' });
+      const user = await db.prepare(`SELECT forceOfflineAt FROM users WHERE id = ?`).get(s.userId) as any;
+      if (user?.forceOfflineAt) {
+        const forced = new Date(user.forceOfflineAt).getTime();
+        const created = new Date(s.createdAt).getTime();
+        if (forced > created) {
+          return res.status(401).json({ success: false, code: 'SESSION_KICKED', message: '已在其他设备登录' });
+        }
       }
-    }
 
-    db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
-    req.user = { id: s.userId, name: s.userName, token: s.token };
-    next();
+      await db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+      req.user = { id: s.userId, name: s.userName, token: s.token };
+      next();
+    } catch (error) {
+      next(error);
+    }
   };
 
   return { requireAdminAuth, requireUserAuth, issueToken, getBearerToken };

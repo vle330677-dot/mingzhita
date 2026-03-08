@@ -12,8 +12,8 @@ function isArmyMember(jobRaw: any) {
   return ARMY_JOBS.has(String(jobRaw || '').trim());
 }
 
-function getUser(db: any, userId: number) {
-  return db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+async function getUser(db: any, userId: number) {
+  return await db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
 }
 
 export function createArmyRouter(ctx: AppContext) {
@@ -21,13 +21,13 @@ export function createArmyRouter(ctx: AppContext) {
   const { db } = ctx;
 
   // 获取评理列表
-  r.get('/army/arbitrations', (req, res) => {
+  r.get('/army/arbitrations', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       const status = String(req.query.status || 'pending');
       const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
 
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, plaintiffUserId, plaintiffName, defendantUserId, defendantName,
                reason, evidence, status, judgeUserId, judgeName, verdict, penalty,
                createdAt, updatedAt
@@ -37,8 +37,9 @@ export function createArmyRouter(ctx: AppContext) {
         LIMIT ?
       `).all(status, limit) as AnyRow[];
 
-      const arbitrations = rows.map((x) => {
-        const votes = db.prepare(`
+      const currentUser = userId > 0 ? await getUser(db, userId) : undefined;
+      const arbitrations = await Promise.all(rows.map(async (x) => {
+        const votes = await db.prepare(`
           SELECT voterUserId, voterName, vote, comment, createdAt
           FROM army_arbitration_votes
           WHERE arbitrationId = ?
@@ -67,9 +68,9 @@ export function createArmyRouter(ctx: AppContext) {
             comment: String(v.comment || ''),
             createdAt: String(v.createdAt || '')
           })),
-          canVote: userId > 0 && isArmyMember(getUser(db, userId)?.job) && !votes.some((v) => Number(v.voterUserId) === userId)
+          canVote: userId > 0 && isArmyMember(currentUser?.job) && !votes.some((v) => Number(v.voterUserId) === userId)
         };
-      });
+      }));
 
       res.json({ success: true, arbitrations });
     } catch (e: any) {
@@ -78,7 +79,7 @@ export function createArmyRouter(ctx: AppContext) {
   });
 
   // 提交评理申请
-  r.post('/army/arbitrations', (req, res) => {
+  r.post('/army/arbitrations', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const defendantUserId = Number(req.body?.defendantUserId || 0);
@@ -93,13 +94,13 @@ export function createArmyRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '不能对自己提起评理' });
       }
 
-      const plaintiff = getUser(db, userId);
+      const plaintiff = await getUser(db, userId);
       if (!plaintiff) return res.status(404).json({ success: false, message: 'plaintiff not found' });
 
-      const defendant = getUser(db, defendantUserId);
+      const defendant = await getUser(db, defendantUserId);
       if (!defendant) return res.status(404).json({ success: false, message: 'defendant not found' });
 
-      const ret = db.prepare(`
+      const ret = await db.prepare(`
         INSERT INTO army_arbitrations(
           plaintiffUserId, plaintiffName, defendantUserId, defendantName,
           reason, evidence, status, createdAt, updatedAt
@@ -127,7 +128,7 @@ export function createArmyRouter(ctx: AppContext) {
   });
 
   // 军队成员投票
-  r.post('/army/arbitrations/:id/vote', (req, res) => {
+  r.post('/army/arbitrations/:id/vote', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
@@ -142,14 +143,14 @@ export function createArmyRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'invalid vote value' });
       }
 
-      const voter = getUser(db, userId);
+      const voter = await getUser(db, userId);
       if (!voter) return res.status(404).json({ success: false, message: 'voter not found' });
 
       if (!isArmyMember(voter.job)) {
         return res.status(403).json({ success: false, message: '只有军队成员可以参与评理投票' });
       }
 
-      const arbitration = db.prepare(`
+      const arbitration = await db.prepare(`
         SELECT * FROM army_arbitrations WHERE id = ? LIMIT 1
       `).get(id) as AnyRow | undefined;
 
@@ -159,7 +160,7 @@ export function createArmyRouter(ctx: AppContext) {
         return res.status(409).json({ success: false, message: '该案件已结案，无法继续投票' });
       }
 
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT id FROM army_arbitration_votes WHERE arbitrationId = ? AND voterUserId = ? LIMIT 1
       `).get(id, userId) as AnyRow | undefined;
 
@@ -167,7 +168,7 @@ export function createArmyRouter(ctx: AppContext) {
         return res.status(409).json({ success: false, message: '你已经投过票了' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO army_arbitration_votes(arbitrationId, voterUserId, voterName, vote, comment, createdAt)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(id, userId, String(voter.name || ''), vote, comment, nowIso());
@@ -179,7 +180,7 @@ export function createArmyRouter(ctx: AppContext) {
   });
 
   // 军队统帅裁决
-  r.post('/army/arbitrations/:id/judge', (req, res) => {
+  r.post('/army/arbitrations/:id/judge', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
@@ -190,14 +191,14 @@ export function createArmyRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'id/userId/verdict required' });
       }
 
-      const judge = getUser(db, userId);
+      const judge = await getUser(db, userId);
       if (!judge) return res.status(404).json({ success: false, message: 'judge not found' });
 
       if (String(judge.job || '') !== '军队统帅') {
         return res.status(403).json({ success: false, message: '只有军队统帅可以做出最终裁决' });
       }
 
-      const arbitration = db.prepare(`
+      const arbitration = await db.prepare(`
         SELECT * FROM army_arbitrations WHERE id = ? LIMIT 1
       `).get(id) as AnyRow | undefined;
 
@@ -207,7 +208,7 @@ export function createArmyRouter(ctx: AppContext) {
         return res.status(409).json({ success: false, message: '该案件已结案' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE army_arbitrations
         SET status = 'closed',
             judgeUserId = ?,

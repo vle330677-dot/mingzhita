@@ -14,7 +14,7 @@ type ReviewModule = "custom_idea" | "custom_map" | "custom_start";
 /** -------------------- DB Helpers -------------------- */
 async function dbAll(db: DB, sql: string, params: any[] = []): Promise<any[]> {
   if (db?.prepare) {
-    return db.prepare(sql).all(...params);
+    return await db.prepare(sql).all(...params);
   }
   return new Promise((resolve, reject) => {
     db.all(sql, params, (err: any, rows: any[]) => {
@@ -26,7 +26,7 @@ async function dbAll(db: DB, sql: string, params: any[] = []): Promise<any[]> {
 
 async function dbGet(db: DB, sql: string, params: any[] = []): Promise<any | undefined> {
   if (db?.prepare) {
-    return db.prepare(sql).get(...params);
+    return await db.prepare(sql).get(...params);
   }
   return new Promise((resolve, reject) => {
     db.get(sql, params, (err: any, row: any) => {
@@ -42,7 +42,7 @@ async function dbRun(
   params: any[] = []
 ): Promise<{ lastID?: number; changes?: number }> {
   if (db?.prepare) {
-    const info = db.prepare(sql).run(...params);
+    const info = await db.prepare(sql).run(...params);
     return {
       lastID: Number(info?.lastInsertRowid || 0),
       changes: Number(info?.changes || 0),
@@ -257,22 +257,22 @@ async function createCustomGameRun(db: DB, game: any, mapRow: any) {
   return { runId, created: true };
 }
 
-function runDeleteByIds(db: DB, table: string, column: string, ids: Array<number | string>) {
+async function runDeleteByIds(db: DB, table: string, column: string, ids: Array<number | string>) {
   const clean = ids
     .map((x) => (typeof x === "number" ? x : String(x).trim()))
     .filter((x) => x !== "" && x !== 0);
   if (!clean.length) return 0;
   const placeholders = clean.map(() => "?").join(", ");
-  const info = db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...clean) as any;
+  const info = await db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${placeholders})`).run(...clean) as any;
   return Number(info?.changes || 0);
 }
 
-function deleteCustomGameCascade(db: DB, gameId: number, opts?: { allowRunning?: boolean }) {
+async function deleteCustomGameCascade(db: DB, gameId: number, opts?: { allowRunning?: boolean }) {
   const allowRunning = !!opts?.allowRunning;
-  const game = db.prepare(`SELECT id, title, status FROM custom_games WHERE id = ? LIMIT 1`).get(gameId) as any;
+  const game = await db.prepare(`SELECT id, title, status FROM custom_games WHERE id = ? LIMIT 1`).get(gameId) as any;
   if (!game) return { found: false, deleted: false, blocked: false, title: "", mapCount: 0, runCount: 0 };
 
-  const activeRun = db.prepare(`
+  const activeRun = await db.prepare(`
     SELECT id
     FROM custom_game_runs
     WHERE game_id = ? AND status = 'running'
@@ -283,14 +283,14 @@ function deleteCustomGameCascade(db: DB, gameId: number, opts?: { allowRunning?:
     return { found: true, deleted: false, blocked: true, title: String(game.title || ""), mapCount: 0, runCount: 0 };
   }
 
-  const mapIds = (db.prepare(`SELECT id FROM custom_game_maps WHERE game_id = ?`).all(gameId) as any[])
+  const mapIds = (await db.prepare(`SELECT id FROM custom_game_maps WHERE game_id = ?`).all(gameId) as any[])
     .map((row) => Number(row.id || 0))
     .filter((id) => id > 0);
-  const runIds = (db.prepare(`SELECT id FROM custom_game_runs WHERE game_id = ?`).all(gameId) as any[])
+  const runIds = (await db.prepare(`SELECT id FROM custom_game_runs WHERE game_id = ?`).all(gameId) as any[])
     .map((row) => Number(row.id || 0))
     .filter((id) => id > 0);
 
-  const gameTaskIds = (db.prepare(`
+  const gameTaskIds = (await db.prepare(`
     SELECT id
     FROM review_tasks
     WHERE target_type = 'game'
@@ -300,7 +300,7 @@ function deleteCustomGameCascade(db: DB, gameId: number, opts?: { allowRunning?:
     .map((row) => Number(row.id || 0))
     .filter((id) => id > 0);
   const mapTaskIds = mapIds.length
-    ? (db.prepare(`
+    ? (await db.prepare(`
         SELECT id
         FROM review_tasks
         WHERE target_type = 'map'
@@ -312,19 +312,19 @@ function deleteCustomGameCascade(db: DB, gameId: number, opts?: { allowRunning?:
     : [];
   const taskIds = [...gameTaskIds, ...mapTaskIds];
 
-  const tx = db.transaction(() => {
-    runDeleteByIds(db, "review_votes", "task_id", taskIds);
-    runDeleteByIds(db, "review_tasks", "id", taskIds);
-    db.prepare(`DELETE FROM custom_game_reviews WHERE game_id = ?`).run(gameId);
-    runDeleteByIds(db, "custom_game_reviews", "map_id", mapIds);
-    db.prepare(`DELETE FROM custom_game_votes WHERE game_id = ?`).run(gameId);
-    runDeleteByIds(db, "custom_game_run_events", "run_id", runIds);
-    runDeleteByIds(db, "custom_game_run_players", "run_id", runIds);
-    db.prepare(`DELETE FROM custom_game_runs WHERE game_id = ?`).run(gameId);
-    db.prepare(`DELETE FROM custom_game_maps WHERE game_id = ?`).run(gameId);
-    db.prepare(`DELETE FROM custom_games WHERE id = ?`).run(gameId);
+  const tx = db.transaction(async () => {
+    await runDeleteByIds(db, "review_votes", "task_id", taskIds);
+    await runDeleteByIds(db, "review_tasks", "id", taskIds);
+    await db.prepare(`DELETE FROM custom_game_reviews WHERE game_id = ?`).run(gameId);
+    await runDeleteByIds(db, "custom_game_reviews", "map_id", mapIds);
+    await db.prepare(`DELETE FROM custom_game_votes WHERE game_id = ?`).run(gameId);
+    await runDeleteByIds(db, "custom_game_run_events", "run_id", runIds);
+    await runDeleteByIds(db, "custom_game_run_players", "run_id", runIds);
+    await db.prepare(`DELETE FROM custom_game_runs WHERE game_id = ?`).run(gameId);
+    await db.prepare(`DELETE FROM custom_game_maps WHERE game_id = ?`).run(gameId);
+    await db.prepare(`DELETE FROM custom_games WHERE id = ?`).run(gameId);
   });
-  tx();
+  await tx();
 
   return {
     found: true,
@@ -344,7 +344,7 @@ function getBearerToken(req: any) {
 }
 
 function getReqUserFactory(db: DB) {
-  return function getReqUser(req: any): AuthUser | null {
+  return async function getReqUser(req: any): Promise<AuthUser | null> {
     // 1) 兼容已有的 req.user / session
     const u = req.user || req.session?.user;
     if (u?.id) {
@@ -360,7 +360,7 @@ function getReqUserFactory(db: DB) {
     const token = getBearerToken(req);
     if (token) {
       try {
-        const row = db
+        const row = await db
           .prepare(
             `SELECT userId, userName, role
                FROM user_sessions
@@ -395,8 +395,8 @@ function getReqUserFactory(db: DB) {
 
 function requireAuthFactory(db: DB) {
   const getReqUser = getReqUserFactory(db);
-  return (req: Request, res: Response, next: NextFunction) => {
-    const user = getReqUser(req);
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const user = await getReqUser(req);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     (req as any).authUser = user;
     next();
@@ -405,8 +405,8 @@ function requireAuthFactory(db: DB) {
 
 function requireAdminFactory(db: DB) {
   const getReqUser = getReqUserFactory(db);
-  return (req: Request, res: Response, next: NextFunction) => {
-    const user = getReqUser(req);
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const user = await getReqUser(req);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     if (!user.isAdmin) return res.status(403).json({ message: "Admin only" });
     (req as any).authUser = user;
@@ -1130,7 +1130,7 @@ export function createCustomGameRouter(db: DB) {
       const gameId = Number(req.params.gameId || 0);
       if (!gameId) return res.status(400).json({ success: false, message: "invalid gameId" });
 
-      const result = deleteCustomGameCascade(db, gameId, { allowRunning: false });
+      const result = await deleteCustomGameCascade(db, gameId, { allowRunning: false });
       if (!result.found) return res.status(404).json({ success: false, message: "game not found" });
       if (result.blocked) {
         return res.status(409).json({ success: false, message: "game is running and cannot be deleted now" });
@@ -1345,7 +1345,7 @@ export function createCustomGameRouter(db: DB) {
       const game = await dbGet(db, `SELECT id FROM custom_games WHERE id = ? LIMIT 1`, [gameId]);
       if (!game) return res.status(404).json({ message: "game not found" });
 
-      const user = getReqUser(req);
+      const user = await getReqUser(req);
       const snapshot = await getVoteSnapshot(db, gameId, user?.id);
       res.json(snapshot);
     } catch (e: any) {

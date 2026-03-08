@@ -43,46 +43,61 @@ export async function startServer() {
   const hasBuiltClient = fs.existsSync(path.join(distPath, 'index.html'));
   const useProdStatic = process.env.NODE_ENV === 'production' && hasBuiltClient;
 
-  const db = initDb();
+  const db = await initDb();
   const auth = createAuth(db);
   const runtime = createRealtimeRuntime();
   await runtime.ready();
   const ctx: AppContext = { db, auth, runtime };
 
-  // 性能优化中间件
+  const realtimeRouter = await createRealtimeRouter(ctx);
+  const coreRouter = await createCoreRouter(ctx);
+  const characterRouter = await createCharacterRouter(ctx);
+  const catalogRouter = await createCatalogRouter(ctx);
+  const gameplayRouter = await createGameplayRouter(ctx);
+  const guildRouter = await createGuildRouter(ctx);
+  const ghostRouter = await createGhostRouter(ctx);
+  const armyRouter = await createArmyRouter(ctx);
+  const confirmationRouter = await createConfirmationRouter(ctx);
+  const factionRouter = await createFactionRouter(ctx);
+  const cityRouter = await createCityRouter(ctx);
+  const mediationRouter = await createMediationRouter(ctx);
+  const compatRouter = await createCompatRouter(ctx);
+  const announcementsRouter = await createAnnouncementsRouter(ctx);
+  const roomsRouter = await createRoomsRouter(ctx);
+  const rpRouter = await createRpRouter(ctx);
+  const customGameRouter = await createCustomGameRouter(db);
+  const legacyRouter = await createLegacyRouter(ctx);
+
   app.use(compressionMiddleware);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
-  
-  // 全局限流：每分钟最多200个请求
+
   app.use('/api', rateLimiter(runtime, { windowMs: 60 * 1000, maxRequests: 200 }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, ts: Date.now() });
   });
 
-  // 路由配置（带缓存的路由使用缓存中间件）
-  app.use('/api', createRealtimeRouter(ctx));
-  app.use('/api', createCoreRouter(ctx));
-  app.use('/api', createCharacterRouter(ctx));
-  app.use('/api', createCatalogRouter(ctx));
-  app.use('/api', createGameplayRouter(ctx));
-  app.use('/api', createGuildRouter(ctx));
-  app.use('/api', createGhostRouter(ctx));
-  app.use('/api', createArmyRouter(ctx));
-  app.use('/api', createConfirmationRouter(ctx));
-  app.use('/api', createFactionRouter(ctx));
-  app.use('/api', createCityRouter(ctx));
-  app.use('/api', createMediationRouter(ctx));
-  app.use('/api', createCompatRouter(ctx));
-  
-  // 公告和房间列表可以缓存30秒
-  app.use('/api', cacheMiddleware(runtime, 30 * 1000), createAnnouncementsRouter(ctx));
-  app.use('/api', cacheMiddleware(runtime, 30 * 1000), createRoomsRouter(ctx));
-  
-  app.use('/api', createRpRouter(ctx));
-  app.use('/api/custom-games', createCustomGameRouter(db));
-  app.use('/api', createLegacyRouter(ctx));
+  app.use('/api', realtimeRouter);
+  app.use('/api', coreRouter);
+  app.use('/api', characterRouter);
+  app.use('/api', catalogRouter);
+  app.use('/api', gameplayRouter);
+  app.use('/api', guildRouter);
+  app.use('/api', ghostRouter);
+  app.use('/api', armyRouter);
+  app.use('/api', confirmationRouter);
+  app.use('/api', factionRouter);
+  app.use('/api', cityRouter);
+  app.use('/api', mediationRouter);
+  app.use('/api', compatRouter);
+
+  app.use('/api', cacheMiddleware(runtime, 30 * 1000), announcementsRouter);
+  app.use('/api', cacheMiddleware(runtime, 30 * 1000), roomsRouter);
+
+  app.use('/api', rpRouter);
+  app.use('/api/custom-games', customGameRouter);
+  app.use('/api', legacyRouter);
 
   if (!useProdStatic) {
     const { createServer: createViteServer } = await import('vite');
@@ -106,17 +121,14 @@ export async function startServer() {
       }
     });
   } else {
-    // 生产环境静态文件缓存
     app.use(express.static(distPath, {
-      maxAge: '1d', // 静态资源缓存1天
+      maxAge: '1d',
       etag: true,
       lastModified: true,
       setHeaders: (res, filePath) => {
-        // JS/CSS 文件强缓存
         if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
-        // 图片文件缓存7天
         if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(filePath)) {
           res.setHeader('Cache-Control', 'public, max-age=604800');
         }
@@ -127,7 +139,6 @@ export async function startServer() {
       if (req.originalUrl.startsWith('/api')) {
         return res.status(404).json({ message: 'API not found' });
       }
-      // HTML 不缓存，确保更新及时
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distPath, 'index.html'));
     });

@@ -12,7 +12,7 @@ export function createRealtimeRouter(ctx: AppContext) {
   const router = Router();
   const { db, runtime } = ctx;
 
-  router.get('/realtime/stream', (req, res) => {
+  router.get('/realtime/stream', async (req, res) => {
     try {
       const token = String(req.query.token || '').trim();
       const userId = Number(req.query.userId || 0);
@@ -20,7 +20,7 @@ export function createRealtimeRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'invalid realtime params' });
       }
 
-      const session = db.prepare(`
+      const session = await db.prepare(`
         SELECT token, userId, userName, createdAt
         FROM user_sessions
         WHERE token = ?
@@ -32,12 +32,12 @@ export function createRealtimeRouter(ctx: AppContext) {
         return res.status(401).json({ success: false, code: 'SESSION_REVOKED', message: 'session revoked' });
       }
 
-      const userRow = db.prepare(`SELECT forceOfflineAt FROM users WHERE id = ? LIMIT 1`).get(userId) as { forceOfflineAt?: string | null } | undefined;
+      const userRow = await db.prepare(`SELECT forceOfflineAt FROM users WHERE id = ? LIMIT 1`).get(userId) as { forceOfflineAt?: string | null } | undefined;
       if (userRow?.forceOfflineAt && nowTime(userRow.forceOfflineAt) > nowTime(session.createdAt)) {
         return res.status(401).json({ success: false, code: 'SESSION_KICKED', message: 'session kicked' });
       }
 
-      db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
+      await db.prepare(`UPDATE user_sessions SET lastSeenAt = CURRENT_TIMESTAMP WHERE token = ?`).run(token);
 
       res.status(200);
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -48,7 +48,7 @@ export function createRealtimeRouter(ctx: AppContext) {
       res.write('retry: 3000\n\n');
 
       const cleanup = runtime.registerUserStream(userId, res);
-      const snapshot = loadPresenceByUserId(db, userId);
+      const snapshot = await loadPresenceByUserId(db, userId);
       if (snapshot) {
         void runtime.upsertPresence(snapshot);
       } else {

@@ -25,8 +25,8 @@ const OPERATION_LABELS: Record<string, string> = {
   sell_rare_item: '出售稀有物品'
 };
 
-function getUser(db: any, userId: number) {
-  return db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+async function getUser(db: any, userId: number) {
+  return await db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
 }
 
 export function createConfirmationRouter(ctx: AppContext) {
@@ -34,18 +34,18 @@ export function createConfirmationRouter(ctx: AppContext) {
   const { db } = ctx;
 
   // 清理过期的确认请求
-  function cleanupExpired() {
+  async function cleanupExpired() {
     const now = nowIso();
-    db.prepare(`
+    await db.prepare(`
       DELETE FROM sensitive_operation_confirmations
       WHERE status = 'pending' AND expiresAt < ?
     `).run(now);
   }
 
   // 创建确认请求
-  r.post('/confirmations', (req, res) => {
+  r.post('/confirmations', async (req, res) => {
     try {
-      cleanupExpired();
+      await cleanupExpired();
 
       const userId = Number(req.body?.userId || 0);
       const operationType = String(req.body?.operationType || '').trim();
@@ -60,11 +60,11 @@ export function createConfirmationRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'invalid operationType' });
       }
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const expiresAt = afterMinutesIso(expiresInMinutes);
-      const ret = db.prepare(`
+      const ret = await db.prepare(`
         INSERT INTO sensitive_operation_confirmations(
           userId, operationType, operationData, status, expiresAt, createdAt
         )
@@ -88,14 +88,14 @@ export function createConfirmationRouter(ctx: AppContext) {
   });
 
   // 获取待确认列表
-  r.get('/confirmations', (req, res) => {
+  r.get('/confirmations', async (req, res) => {
     try {
-      cleanupExpired();
+      await cleanupExpired();
 
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
 
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, userId, operationType, operationData, status, confirmedAt, expiresAt, createdAt
         FROM sensitive_operation_confirmations
         WHERE userId = ? AND status = 'pending'
@@ -123,9 +123,9 @@ export function createConfirmationRouter(ctx: AppContext) {
   });
 
   // 确认操作
-  r.post('/confirmations/:id/confirm', (req, res) => {
+  r.post('/confirmations/:id/confirm', async (req, res) => {
     try {
-      cleanupExpired();
+      await cleanupExpired();
 
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
@@ -134,7 +134,7 @@ export function createConfirmationRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'id/userId required' });
       }
 
-      const confirmation = db.prepare(`
+      const confirmation = await db.prepare(`
         SELECT * FROM sensitive_operation_confirmations WHERE id = ? LIMIT 1
       `).get(id) as AnyRow | undefined;
 
@@ -151,11 +151,11 @@ export function createConfirmationRouter(ctx: AppContext) {
       }
 
       if (Date.parse(String(confirmation.expiresAt || '')) < Date.now()) {
-        db.prepare(`DELETE FROM sensitive_operation_confirmations WHERE id = ?`).run(id);
+        await db.prepare(`DELETE FROM sensitive_operation_confirmations WHERE id = ?`).run(id);
         return res.status(410).json({ success: false, message: '确认请求已过期' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE sensitive_operation_confirmations
         SET status = 'confirmed',
             confirmedAt = ?
@@ -174,7 +174,7 @@ export function createConfirmationRouter(ctx: AppContext) {
   });
 
   // 取消确认
-  r.post('/confirmations/:id/cancel', (req, res) => {
+  r.post('/confirmations/:id/cancel', async (req, res) => {
     try {
       const id = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
@@ -183,7 +183,7 @@ export function createConfirmationRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'id/userId required' });
       }
 
-      const confirmation = db.prepare(`
+      const confirmation = await db.prepare(`
         SELECT * FROM sensitive_operation_confirmations WHERE id = ? LIMIT 1
       `).get(id) as AnyRow | undefined;
 
@@ -195,7 +195,7 @@ export function createConfirmationRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '无权取消此操作' });
       }
 
-      db.prepare(`DELETE FROM sensitive_operation_confirmations WHERE id = ?`).run(id);
+      await db.prepare(`DELETE FROM sensitive_operation_confirmations WHERE id = ?`).run(id);
 
       res.json({ success: true, message: '操作已取消' });
     } catch (e: any) {

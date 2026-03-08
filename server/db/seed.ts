@@ -174,7 +174,7 @@ const DEFAULT_SKILLS = [
   { name: '跨派调和', faction: '通用', tier: '高阶', description: '降低跨派技能排斥，提升兼容性。', npcId: null }
 ] as const;
 
-export function applyDefaultCatalogSeed(db: AppDatabase) {
+export async function applyDefaultCatalogSeed(db: AppDatabase) {
   const insertItem = db.prepare(`
     INSERT INTO items(name, description, locationTag, npcId, price, faction, tier, itemType, effectValue)
     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)
@@ -183,9 +183,9 @@ export function applyDefaultCatalogSeed(db: AppDatabase) {
 
   const defaultItems = [...GUILD_DEFAULT_ITEMS, ...DEMON_CONTRABAND_DEFAULT_ITEMS, ...WORLD_DEFAULT_ITEMS];
   for (const it of defaultItems) {
-    const exists = findItem.get(it.name, it.locationTag) as { id?: number } | undefined;
+    const exists = await findItem.get(it.name, it.locationTag) as { id?: number } | undefined;
     if (exists?.id) continue;
-    insertItem.run(
+    await insertItem.run(
       it.name,
       it.description,
       it.locationTag,
@@ -203,17 +203,17 @@ export function applyDefaultCatalogSeed(db: AppDatabase) {
   `);
   const findSkill = db.prepare(`SELECT id FROM skills WHERE name = ? LIMIT 1`);
   for (const s of DEFAULT_SKILLS) {
-    const exists = findSkill.get(s.name) as { id?: number } | undefined;
+    const exists = await findSkill.get(s.name) as { id?: number } | undefined;
     if (exists?.id) continue;
-    insertSkill.run(s.name, s.faction, s.tier, s.description, s.npcId ?? null);
+    await insertSkill.run(s.name, s.faction, s.tier, s.description, s.npcId ?? null);
   }
 }
 
-export function runSeed(db: AppDatabase) {
-  db.prepare(`
+export async function runSeed(db: AppDatabase) {
+  await db.prepare(`
     INSERT OR IGNORE INTO admin_whitelist (name, code_name, enabled)
     VALUES ('塔', 'tower_admin', 1)
   `).run();
 
-  applyDefaultCatalogSeed(db);
+  await applyDefaultCatalogSeed(db);
 }

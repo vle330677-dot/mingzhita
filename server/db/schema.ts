@@ -1,7 +1,7 @@
-﻿import type { AppDatabase } from './types';
+import type { AppDatabase } from './types';
 
-export function runSchema(db: AppDatabase) {
-  db.exec(`
+export async function runSchema(db: AppDatabase) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE,

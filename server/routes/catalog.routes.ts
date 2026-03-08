@@ -91,8 +91,8 @@ const normalizeItemType = (v: any) => {
   return ITEM_TYPES.has(s) ? s : '回复道具';
 };
 
-function ensureInventoryTable(db: any) {
-  db.exec(`
+async function ensureInventoryTable(db: any) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS inventory (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       userId INTEGER NOT NULL,
@@ -106,14 +106,14 @@ function ensureInventoryTable(db: any) {
   `);
 }
 
-function addInventoryItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
-  const row = db.prepare(`SELECT id, qty FROM inventory WHERE userId = ? AND name = ? AND itemType = ? LIMIT 1`)
+async function addInventoryItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
+  const row = await db.prepare(`SELECT id, qty FROM inventory WHERE userId = ? AND name = ? AND itemType = ? LIMIT 1`)
     .get(userId, name, itemType) as AnyRow | undefined;
   if (row) {
-    db.prepare(`UPDATE inventory SET qty = qty + ? WHERE id = ?`).run(qty, Number(row.id));
+    await db.prepare(`UPDATE inventory SET qty = qty + ? WHERE id = ?`).run(qty, Number(row.id));
     return;
   }
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO inventory(userId, name, description, qty, itemType, effectValue, createdAt)
     VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP)
   `).run(userId, name, description, qty, itemType, effectValue);
@@ -129,10 +129,10 @@ function canLearnSkillByFaction(user: AnyRow, skillFactionRaw: any) {
   return signals.some((x) => x === skillFaction || x.includes(skillFaction));
 }
 
-export function createCatalogRouter(ctx: AppContext) {
+export async function createCatalogRouter(ctx: AppContext) {
   const r = Router();
   const { db, auth } = ctx;
-  ensureInventoryTable(db);
+  await ensureInventoryTable(db);
 
   const mapSkill = (s: AnyRow) => ({
     id: Number(s.id),
@@ -156,30 +156,30 @@ export function createCatalogRouter(ctx: AppContext) {
     effectValue: Number(i.effectValue || 0),
   });
 
-  r.get('/items', (_req, res) => {
+  r.get('/items', async (_req, res) => {
     try {
-      const rows = db.prepare(`SELECT * FROM items ORDER BY id DESC`).all() as AnyRow[];
+      const rows = await db.prepare(`SELECT * FROM items ORDER BY id DESC`).all() as AnyRow[];
       res.json({ success: true, items: rows.map(mapItem) });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'query items failed', items: [] });
     }
   });
 
-  r.get('/skills', (_req, res) => {
+  r.get('/skills', async (_req, res) => {
     try {
-      const rows = db.prepare(`SELECT * FROM skills ORDER BY id DESC`).all() as AnyRow[];
+      const rows = await db.prepare(`SELECT * FROM skills ORDER BY id DESC`).all() as AnyRow[];
       res.json({ success: true, skills: rows.map(mapSkill) });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'query skills failed', skills: [] });
     }
   });
 
-  r.get('/skills/available/:userId', (req, res) => {
+  r.get('/skills/available/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
 
-      const rows = db
+      const rows = await db
         .prepare(
           `
             SELECT s.*
@@ -199,12 +199,12 @@ export function createCatalogRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/users/:userId/skills', (req, res) => {
+  r.get('/users/:userId/skills', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
 
-      const rows = db
+      const rows = await db
         .prepare(
           `
             SELECT us.id, us.userId, us.skillId, us.level, s.name, s.faction, s.tier, s.description
@@ -234,7 +234,7 @@ export function createCatalogRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/users/:userId/skills', (req, res) => {
+  r.post('/users/:userId/skills', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
@@ -242,14 +242,14 @@ export function createCatalogRouter(ctx: AppContext) {
       const name = String(req.body?.name || '').trim();
       if (!name) return res.status(400).json({ success: false, message: 'skill name required' });
 
-      const skill = db.prepare(`SELECT id, name, faction FROM skills WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
+      const skill = await db.prepare(`SELECT id, name, faction FROM skills WHERE name = ? LIMIT 1`).get(name) as AnyRow | undefined;
       if (!skill) return res.status(404).json({ success: false, message: 'skill not found' });
 
-      const user = db.prepare(`SELECT id, role, faction FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
+      const user = await db.prepare(`SELECT id, role, faction FROM users WHERE id = ? LIMIT 1`).get(userId) as AnyRow | undefined;
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (!canLearnSkillByFaction(user, skill.faction)) {
-        addInventoryItem(
+        await addInventoryItem(
           db,
           userId,
           `[技能书] ${String(skill.name || name)}`,
@@ -265,34 +265,34 @@ export function createCatalogRouter(ctx: AppContext) {
         });
       }
 
-      db.prepare(`INSERT OR IGNORE INTO user_skills(userId, skillId, level) VALUES (?, ?, 1)`).run(userId, Number(skill.id));
+      await db.prepare(`INSERT OR IGNORE INTO user_skills(userId, skillId, level) VALUES (?, ?, 1)`).run(userId, Number(skill.id));
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'learn skill failed' });
     }
   });
 
-  r.delete('/users/:userId/skills/:id', (req, res) => {
+  r.delete('/users/:userId/skills/:id', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       const id = Number(req.params.id);
       if (!userId || !id) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const ret = db.prepare(`DELETE FROM user_skills WHERE userId = ? AND (id = ? OR skillId = ?)`).run(userId, id, id);
+      const ret = await db.prepare(`DELETE FROM user_skills WHERE userId = ? AND (id = ? OR skillId = ?)`).run(userId, id, id);
       res.json({ success: true, changes: Number(ret.changes || 0) });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'delete user skill failed' });
     }
   });
 
-  r.post('/users/:userId/skills/merge', (req, res) => {
+  r.post('/users/:userId/skills/merge', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       let skillAId = Number(req.body?.skillAId || req.body?.sourceId || 0);
       let skillBId = Number(req.body?.skillBId || req.body?.targetId || 0);
       const skillName = String(req.body?.skillName || '').trim();
       if ((!skillAId || !skillBId) && skillName) {
-        const rows = db.prepare(`
+        const rows = await db.prepare(`
           SELECT us.id
           FROM user_skills us
           JOIN skills s ON s.id = us.skillId
@@ -312,16 +312,16 @@ export function createCatalogRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'cannot merge same skill' });
       }
 
-      const a = db.prepare(`SELECT * FROM user_skills WHERE userId = ? AND (id = ? OR skillId = ?) LIMIT 1`).get(userId, skillAId, skillAId) as AnyRow | undefined;
-      const b = db.prepare(`SELECT * FROM user_skills WHERE userId = ? AND (id = ? OR skillId = ?) LIMIT 1`).get(userId, skillBId, skillBId) as AnyRow | undefined;
+      const a = await db.prepare(`SELECT * FROM user_skills WHERE userId = ? AND (id = ? OR skillId = ?) LIMIT 1`).get(userId, skillAId, skillAId) as AnyRow | undefined;
+      const b = await db.prepare(`SELECT * FROM user_skills WHERE userId = ? AND (id = ? OR skillId = ?) LIMIT 1`).get(userId, skillBId, skillBId) as AnyRow | undefined;
       if (!a || !b) return res.status(404).json({ success: false, message: 'skills not found' });
 
       const keep = Number(a.level || 1) >= Number(b.level || 1) ? a : b;
       const drop = keep === a ? b : a;
       const nextLevel = Math.max(Number(keep.level || 1), Number(drop.level || 1)) + 1;
 
-      db.prepare(`UPDATE user_skills SET level = ? WHERE id = ?`).run(nextLevel, Number(keep.id));
-      db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(drop.id));
+      await db.prepare(`UPDATE user_skills SET level = ? WHERE id = ?`).run(nextLevel, Number(keep.id));
+      await db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(drop.id));
 
       res.json({ success: true, level: nextLevel });
     } catch (e: any) {
@@ -329,7 +329,7 @@ export function createCatalogRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/admin/items', auth.requireAdminAuth, (req: any, res) => {
+  r.post('/admin/items', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const body = req.body || {};
       const name = String(body.name || '').trim();
@@ -341,7 +341,7 @@ export function createCatalogRouter(ctx: AppContext) {
       const faction = normalizeItemOrigin(locationTag, body.faction);
       const itemType = normalizeItemType(body.itemType);
 
-      db.prepare(
+      await db.prepare(
         `
           INSERT INTO items(name, description, locationTag, npcId, price, faction, tier, itemType, effectValue)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -358,18 +358,18 @@ export function createCatalogRouter(ctx: AppContext) {
         Number(body.effectValue || 0),
       );
 
-      writeAdminLog(db, adminName, `编辑物品 ${name}`, 'item', name, { faction, tier, itemType, locationTag });
+      await writeAdminLog(db, adminName, `编辑物品 ${name}`, 'item', name, { faction, tier, itemType, locationTag });
       res.json({ success: true, message: `管理员 ${adminName} 编辑了物品 ${name}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'create item failed' });
     }
   });
 
-  r.put('/admin/items/:id', auth.requireAdminAuth, (req: any, res) => {
+  r.put('/admin/items/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
-      const row = db.prepare(`SELECT id, name FROM items WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT id, name FROM items WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'item not found' });
 
       const body = req.body || {};
@@ -382,7 +382,7 @@ export function createCatalogRouter(ctx: AppContext) {
       const faction = normalizeItemOrigin(locationTag, body.faction);
       const itemType = normalizeItemType(body.itemType);
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE items
         SET name = ?,
             description = ?,
@@ -407,29 +407,29 @@ export function createCatalogRouter(ctx: AppContext) {
         id
       );
 
-      writeAdminLog(db, adminName, `编辑物品 ${name}`, 'item', String(id), { faction, tier, itemType, locationTag });
+      await writeAdminLog(db, adminName, `编辑物品 ${name}`, 'item', String(id), { faction, tier, itemType, locationTag });
       res.json({ success: true, message: `管理员 ${adminName} 更新了物品 ${name}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'update item failed' });
     }
   });
 
-  r.delete('/admin/items/:id', auth.requireAdminAuth, (req: any, res) => {
+  r.delete('/admin/items/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
-      const row = db.prepare(`SELECT id, name FROM items WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT id, name FROM items WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'item not found' });
-      db.prepare(`DELETE FROM items WHERE id = ?`).run(id);
+      await db.prepare(`DELETE FROM items WHERE id = ?`).run(id);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `删除物品 ${String(row.name || id)}`, 'item', String(id));
+      await writeAdminLog(db, adminName, `删除物品 ${String(row.name || id)}`, 'item', String(id));
       res.json({ success: true, message: `管理员 ${adminName} 编辑了物品库：删除 ${String(row.name || id)}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'delete item failed' });
     }
   });
 
-  r.post('/admin/skills', auth.requireAdminAuth, (req: any, res) => {
+  r.post('/admin/skills', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const body = req.body || {};
       const name = String(body.name || '').trim();
@@ -438,7 +438,7 @@ export function createCatalogRouter(ctx: AppContext) {
       const tier = normalizeTier(body.tier);
       const faction = normalizeSkillFaction(body.faction);
 
-      db.prepare(
+      await db.prepare(
         `
           INSERT INTO skills(name, faction, tier, description, npcId)
           VALUES (?, ?, ?, ?, ?)
@@ -451,18 +451,18 @@ export function createCatalogRouter(ctx: AppContext) {
         body.npcId ?? null,
       );
 
-      writeAdminLog(db, adminName, `编辑技能 ${name}`, 'skill', name, { faction, tier });
+      await writeAdminLog(db, adminName, `编辑技能 ${name}`, 'skill', name, { faction, tier });
       res.json({ success: true, message: `管理员 ${adminName} 编辑了技能 ${name}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'create skill failed' });
     }
   });
 
-  r.put('/admin/skills/:id', auth.requireAdminAuth, (req: any, res) => {
+  r.put('/admin/skills/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
-      const row = db.prepare(`SELECT id, name FROM skills WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT id, name FROM skills WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'skill not found' });
 
       const body = req.body || {};
@@ -472,7 +472,7 @@ export function createCatalogRouter(ctx: AppContext) {
       const tier = normalizeTier(body.tier);
       const faction = normalizeSkillFaction(body.faction);
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE skills
         SET name = ?,
             faction = ?,
@@ -489,34 +489,34 @@ export function createCatalogRouter(ctx: AppContext) {
         id
       );
 
-      writeAdminLog(db, adminName, `编辑技能 ${name}`, 'skill', String(id), { faction, tier });
+      await writeAdminLog(db, adminName, `编辑技能 ${name}`, 'skill', String(id), { faction, tier });
       res.json({ success: true, message: `管理员 ${adminName} 更新了技能 ${name}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'update skill failed' });
     }
   });
 
-  r.delete('/admin/skills/:id', auth.requireAdminAuth, (req: any, res) => {
+  r.delete('/admin/skills/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
-      const row = db.prepare(`SELECT id, name FROM skills WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT id, name FROM skills WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'skill not found' });
-      db.prepare(`DELETE FROM skills WHERE id = ?`).run(id);
-      db.prepare(`DELETE FROM user_skills WHERE skillId = ?`).run(id);
+      await db.prepare(`DELETE FROM skills WHERE id = ?`).run(id);
+      await db.prepare(`DELETE FROM user_skills WHERE skillId = ?`).run(id);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `删除技能 ${String(row.name || id)}`, 'skill', String(id));
+      await writeAdminLog(db, adminName, `删除技能 ${String(row.name || id)}`, 'skill', String(id));
       res.json({ success: true, message: `管理员 ${adminName} 编辑了技能库：删除 ${String(row.name || id)}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'delete skill failed' });
     }
   });
 
-  r.post('/admin/catalog/bootstrap-defaults', auth.requireAdminAuth, (req: any, res) => {
+  r.post('/admin/catalog/bootstrap-defaults', auth.requireAdminAuth, async (req: any, res) => {
     try {
       applyDefaultCatalogSeed(db);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, '补齐默认物品与技能', 'catalog', 'bootstrap-defaults');
+      await writeAdminLog(db, adminName, '补齐默认物品与技能', 'catalog', 'bootstrap-defaults');
       res.json({ success: true, message: `管理员 ${adminName} 已补齐默认物品与技能` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'bootstrap defaults failed' });

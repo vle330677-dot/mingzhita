@@ -248,8 +248,8 @@ function isLondonCompatOptedInUser(user: AnyRow | undefined) {
   return Number(user?.londonCompatOptIn || 0) === 1;
 }
 
-function ensureTables(db: any) {
-  db.exec(`
+async function ensureTables(db: any) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS notes (
       ownerId INTEGER NOT NULL,
       targetId INTEGER NOT NULL,
@@ -547,126 +547,126 @@ function ensureTables(db: any) {
   `);
 
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN guideStability INTEGER DEFAULT 100`);
+    await db.exec(`ALTER TABLE users ADD COLUMN guideStability INTEGER DEFAULT 100`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN lastCombatAt TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN lastCombatAt TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritIntimacy INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritIntimacy INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritLevel INTEGER DEFAULT 1`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritLevel INTEGER DEFAULT 1`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritImageUrl TEXT DEFAULT ''`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritImageUrl TEXT DEFAULT ''`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritAppearance TEXT DEFAULT ''`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritAppearance TEXT DEFAULT ''`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritNameLocked INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritNameLocked INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritAvatarLocked INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritAvatarLocked INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritAppearanceLocked INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritAppearanceLocked INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritInteractDate TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritInteractDate TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritFeedCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritFeedCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritPetCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritPetCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN spiritTrainCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN spiritTrainCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN physicalProgress REAL DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN physicalProgress REAL DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN lastWildRollAt TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN lastWildRollAt TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN demonSkillDate TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN demonSkillDate TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN demonSkillCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN demonSkillCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN slumAlleyDate TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN slumAlleyDate TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN slumAlleyRobbedCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN slumAlleyRobbedCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN slumAlleyStrollCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN slumAlleyStrollCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN richStreetDate TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN richStreetDate TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN richStreetStrollCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN richStreetStrollCount INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN erosionLevel REAL DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN erosionLevel REAL DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN bleedingLevel REAL DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN bleedingLevel REAL DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN londonCompatPrompted INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN londonCompatPrompted INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN londonCompatOptIn INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE users ADD COLUMN londonCompatOptIn INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN lastResetDate TEXT`);
+    await db.exec(`ALTER TABLE users ADD COLUMN lastResetDate TEXT`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE users ADD COLUMN ghostImmuneUntil TEXT DEFAULT NULL`);
+    await db.exec(`ALTER TABLE users ADD COLUMN ghostImmuneUntil TEXT DEFAULT NULL`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE world_npcs ADD COLUMN mapX REAL DEFAULT 50`);
+    await db.exec(`ALTER TABLE world_npcs ADD COLUMN mapX REAL DEFAULT 50`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE world_npcs ADD COLUMN mapY REAL DEFAULT 50`);
+    await db.exec(`ALTER TABLE world_npcs ADD COLUMN mapY REAL DEFAULT 50`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE world_npcs ADD COLUMN isLegacy INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE world_npcs ADD COLUMN isLegacy INTEGER DEFAULT 0`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE world_npcs ADD COLUMN defaultAffinity INTEGER DEFAULT 50`);
+    await db.exec(`ALTER TABLE world_npcs ADD COLUMN defaultAffinity INTEGER DEFAULT 50`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE world_npc_relations ADD COLUMN lastRewardDate TEXT DEFAULT ''`);
+    await db.exec(`ALTER TABLE world_npc_relations ADD COLUMN lastRewardDate TEXT DEFAULT ''`);
   } catch {}
   try {
-    db.exec(`ALTER TABLE world_npc_relations ADD COLUMN rewardCount INTEGER DEFAULT 0`);
+    await db.exec(`ALTER TABLE world_npc_relations ADD COLUMN rewardCount INTEGER DEFAULT 0`);
   } catch {}
 
-  const hasAnyMonster = db.prepare(`SELECT id FROM wild_monsters LIMIT 1`).get() as AnyRow | undefined;
+  const hasAnyMonster = await db.prepare(`SELECT id FROM wild_monsters LIMIT 1`).get() as AnyRow | undefined;
   if (!hasAnyMonster) {
     const seed = db.prepare(`
       INSERT INTO wild_monsters(name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance, enabled)
       VALUES(?,?,?,?,?,?,?,?,1)
     `);
-    seed.run('裂隙狼群', '擅长群体突袭的低阶魔物。', 1, 8, 8, 90, '破碎狼牙', 0.8);
-    seed.run('夜魇吞噬者', '潜伏在迷雾中的高压掠食者。', 6, 16, 13, 130, '夜魇核心', 0.75);
-    seed.run('空洞守卫', '古老遗迹中残存的重装守卫。', 4, 14, 11, 150, '空洞甲片', 0.7);
-    seed.run('深渊巡游体', '会扭曲精神波动的异变个体。', 8, 20, 15, 170, '巡游结晶', 0.68);
+    await seed.run('裂隙狼群', '擅长群体突袭的低阶魔物。', 1, 8, 8, 90, '破碎狼牙', 0.8);
+    await seed.run('夜魇吞噬者', '潜伏在迷雾中的高压掠食者。', 6, 16, 13, 130, '夜魇核心', 0.75);
+    await seed.run('空洞守卫', '古老遗迹中残存的重装守卫。', 4, 14, 11, 150, '空洞甲片', 0.7);
+    await seed.run('深渊巡游体', '会扭曲精神波动的异变个体。', 8, 20, 15, 170, '巡游结晶', 0.68);
   }
 }
 
-function resetDailyActionCountersIfNeeded(db: any, user: AnyRow | undefined) {
+async function resetDailyActionCountersIfNeeded(db: any, user: AnyRow | undefined) {
   if (!user) return user;
   const today = todayKey();
   if (String(user.lastResetDate || '') === today) return user;
-  db.prepare(`
+  await db.prepare(`
     UPDATE users
     SET workCount = 0,
         trainCount = 0,
@@ -674,35 +674,35 @@ function resetDailyActionCountersIfNeeded(db: any, user: AnyRow | undefined) {
         updatedAt = ?
     WHERE id = ?
   `).run(today, nowIso(), Number(user.id || 0));
-  return db.prepare(`SELECT * FROM users WHERE id=? LIMIT 1`).get(Number(user.id || 0)) as AnyRow | undefined;
+  return await db.prepare(`SELECT * FROM users WHERE id=? LIMIT 1`).get(Number(user.id || 0)) as AnyRow | undefined;
 }
 
-function getUser(db: any, id: number) {
-  const row = db.prepare(`SELECT * FROM users WHERE id=? LIMIT 1`).get(id) as AnyRow | undefined;
-  return resetDailyActionCountersIfNeeded(db, row);
+async function getUser(db: any, id: number) {
+  const row = await db.prepare(`SELECT * FROM users WHERE id=? LIMIT 1`).get(id) as AnyRow | undefined;
+  return await resetDailyActionCountersIfNeeded(db, row);
 }
 
 function isDemonMemberJob(jobRaw: any) {
   return DEMON_MEMBER_JOBS.has(String(jobRaw || '').trim());
 }
 
-function resetDemonSkillDailyIfNeeded(db: any, user: AnyRow) {
+async function resetDemonSkillDailyIfNeeded(db: any, user: AnyRow) {
   const today = todayKey();
   if (String(user.demonSkillDate || '') === today) return user;
-  db.prepare(`
+  await db.prepare(`
     UPDATE users
     SET demonSkillDate = ?,
         demonSkillCount = 0,
         updatedAt = ?
     WHERE id = ?
   `).run(today, nowIso(), Number(user.id || 0));
-  return getUser(db, Number(user.id || 0)) || user;
+  return await getUser(db, Number(user.id || 0)) || user;
 }
 
-function resetSlumAlleyDailyIfNeeded(db: any, user: AnyRow) {
+async function resetSlumAlleyDailyIfNeeded(db: any, user: AnyRow) {
   const today = todayKey();
   if (String(user.slumAlleyDate || '') === today) return user;
-  db.prepare(`
+  await db.prepare(`
     UPDATE users
     SET slumAlleyDate = ?,
         slumAlleyRobbedCount = 0,
@@ -710,24 +710,24 @@ function resetSlumAlleyDailyIfNeeded(db: any, user: AnyRow) {
         updatedAt = ?
     WHERE id = ?
   `).run(today, nowIso(), Number(user.id || 0));
-  return getUser(db, Number(user.id || 0)) || user;
+  return await getUser(db, Number(user.id || 0)) || user;
 }
 
-function resetRichStreetDailyIfNeeded(db: any, user: AnyRow) {
+async function resetRichStreetDailyIfNeeded(db: any, user: AnyRow) {
   const today = todayKey();
   if (String(user.richStreetDate || '') === today) return user;
-  db.prepare(`
+  await db.prepare(`
     UPDATE users
     SET richStreetDate = ?,
         richStreetStrollCount = 0,
         updatedAt = ?
     WHERE id = ?
   `).run(today, nowIso(), Number(user.id || 0));
-  return getUser(db, Number(user.id || 0)) || user;
+  return await getUser(db, Number(user.id || 0)) || user;
 }
 
-function getOpenDemonLoan(db: any, userId: number) {
-  const row = db.prepare(`
+async function getOpenDemonLoan(db: any, userId: number) {
+  const row = await db.prepare(`
     SELECT id, userId, principal, interestRate, totalDue, repaidAmount, status, createdAt, updatedAt
     FROM demon_loans
     WHERE userId = ?
@@ -740,7 +740,7 @@ function getOpenDemonLoan(db: any, userId: number) {
   const repaid = Math.max(0, Number(row.repaidAmount || 0));
   const remaining = Math.max(0, totalDue - repaid);
   if (remaining <= 0) {
-    db.prepare(`UPDATE demon_loans SET status = 'closed', updatedAt = ? WHERE id = ?`).run(nowIso(), Number(row.id || 0));
+    await db.prepare(`UPDATE demon_loans SET status = 'closed', updatedAt = ? WHERE id = ?`).run(nowIso(), Number(row.id || 0));
     return null;
   }
   return {
@@ -785,21 +785,21 @@ function mapDemonGambleRequestRow(row: AnyRow | undefined | null, viewerId = 0) 
   };
 }
 
-function cancelDemonGambleRequest(db: any, requestId: number) {
+async function cancelDemonGambleRequest(db: any, requestId: number) {
   if (!requestId) return null;
   const stamp = nowIso();
-  db.prepare(`
+  await db.prepare(`
     UPDATE demon_gamble_requests
     SET status = 'cancelled',
         updatedAt = ?
     WHERE id = ?
   `).run(stamp, requestId);
-  const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+  const row = await db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
   return mapDemonGambleRequestRow(row);
 }
 
-function settleDemonGambleRequest(db: any, requestId: number) {
-  const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+async function settleDemonGambleRequest(db: any, requestId: number) {
+  const row = await db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
   if (!row) return { ok: false, message: 'request not found', request: null };
   if (String(row.status || '') !== 'pending') {
     return { ok: false, message: 'request already processed', request: mapDemonGambleRequestRow(row) };
@@ -808,27 +808,27 @@ function settleDemonGambleRequest(db: any, requestId: number) {
   const challengerId = Number(row.challengerId || 0);
   const targetId = Number(row.targetId || 0);
   const amount = Math.max(1, Number(row.amount || 0));
-  const challenger = getUser(db, challengerId);
-  const target = getUser(db, targetId);
+  const challenger = await getUser(db, challengerId);
+  const target = await getUser(db, targetId);
 
   if (!challenger || !target) {
-    const request = cancelDemonGambleRequest(db, requestId);
+    const request = await cancelDemonGambleRequest(db, requestId);
     return { ok: false, message: 'One side no longer exists. The bet request was cancelled', request };
   }
 
   if (!['approved', 'ghost'].includes(String(challenger.status || '')) || !['approved', 'ghost'].includes(String(target.status || ''))) {
-    const request = cancelDemonGambleRequest(db, requestId);
+    const request = await cancelDemonGambleRequest(db, requestId);
     return { ok: false, message: 'One side can no longer bet. The request was cancelled', request };
   }
 
   const bothInDemon = String(challenger.currentLocation || '') === DEMON_LOCATION && String(target.currentLocation || '') === DEMON_LOCATION;
   if (!bothInDemon) {
-    const request = cancelDemonGambleRequest(db, requestId);
+    const request = await cancelDemonGambleRequest(db, requestId);
     return { ok: false, message: 'One side left the demon casino. The request was cancelled', request };
   }
 
   if (Number(challenger.gold || 0) < amount || Number(target.gold || 0) < amount) {
-    const request = cancelDemonGambleRequest(db, requestId);
+    const request = await cancelDemonGambleRequest(db, requestId);
     return { ok: false, message: 'One side no longer has enough gold. The request was cancelled', request };
   }
 
@@ -842,10 +842,10 @@ function settleDemonGambleRequest(db: any, requestId: number) {
   const winnerId = challengerRoll > targetRoll ? challengerId : targetId;
   const loserId = winnerId === challengerId ? targetId : challengerId;
   const stamp = nowIso();
-  const tx = db.transaction(() => {
-    db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(amount, stamp, loserId);
-    db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(amount, stamp, winnerId);
-    db.prepare(`
+  const tx = db.transaction(async () => {
+    await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(amount, stamp, loserId);
+    await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(amount, stamp, winnerId);
+    await db.prepare(`
       UPDATE demon_gamble_requests
       SET status = 'resolved',
           responderId = ?,
@@ -857,9 +857,9 @@ function settleDemonGambleRequest(db: any, requestId: number) {
       WHERE id = ?
     `).run(targetId, challengerRoll, targetRoll, winnerId, loserId, stamp, requestId);
   });
-  tx();
+  await tx();
 
-  const fresh = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+  const fresh = await db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
   const winnerName = winnerId === challengerId ? String(challenger.name || row.challengerName || 'Someone') : String(target.name || row.targetName || 'Someone');
   return {
     ok: true,
@@ -868,11 +868,11 @@ function settleDemonGambleRequest(db: any, requestId: number) {
   };
 }
 
-function estimateInventoryUnitPrice(db: any, inv: AnyRow | undefined) {
+async function estimateInventoryUnitPrice(db: any, inv: AnyRow | undefined) {
   if (!inv) return 0;
   const name = String(inv.name || '').trim();
   if (!name) return 0;
-  const catalog = db.prepare(`
+  const catalog = await db.prepare(`
     SELECT price, tier, itemType
     FROM items
     WHERE name = ?
@@ -920,10 +920,10 @@ function buildSpiritStatus(user: AnyRow | undefined) {
   };
 }
 
-function resetSpiritDailyIfNeeded(db: any, user: AnyRow) {
+async function resetSpiritDailyIfNeeded(db: any, user: AnyRow) {
   const today = todayKey();
   if (String(user.spiritInteractDate || '') === today) return user;
-  db.prepare(`
+  await db.prepare(`
     UPDATE users
     SET spiritInteractDate = ?,
         spiritFeedCount = 0,
@@ -932,7 +932,7 @@ function resetSpiritDailyIfNeeded(db: any, user: AnyRow) {
         updatedAt = ?
     WHERE id = ?
   `).run(today, nowIso(), Number(user.id));
-  return getUser(db, Number(user.id)) || user;
+  return await getUser(db, Number(user.id)) || user;
 }
 
 function isUndifferentiated(user: AnyRow | undefined) {
@@ -963,20 +963,20 @@ function randomAdultRole() {
   return pickWeightedAdultRole();
 }
 
-function addItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
-  const existing = db
+async function addItem(db: any, userId: number, name: string, itemType = 'consumable', qty = 1, description = '', effectValue = 0) {
+  const existing = await db
     .prepare(`SELECT * FROM inventory WHERE userId=? AND name=? AND itemType=? LIMIT 1`)
     .get(userId, name, itemType) as AnyRow | undefined;
   if (existing) {
-    db.prepare(`UPDATE inventory SET qty = qty + ? WHERE id = ?`).run(qty, Number(existing.id));
+    await db.prepare(`UPDATE inventory SET qty = qty + ? WHERE id = ?`).run(qty, Number(existing.id));
     return;
   }
-  db.prepare(
+  await db.prepare(
     `INSERT INTO inventory(userId,name,description,qty,itemType,effectValue,createdAt) VALUES(?,?,?,?,?,?,?)`
   ).run(userId, name, description, qty, itemType, effectValue, nowIso());
 }
 
-function buildLondonCompatMatches(db: any, user: AnyRow) {
+async function buildLondonCompatMatches(db: any, user: AnyRow) {
   const selfRoleType = compatRoleType(user.role);
   if (!selfRoleType) {
     return {
@@ -995,7 +995,7 @@ function buildLondonCompatMatches(db: any, user: AnyRow) {
   }
 
   const targetRoleType = selfRoleType === 'sentinel' ? 'guide' : 'sentinel';
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT id, name, role, job, age, currentLocation, status, londonCompatOptIn
     FROM users
     WHERE id <> ?
@@ -1025,8 +1025,8 @@ function buildLondonCompatMatches(db: any, user: AnyRow) {
   return { selfRoleType, targetRoleType, matches };
 }
 
-function buildDemonContrabandOffers(db: any, isDemonMember: boolean) {
-  const rows = db.prepare(`
+async function buildDemonContrabandOffers(db: any, isDemonMember: boolean) {
+  const rows = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier, price, locationTag
     FROM items
     WHERE itemType = '违禁品'
@@ -1067,10 +1067,10 @@ function levelTier(level: number) {
   return '低阶';
 }
 
-function pickSlumAlleyItem(db: any, preferAlchemy: boolean) {
+async function pickSlumAlleyItem(db: any, preferAlchemy: boolean) {
   const baseWhere = `(locationTag = '' OR locationTag = 'all' OR locationTag LIKE '%slums%') AND itemType <> '违禁品'`;
   if (preferAlchemy) {
-    const alchemy = db.prepare(`
+    const alchemy = await db.prepare(`
       SELECT id, name, description, itemType, effectValue, tier, faction
       FROM items
       WHERE ${baseWhere}
@@ -1081,7 +1081,7 @@ function pickSlumAlleyItem(db: any, preferAlchemy: boolean) {
     if (alchemy) return { item: alchemy, isAlchemy: true };
   }
 
-  const common = db.prepare(`
+  const common = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier, faction
     FROM items
     WHERE ${baseWhere}
@@ -1107,9 +1107,9 @@ function pickSlumAlleyItem(db: any, preferAlchemy: boolean) {
   return { item: fallbackCommon, isAlchemy: false };
 }
 
-function pickRichStreetItem(db: any) {
+async function pickRichStreetItem(db: any) {
   const baseWhere = `(locationTag = '' OR locationTag = 'all' OR locationTag LIKE '%rich_area%') AND itemType <> '违禁品'`;
-  const highValueRows = db.prepare(`
+  const highValueRows = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier, faction, price
     FROM items
     WHERE ${baseWhere}
@@ -1123,7 +1123,7 @@ function pickRichStreetItem(db: any) {
     LIMIT 240
   `).all() as AnyRow[];
 
-  const commonRows = db.prepare(`
+  const commonRows = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier, faction, price
     FROM items
     WHERE ${baseWhere}
@@ -1156,16 +1156,16 @@ function pickRichStreetItem(db: any) {
   return null;
 }
 
-function pickRandomDropByTier(db: any, level: number, isDemonMember = false) {
+async function pickRandomDropByTier(db: any, level: number, isDemonMember = false) {
   const tier = levelTier(level);
-  const byTierRows = db.prepare(`
+  const byTierRows = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier
     FROM items
     WHERE tier = ?
     ORDER BY RANDOM()
     LIMIT 240
   `).all(tier) as AnyRow[];
-  const allRows = db.prepare(`
+  const allRows = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier
     FROM items
     ORDER BY RANDOM()
@@ -1203,10 +1203,10 @@ function getTowerPurifyRate(jobRaw: any) {
   return 0;
 }
 
-function applyWildDebuff(db: any, userId: number) {
+async function applyWildDebuff(db: any, userId: number) {
   if (Math.random() > WILD_DEBUFF_CHANCE) return null;
 
-  const user = getUser(db, userId);
+  const user = await getUser(db, userId);
   if (!user) return null;
 
   const isErosion = Math.random() < 0.5;
@@ -1232,7 +1232,7 @@ function applyWildDebuff(db: any, userId: number) {
     lossValue = Math.max(1, Math.ceil(maxMp * lossRatio));
     nextMp = clamp(mp - lossValue, 0, maxMp);
     levelAfter = clamp(erosionLevel + basePercent, 0, WILD_DEBUFF_LEVEL_CAP);
-    db.prepare(`
+    await db.prepare(`
       UPDATE users
       SET mp = ?,
           erosionLevel = ?,
@@ -1243,7 +1243,7 @@ function applyWildDebuff(db: any, userId: number) {
     lossValue = Math.max(1, Math.ceil(maxHp * lossRatio));
     nextHp = clamp(hp - lossValue, 0, maxHp);
     levelAfter = clamp(bleedingLevel + basePercent, 0, WILD_DEBUFF_LEVEL_CAP);
-    db.prepare(`
+    await db.prepare(`
       UPDATE users
       SET hp = ?,
           bleedingLevel = ?,
@@ -1252,7 +1252,7 @@ function applyWildDebuff(db: any, userId: number) {
     `).run(nextHp, levelAfter, nowIso(), userId);
   }
 
-  const refreshed = getUser(db, userId) || user;
+  const refreshed = await getUser(db, userId) || user;
   const kind = isErosion ? '侵蚀' : '流血';
   const attr = isErosion ? 'MP' : 'HP';
   return {
@@ -1281,7 +1281,7 @@ function getWildEncounterLevelCap(user?: AnyRow) {
   return 14 + Math.min(4, Math.floor((rankPower - 16) / 2));
 }
 
-function buildWildEncounter(db: any, user?: AnyRow) {
+async function buildWildEncounter(db: any, user?: AnyRow) {
   const eventRoll = Math.random();
   if (eventRoll < 0.25) {
     return { eventType: 'item' as const };
@@ -1289,7 +1289,7 @@ function buildWildEncounter(db: any, user?: AnyRow) {
 
   const encounterCap = getWildEncounterLevelCap(user);
 
-  let monster = db.prepare(`
+  let monster = await db.prepare(`
     SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance
     FROM wild_monsters
     WHERE enabled = 1
@@ -1299,7 +1299,7 @@ function buildWildEncounter(db: any, user?: AnyRow) {
   `).get(encounterCap + 2, encounterCap) as AnyRow | undefined;
 
   if (!monster) {
-    monster = db.prepare(`
+    monster = await db.prepare(`
       SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance
       FROM wild_monsters
       WHERE enabled = 1
@@ -1339,7 +1339,7 @@ function buildWildEncounter(db: any, user?: AnyRow) {
   };
 }
 
-function writeWildBattleLog(
+async function writeWildBattleLog(
   db: any,
   payload: {
     userId: number;
@@ -1356,7 +1356,7 @@ function writeWildBattleLog(
     returnedTo?: string;
   }
 ) {
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO wild_battle_logs(
       userId, eventType, monsterId, monsterName, monsterLevel, isWin, resultText,
       hpDelta, mentalDelta, physicalDelta, droppedItem, returnedTo, createdAt
@@ -1379,15 +1379,15 @@ function writeWildBattleLog(
   );
 }
 
-function grantSkillOrBook(db: any, userId: number, skill: AnyRow, level = 1) {
-  const user = getUser(db, userId);
+async function grantSkillOrBook(db: any, userId: number, skill: AnyRow, level = 1) {
+  const user = await getUser(db, userId);
   if (!user) return { ok: false, learned: false, converted: false, message: 'user not found' };
   if (!skill || !skill.id) return { ok: false, learned: false, converted: false, message: 'skill not found' };
 
   const skillName = String(skill.name || '');
   const skillFaction = String(skill.faction || '通用');
   if (!canLearnSkillByFaction(user, skillFaction)) {
-    addItem(db, userId, `[技能书] ${skillName}`, 'skill_book', 1, '跨派系技能学习书，可交易或出售', 0);
+    await addItem(db, userId, `[技能书] ${skillName}`, 'skill_book', 1, '跨派系技能学习书，可交易或出售', 0);
     return {
       ok: true,
       learned: false,
@@ -1396,7 +1396,7 @@ function grantSkillOrBook(db: any, userId: number, skill: AnyRow, level = 1) {
     };
   }
 
-  db.prepare(`INSERT OR IGNORE INTO user_skills(userId,skillId,level) VALUES(?,?,?)`).run(userId, Number(skill.id), Math.max(1, Number(level || 1)));
+  await db.prepare(`INSERT OR IGNORE INTO user_skills(userId,skillId,level) VALUES(?,?,?)`).run(userId, Number(skill.id), Math.max(1, Number(level || 1)));
   return {
     ok: true,
     learned: true,
@@ -1405,8 +1405,8 @@ function grantSkillOrBook(db: any, userId: number, skill: AnyRow, level = 1) {
   };
 }
 
-function hasStealSkill(db: any, userId: number) {
-  const row = db.prepare(`
+async function hasStealSkill(db: any, userId: number) {
+  const row = await db.prepare(`
     SELECT 1
     FROM user_skills us
     JOIN skills s ON s.id = us.skillId
@@ -1431,7 +1431,7 @@ function getRankPower(user: AnyRow | undefined) {
   return (RANK_SCORE[String(user.mentalRank || '').toUpperCase()] || 0) + (RANK_SCORE[String(user.physicalRank || '').toUpperCase()] || 0);
 }
 
-function pushInteractionEvent(
+async function pushInteractionEvent(
   db: any,
   userId: number,
   sourceUserId: number,
@@ -1443,7 +1443,7 @@ function pushInteractionEvent(
 ) {
   const uid = Number(userId || 0);
   if (!uid || !String(message || '').trim()) return;
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO interaction_events(userId, sourceUserId, targetUserId, actionType, title, message, payloadJson, createdAt)
     VALUES(?,?,?,?,?,?,?,?)
   `).run(
@@ -1495,9 +1495,9 @@ function parseTradeSkillOffer(raw: any) {
   };
 }
 
-function pickTradeSkillEntry(db: any, userId: number, userSkillId: number) {
+async function pickTradeSkillEntry(db: any, userId: number, userSkillId: number) {
   if (!userId || !userSkillId) return undefined;
-  return db.prepare(`
+  return await db.prepare(`
     SELECT us.id AS userSkillId, us.level, s.id AS skillId, s.name, s.faction
     FROM user_skills us
     JOIN skills s ON s.id = us.skillId
@@ -1506,14 +1506,14 @@ function pickTradeSkillEntry(db: any, userId: number, userSkillId: number) {
   `).get(userId, userSkillId) as AnyRow | undefined;
 }
 
-function loadTradeSessionPayload(db: any, sessionRow: AnyRow | undefined) {
+async function loadTradeSessionPayload(db: any, sessionRow: AnyRow | undefined) {
   if (!sessionRow) return null;
   const userAId = Number(sessionRow.userAId || 0);
   const userBId = Number(sessionRow.userBId || 0);
   if (!userAId || !userBId) return null;
-  const userA = getUser(db, userAId);
-  const userB = getUser(db, userBId);
-  const offerRows = db.prepare(`
+  const userA = await getUser(db, userAId);
+  const userB = await getUser(db, userBId);
+  const offerRows = await db.prepare(`
     SELECT sessionId, userId, itemName, qty, gold, updatedAt
     FROM interaction_trade_offers
     WHERE sessionId = ?
@@ -1552,8 +1552,8 @@ function loadTradeSessionPayload(db: any, sessionRow: AnyRow | undefined) {
   };
 }
 
-function inventoryTotalQty(db: any, userId: number, itemName: string) {
-  const row = db.prepare(`
+async function inventoryTotalQty(db: any, userId: number, itemName: string) {
+  const row = await db.prepare(`
     SELECT COALESCE(SUM(qty), 0) AS totalQty
     FROM inventory
     WHERE userId = ? AND name = ? AND qty > 0
@@ -1561,8 +1561,8 @@ function inventoryTotalQty(db: any, userId: number, itemName: string) {
   return Math.max(0, Number(row?.totalQty || 0));
 }
 
-function pickInventoryMeta(db: any, userId: number, itemName: string) {
-  return db.prepare(`
+async function pickInventoryMeta(db: any, userId: number, itemName: string) {
+  return await db.prepare(`
     SELECT itemType, description, effectValue
     FROM inventory
     WHERE userId = ? AND name = ? AND qty > 0
@@ -1571,10 +1571,10 @@ function pickInventoryMeta(db: any, userId: number, itemName: string) {
   `).get(userId, itemName) as AnyRow | undefined;
 }
 
-function consumeInventoryByName(db: any, userId: number, itemName: string, qty: number) {
+async function consumeInventoryByName(db: any, userId: number, itemName: string, qty: number) {
   let remaining = Math.max(0, Math.floor(Number(qty || 0)));
   if (remaining <= 0) return;
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT id, qty
     FROM inventory
     WHERE userId = ? AND name = ? AND qty > 0
@@ -1587,8 +1587,8 @@ function consumeInventoryByName(db: any, userId: number, itemName: string, qty: 
     if (!rid || cur <= 0) continue;
     const use = Math.min(cur, remaining);
     const next = cur - use;
-    if (next <= 0) db.prepare(`DELETE FROM inventory WHERE id = ?`).run(rid);
-    else db.prepare(`UPDATE inventory SET qty = ? WHERE id = ?`).run(next, rid);
+    if (next <= 0) await db.prepare(`DELETE FROM inventory WHERE id = ?`).run(rid);
+    else await db.prepare(`UPDATE inventory SET qty = ? WHERE id = ?`).run(next, rid);
     remaining -= use;
   }
   if (remaining > 0) {
@@ -1609,8 +1609,8 @@ function formatTradeOfferLabel(offer: { itemName: string; qty: number; gold: num
   return parts.length ? parts.join(' + ') : '空报价';
 }
 
-function completeTradeSession(db: any, sessionId: string) {
-  const session = db.prepare(`
+async function completeTradeSession(db: any, sessionId: string) {
+  const session = await db.prepare(`
     SELECT *
     FROM interaction_trade_sessions
     WHERE id = ? AND status = 'pending'
@@ -1622,7 +1622,7 @@ function completeTradeSession(db: any, sessionId: string) {
   const userBId = Number(session.userBId || 0);
   if (!userAId || !userBId) return { success: false, message: '交易会话参与者无效' };
 
-  const offers = db.prepare(`
+  const offers = await db.prepare(`
     SELECT userId, itemName, qty, gold
     FROM interaction_trade_offers
     WHERE sessionId = ?
@@ -1643,8 +1643,8 @@ function completeTradeSession(db: any, sessionId: string) {
     gold: clamp(Math.floor(Number(rawB.gold || 0)), 0, 99999999)
   };
 
-  const userA = getUser(db, userAId);
-  const userB = getUser(db, userBId);
+  const userA = await getUser(db, userAId);
+  const userB = await getUser(db, userBId);
   if (!userA || !userB) return { success: false, message: '交易参与者不存在' };
   if (Number(userA.gold || 0) < offerA.gold) return { success: false, message: `${String(userA.name || '玩家A')} 金币不足` };
   if (Number(userB.gold || 0) < offerB.gold) return { success: false, message: `${String(userB.name || '玩家B')} 金币不足` };
@@ -1654,15 +1654,15 @@ function completeTradeSession(db: any, sessionId: string) {
   const normalItemA = skillOfferA.isSkill ? '' : offerA.itemName;
   const normalItemB = skillOfferB.isSkill ? '' : offerB.itemName;
 
-  if (normalItemA && offerA.qty > 0 && inventoryTotalQty(db, userAId, normalItemA) < offerA.qty) {
+  if (normalItemA && offerA.qty > 0 && await inventoryTotalQty(db, userAId, normalItemA) < offerA.qty) {
     return { success: false, message: `${String(userA.name || '玩家A')} 的物品库存不足` };
   }
-  if (normalItemB && offerB.qty > 0 && inventoryTotalQty(db, userBId, normalItemB) < offerB.qty) {
+  if (normalItemB && offerB.qty > 0 && await inventoryTotalQty(db, userBId, normalItemB) < offerB.qty) {
     return { success: false, message: `${String(userB.name || '玩家B')} 的物品库存不足` };
   }
 
-  const skillRowA = skillOfferA.isSkill ? pickTradeSkillEntry(db, userAId, skillOfferA.userSkillId) : undefined;
-  const skillRowB = skillOfferB.isSkill ? pickTradeSkillEntry(db, userBId, skillOfferB.userSkillId) : undefined;
+  const skillRowA = skillOfferA.isSkill ? await pickTradeSkillEntry(db, userAId, skillOfferA.userSkillId) : undefined;
+  const skillRowB = skillOfferB.isSkill ? await pickTradeSkillEntry(db, userBId, skillOfferB.userSkillId) : undefined;
   if (skillOfferA.isSkill && !skillRowA) {
     return { success: false, message: `${String(userA.name || '玩家A')} 不再持有报价中的技能` };
   }
@@ -1670,25 +1670,25 @@ function completeTradeSession(db: any, sessionId: string) {
     return { success: false, message: `${String(userB.name || '玩家B')} 不再持有报价中的技能` };
   }
   if (skillRowA) {
-    const targetHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(userBId, Number(skillRowA.skillId || 0));
+    const targetHas = await db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(userBId, Number(skillRowA.skillId || 0));
     if (targetHas) return { success: false, message: `${String(userB.name || '玩家B')} 已掌握技能「${String(skillRowA.name || '')}」` };
   }
   if (skillRowB) {
-    const targetHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(userAId, Number(skillRowB.skillId || 0));
+    const targetHas = await db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(userAId, Number(skillRowB.skillId || 0));
     if (targetHas) return { success: false, message: `${String(userA.name || '玩家A')} 已掌握技能「${String(skillRowB.name || '')}」` };
   }
 
   const extraNotes: string[] = [];
-  const tx = db.transaction(() => {
-    if (offerA.gold > 0) db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(offerA.gold, nowIso(), userAId);
-    if (offerB.gold > 0) db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(offerB.gold, nowIso(), userBId);
-    if (offerB.gold > 0) db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(offerB.gold, nowIso(), userAId);
-    if (offerA.gold > 0) db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(offerA.gold, nowIso(), userBId);
+  const tx = db.transaction(async () => {
+    if (offerA.gold > 0) await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(offerA.gold, nowIso(), userAId);
+    if (offerB.gold > 0) await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(offerB.gold, nowIso(), userBId);
+    if (offerB.gold > 0) await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(offerB.gold, nowIso(), userAId);
+    if (offerA.gold > 0) await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt = ? WHERE id = ?`).run(offerA.gold, nowIso(), userBId);
 
     if (normalItemA && offerA.qty > 0) {
-      const metaA = pickInventoryMeta(db, userAId, normalItemA);
-      consumeInventoryByName(db, userAId, normalItemA, offerA.qty);
-      addItem(
+      const metaA = await pickInventoryMeta(db, userAId, normalItemA);
+      await consumeInventoryByName(db, userAId, normalItemA, offerA.qty);
+      await addItem(
         db,
         userBId,
         normalItemA,
@@ -1700,9 +1700,9 @@ function completeTradeSession(db: any, sessionId: string) {
     }
 
     if (normalItemB && offerB.qty > 0) {
-      const metaB = pickInventoryMeta(db, userBId, normalItemB);
-      consumeInventoryByName(db, userBId, normalItemB, offerB.qty);
-      addItem(
+      const metaB = await pickInventoryMeta(db, userBId, normalItemB);
+      await consumeInventoryByName(db, userBId, normalItemB, offerB.qty);
+      await addItem(
         db,
         userAId,
         normalItemB,
@@ -1714,8 +1714,8 @@ function completeTradeSession(db: any, sessionId: string) {
     }
 
     if (skillRowA) {
-      db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(skillRowA.userSkillId || 0));
-      const granted = grantSkillOrBook(
+      await db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(skillRowA.userSkillId || 0));
+      const granted = await grantSkillOrBook(
         db,
         userBId,
         { id: Number(skillRowA.skillId || 0), name: String(skillRowA.name || ''), faction: String(skillRowA.faction || '通用') },
@@ -1727,8 +1727,8 @@ function completeTradeSession(db: any, sessionId: string) {
     }
 
     if (skillRowB) {
-      db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(skillRowB.userSkillId || 0));
-      const granted = grantSkillOrBook(
+      await db.prepare(`DELETE FROM user_skills WHERE id = ?`).run(Number(skillRowB.userSkillId || 0));
+      const granted = await grantSkillOrBook(
         db,
         userAId,
         { id: Number(skillRowB.skillId || 0), name: String(skillRowB.name || ''), faction: String(skillRowB.faction || '通用') },
@@ -1739,7 +1739,7 @@ function completeTradeSession(db: any, sessionId: string) {
       }
     }
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE interaction_trade_sessions
       SET status = 'completed',
           completedAt = ?,
@@ -1748,11 +1748,11 @@ function completeTradeSession(db: any, sessionId: string) {
     `).run(nowIso(), nowIso(), sessionId);
   });
 
-  tx();
+  await tx();
 
   const offerALabel = formatTradeOfferLabel(offerA);
   const offerBLabel = formatTradeOfferLabel(offerB);
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     userAId,
     userBId,
@@ -1762,7 +1762,7 @@ function completeTradeSession(db: any, sessionId: string) {
     `交易完成：你付出 ${offerALabel}，收到 ${offerBLabel}`,
     { sessionId, paid: offerA, gained: offerB }
   );
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     userBId,
     userAId,
@@ -1780,9 +1780,9 @@ function completeTradeSession(db: any, sessionId: string) {
     offerB
   };
 }
-function resolveCombat(db: any, attackerId: number, defenderId: number, attackerScore?: number, defenderScore?: number) {
-  const attacker = getUser(db, attackerId);
-  const defender = getUser(db, defenderId);
+async function resolveCombat(db: any, attackerId: number, defenderId: number, attackerScore?: number, defenderScore?: number) {
+  const attacker = await getUser(db, attackerId);
+  const defender = await getUser(db, defenderId);
   if (!attacker || !defender) return { success: false, message: 'user not found' };
 
   const atkScore = Number.isFinite(Number(attackerScore)) ? Number(attackerScore) : getRankPower(attacker);
@@ -1797,12 +1797,12 @@ function resolveCombat(db: any, attackerId: number, defenderId: number, attacker
   const nextAttackerHp = isAttackerWin ? attackerHp : clamp(attackerHp - attackerLoss, 0, Number(attacker.maxHp || 100));
   const nextDefenderHp = isAttackerWin ? clamp(defenderHp - defenderLoss, 0, Number(defender.maxHp || 100)) : defenderHp;
 
-  db.prepare(`UPDATE users SET hp=?, lastCombatAt=?, updatedAt=? WHERE id=?`).run(nextAttackerHp, nowIso(), nowIso(), attackerId);
-  db.prepare(`UPDATE users SET hp=?, lastCombatAt=?, updatedAt=? WHERE id=?`).run(nextDefenderHp, nowIso(), nowIso(), defenderId);
+  await db.prepare(`UPDATE users SET hp=?, lastCombatAt=?, updatedAt=? WHERE id=?`).run(nextAttackerHp, nowIso(), nowIso(), attackerId);
+  await db.prepare(`UPDATE users SET hp=?, lastCombatAt=?, updatedAt=? WHERE id=?`).run(nextDefenderHp, nowIso(), nowIso(), defenderId);
 
   const attackerName = String(attacker.name || `玩家#${attackerId}`);
   const defenderName = String(defender.name || `玩家#${defenderId}`);
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     attackerId,
     attackerId,
@@ -1814,7 +1814,7 @@ function resolveCombat(db: any, attackerId: number, defenderId: number, attacker
       : `你攻击了 ${defenderName}，但被压制，你的生命下降 5%`,
     { isAttackerWin, attackerHp: nextAttackerHp, defenderHp: nextDefenderHp }
   );
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     defenderId,
     attackerId,
@@ -1836,21 +1836,21 @@ function resolveCombat(db: any, attackerId: number, defenderId: number, attacker
   };
 }
 
-function resolveSteal(db: any, thiefId: number, targetId: number) {
-  const thief = getUser(db, thiefId);
-  const target = getUser(db, targetId);
+async function resolveSteal(db: any, thiefId: number, targetId: number) {
+  const thief = await getUser(db, thiefId);
+  const target = await getUser(db, targetId);
   if (!thief || !target) return { success: false, message: 'user not found' };
-  if (!hasStealSkill(db, thiefId)) {
+  if (!await hasStealSkill(db, thiefId)) {
     return { success: false, message: '你尚未掌握带偷窃效果的技能，无法偷窃' };
   }
 
-  const item = db.prepare(`SELECT * FROM inventory WHERE userId=? AND qty>0 ORDER BY RANDOM() LIMIT 1`).get(targetId) as AnyRow | undefined;
+  const item = await db.prepare(`SELECT * FROM inventory WHERE userId=? AND qty>0 ORDER BY RANDOM() LIMIT 1`).get(targetId) as AnyRow | undefined;
   if (!item) return { success: false, message: '目标背包为空，偷窃失败' };
 
-  const tx = db.transaction(() => {
-    if (Number(item.qty || 1) <= 1) db.prepare(`DELETE FROM inventory WHERE id=?`).run(Number(item.id));
-    else db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id = ?`).run(Number(item.id));
-    addItem(
+  const tx = db.transaction(async () => {
+    if (Number(item.qty || 1) <= 1) await db.prepare(`DELETE FROM inventory WHERE id=?`).run(Number(item.id));
+    else await db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id = ?`).run(Number(item.id));
+    await addItem(
       db,
       thiefId,
       String(item.name || '未知物品'),
@@ -1860,12 +1860,12 @@ function resolveSteal(db: any, thiefId: number, targetId: number) {
       Number(item.effectValue || 0)
     );
   });
-  tx();
+  await tx();
 
   const thiefName = String(thief.name || `玩家#${thiefId}`);
   const targetName = String(target.name || `玩家#${targetId}`);
   const itemName = String(item.name || '未知物品');
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     thiefId,
     thiefId,
@@ -1875,7 +1875,7 @@ function resolveSteal(db: any, thiefId: number, targetId: number) {
     `你偷到了 ${targetName} 的「${itemName}」x1`,
     { itemName }
   );
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     targetId,
     thiefId,
@@ -1893,9 +1893,9 @@ function resolveSteal(db: any, thiefId: number, targetId: number) {
   };
 }
 
-function resolvePrank(db: any, ghostId: number, targetId: number) {
-  const ghost = getUser(db, ghostId);
-  const target = getUser(db, targetId);
+async function resolvePrank(db: any, ghostId: number, targetId: number) {
+  const ghost = await getUser(db, ghostId);
+  const target = await getUser(db, targetId);
   if (!ghost || !target) return { success: false, message: 'user not found' };
   const role = String(ghost.role || '');
   if (!(role === '鬼魂' || role.toLowerCase() === 'ghost')) {
@@ -1913,7 +1913,7 @@ function resolvePrank(db: any, ghostId: number, targetId: number) {
     furyGain = clamp(Math.floor(5 + Math.random() * 11), 5, 15);
   }
 
-  db.prepare(`
+  await db.prepare(`
     UPDATE users
     SET mp = ?, fury = MIN(100, COALESCE(fury,0) + ?), updatedAt = ?
     WHERE id = ?
@@ -1922,7 +1922,7 @@ function resolvePrank(db: any, ghostId: number, targetId: number) {
   const extra = furyGain > 0 ? `，并触发哨兵狂暴值 +${furyGain}` : '';
   const ghostName = String(ghost.name || `玩家#${ghostId}`);
   const targetName = String(target.name || `玩家#${targetId}`);
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     ghostId,
     ghostId,
@@ -1932,7 +1932,7 @@ function resolvePrank(db: any, ghostId: number, targetId: number) {
     `你对 ${targetName} 发动了恶作剧，目标 MP -${mpLoss}${extra}`,
     { mpLoss, furyGain, percent: pct }
   );
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     targetId,
     ghostId,
@@ -1945,9 +1945,9 @@ function resolvePrank(db: any, ghostId: number, targetId: number) {
   return { success: true, message: `恶作剧生效：目标精神力下降 ${pct}%（-${mpLoss} MP）${extra}` };
 }
 
-function resolveSoothe(db: any, sentinelId: number, guideId: number) {
-  const sentinel = getUser(db, sentinelId);
-  const guide = getUser(db, guideId);
+async function resolveSoothe(db: any, sentinelId: number, guideId: number) {
+  const sentinel = await getUser(db, sentinelId);
+  const guide = await getUser(db, guideId);
   if (!sentinel || !guide) return { success: false, message: 'user not found' };
   if (!isSentinelRole(String(sentinel.role || ''))) return { success: false, message: 'target is not sentinel' };
   if (!isGuideRole(String(guide.role || ''))) return { success: false, message: 'actor is not guide' };
@@ -1958,12 +1958,12 @@ function resolveSoothe(db: any, sentinelId: number, guideId: number) {
   const nextFury = clamp(Number(sentinel.fury || 0) - furyDrop, 0, 100);
   const nextStability = clamp(Number(guide.guideStability ?? 100) - stabilityCost, 0, 100);
 
-  db.prepare(`UPDATE users SET fury=?, updatedAt=? WHERE id=?`).run(nextFury, nowIso(), sentinelId);
-  db.prepare(`UPDATE users SET guideStability=?, updatedAt=? WHERE id=?`).run(nextStability, nowIso(), guideId);
+  await db.prepare(`UPDATE users SET fury=?, updatedAt=? WHERE id=?`).run(nextFury, nowIso(), sentinelId);
+  await db.prepare(`UPDATE users SET guideStability=?, updatedAt=? WHERE id=?`).run(nextStability, nowIso(), guideId);
 
   const sentinelName = String(sentinel.name || `玩家#${sentinelId}`);
   const guideName = String(guide.name || `玩家#${guideId}`);
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     guideId,
     guideId,
@@ -1973,7 +1973,7 @@ function resolveSoothe(db: any, sentinelId: number, guideId: number) {
     `你抚慰了 ${sentinelName}：狂暴 -${furyDrop}，你的稳定度 -${stabilityCost}`,
     { compatibility: score, furyDrop, stabilityCost }
   );
-  pushInteractionEvent(
+  await pushInteractionEvent(
     db,
     sentinelId,
     guideId,
@@ -1993,7 +1993,7 @@ function resolveSoothe(db: any, sentinelId: number, guideId: number) {
   };
 }
 
-function executeInteractionAction(
+async function executeInteractionAction(
   db: any,
   actionType: string,
   fromUserId: number,
@@ -2003,13 +2003,13 @@ function executeInteractionAction(
   const p = payload || {};
   switch (String(actionType || '')) {
     case 'combat':
-      return resolveCombat(db, fromUserId, toUserId, Number(p.attackerScore), Number(p.defenderScore));
+      return await resolveCombat(db, fromUserId, toUserId, Number(p.attackerScore), Number(p.defenderScore));
     case 'steal':
-      return resolveSteal(db, fromUserId, toUserId);
+      return await resolveSteal(db, fromUserId, toUserId);
     case 'prank':
-      return resolvePrank(db, fromUserId, toUserId);
+      return await resolvePrank(db, fromUserId, toUserId);
     case 'soothe':
-      return resolveSoothe(db, toUserId, fromUserId);
+      return await resolveSoothe(db, toUserId, fromUserId);
     default:
       return { success: false, message: 'unsupported actionType' };
   }
@@ -2019,16 +2019,16 @@ function normPair(a: number, b: number) {
   return a <= b ? { x: a, y: b } : { x: b, y: a };
 }
 
-function getPartyMembers(db: any, partyId: string) {
+async function getPartyMembers(db: any, partyId: string) {
   if (!partyId) return [] as AnyRow[];
-  return db.prepare(`SELECT id, name, role, partyId, currentLocation FROM users WHERE partyId = ? ORDER BY id ASC`).all(partyId) as AnyRow[];
+  return await db.prepare(`SELECT id, name, role, partyId, currentLocation FROM users WHERE partyId = ? ORDER BY id ASC`).all(partyId) as AnyRow[];
 }
 
-function collapsePartyIfNeeded(db: any, partyId: string) {
+async function collapsePartyIfNeeded(db: any, partyId: string) {
   if (!partyId) return;
-  const members = getPartyMembers(db, partyId);
+  const members = await getPartyMembers(db, partyId);
   if (members.length <= 1) {
-    db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE partyId = ?`).run(nowIso(), partyId);
+    await db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE partyId = ?`).run(nowIso(), partyId);
   }
 }
 
@@ -2083,15 +2083,15 @@ function pickNpcReply(action: string, nextAffinity: number, delta: number) {
   return rand(NPC_NEUTRAL_REPLY_POOL);
 }
 
-function upsertWorldNpcRuntime(db: any, key: string, value: string) {
-  db.prepare(`
+async function upsertWorldNpcRuntime(db: any, key: string, value: string) {
+  await db.prepare(`
     INSERT INTO world_npc_runtime(key, value, updatedAt)
     VALUES(?,?,?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt
   `).run(key, value, nowIso());
 }
 
-function ensureWorldNpcPopulation(db: any) {
+async function ensureWorldNpcPopulation(db: any) {
   const now = nowIso();
   const upsertLegacy = db.prepare(`
     INSERT INTO world_npcs(
@@ -2116,7 +2116,7 @@ function ensureWorldNpcPopulation(db: any) {
     const locationId = normalizeMapLocationId(legacy.fixedLocation);
     const point = buildNpcMapPoint(locationId);
     const legacyId = `legacy_npc_${hashText(String(legacy.name || 'legacy'))}`;
-    upsertLegacy.run(
+    await upsertLegacy.run(
       legacyId,
       legacy.name,
       legacy.skillFaction,
@@ -2141,12 +2141,12 @@ function ensureWorldNpcPopulation(db: any) {
   `);
   for (let i = 1; i <= WORLD_NPC_RANDOM_COUNT; i++) {
     const npcId = `world_npc_${i}`;
-    const exists = db.prepare(`SELECT id FROM world_npcs WHERE id = ? LIMIT 1`).get(npcId) as AnyRow | undefined;
+    const exists = await db.prepare(`SELECT id FROM world_npcs WHERE id = ? LIMIT 1`).get(npcId) as AnyRow | undefined;
     if (exists) continue;
 
     const locationId = rand(MAP_LOCATION_IDS);
     const point = buildNpcMapPoint(locationId);
-    insertRandomNpc.run(
+    await insertRandomNpc.run(
       npcId,
       randomWorldNpcName(i),
       rand(NPC_SKILL_FACTIONS),
@@ -2164,31 +2164,31 @@ function ensureWorldNpcPopulation(db: any) {
   }
 }
 
-function refreshWorldNpcDailyIfNeeded(db: any) {
+async function refreshWorldNpcDailyIfNeeded(db: any) {
   const key = 'daily_shuffle_date';
   const today = todayKey();
-  const state = db.prepare(`SELECT value FROM world_npc_runtime WHERE key = ? LIMIT 1`).get(key) as AnyRow | undefined;
+  const state = await db.prepare(`SELECT value FROM world_npc_runtime WHERE key = ? LIMIT 1`).get(key) as AnyRow | undefined;
   if (String(state?.value || '') === today) return;
 
-  const rows = db.prepare(`SELECT id FROM world_npcs WHERE isLegacy = 0 ORDER BY id ASC`).all() as AnyRow[];
+  const rows = await db.prepare(`SELECT id FROM world_npcs WHERE isLegacy = 0 ORDER BY id ASC`).all() as AnyRow[];
   if (rows.length > 0) {
     const update = db.prepare(`UPDATE world_npcs SET currentLocation = ?, mapX = ?, mapY = ?, updatedAt = ? WHERE id = ?`);
     for (const row of rows) {
       const locationId = rand(MAP_LOCATION_IDS);
       const point = buildNpcMapPoint(locationId);
-      update.run(locationId, point.x, point.y, nowIso(), String(row.id || ''));
+      await update.run(locationId, point.x, point.y, nowIso(), String(row.id || ''));
     }
   }
-  upsertWorldNpcRuntime(db, key, today);
+  await upsertWorldNpcRuntime(db, key, today);
 }
 
-function ensureWorldNpcSystem(db: any) {
-  ensureWorldNpcPopulation(db);
-  refreshWorldNpcDailyIfNeeded(db);
+async function ensureWorldNpcSystem(db: any) {
+  await ensureWorldNpcPopulation(db);
+  await refreshWorldNpcDailyIfNeeded(db);
 }
 
-function loadWorldNpcsWithUserRelation(db: any, userId: number) {
-  const rows = db.prepare(`
+async function loadWorldNpcsWithUserRelation(db: any, userId: number) {
+  const rows = await db.prepare(`
     SELECT
       n.id, n.name, n.skillFaction, n.personality, n.identity, n.appearance,
       n.currentLocation, n.mapX, n.mapY, n.isLegacy, n.defaultAffinity,
@@ -2232,8 +2232,8 @@ function loadWorldNpcsWithUserRelation(db: any, userId: number) {
   });
 }
 
-function getWorldNpcById(db: any, npcId: string) {
-  return db.prepare(`
+async function getWorldNpcById(db: any, npcId: string) {
+  return await db.prepare(`
     SELECT id, name, skillFaction, personality, identity, appearance, currentLocation, mapX, mapY, isLegacy, defaultAffinity
     FROM world_npcs
     WHERE id = ?
@@ -2241,7 +2241,7 @@ function getWorldNpcById(db: any, npcId: string) {
   `).get(npcId) as AnyRow | undefined;
 }
 
-function pickNpcLocationRewardItem(db: any, locationId: string) {
+async function pickNpcLocationRewardItem(db: any, locationId: string) {
   const queryByTier = db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier, faction, locationTag
     FROM items
@@ -2256,13 +2256,13 @@ function pickNpcLocationRewardItem(db: any, locationId: string) {
     ORDER BY RANDOM()
     LIMIT 1
   `);
-  const strictHigh = queryByTier.get('高阶', locationId, locationId) as AnyRow | undefined;
+  const strictHigh = await queryByTier.get('高阶', locationId, locationId) as AnyRow | undefined;
   if (strictHigh) return strictHigh;
 
-  const strictMid = queryByTier.get('中阶', locationId, locationId) as AnyRow | undefined;
+  const strictMid = await queryByTier.get('中阶', locationId, locationId) as AnyRow | undefined;
   if (strictMid) return strictMid;
 
-  return db.prepare(`
+  return await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier, faction, locationTag
     FROM items
     WHERE itemType <> '违禁品'
@@ -2272,8 +2272,8 @@ function pickNpcLocationRewardItem(db: any, locationId: string) {
   `).get() as AnyRow | undefined;
 }
 
-function pickNpcFactionSkill(db: any, userId: number, skillFaction: string) {
-  const primary = db.prepare(`
+async function pickNpcFactionSkill(db: any, userId: number, skillFaction: string) {
+  const primary = await db.prepare(`
     SELECT s.id, s.name, s.faction, s.tier, s.description
     FROM skills s
     LEFT JOIN user_skills us
@@ -2292,7 +2292,7 @@ function pickNpcFactionSkill(db: any, userId: number, skillFaction: string) {
   `).get(userId, skillFaction, skillFaction) as AnyRow | undefined;
   if (primary) return primary;
 
-  return db.prepare(`
+  return await db.prepare(`
     SELECT s.id, s.name, s.faction, s.tier, s.description
     FROM skills s
     LEFT JOIN user_skills us
@@ -2310,32 +2310,32 @@ function pickNpcFactionSkill(db: any, userId: number, skillFaction: string) {
   `).get(userId) as AnyRow | undefined;
 }
 
-export function createGameplayRouter(ctx: AppContext) {
+export async function createGameplayRouter(ctx: AppContext) {
   const r = Router();
   const { db, auth } = ctx;
   gameplayRuntime = ctx.runtime;
-  ensureTables(db);
-  ensureWorldNpcSystem(db);
+  await ensureTables(db);
+  await ensureWorldNpcSystem(db);
 
-  r.get('/notes/:ownerId/:targetId', (req, res) => {
+  r.get('/notes/:ownerId/:targetId', async (req, res) => {
     try {
       const ownerId = Number(req.params.ownerId);
       const targetId = Number(req.params.targetId);
       if (!ownerId || !targetId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const row = db.prepare(`SELECT content FROM notes WHERE ownerId=? AND targetId=? LIMIT 1`).get(ownerId, targetId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT content FROM notes WHERE ownerId=? AND targetId=? LIMIT 1`).get(ownerId, targetId) as AnyRow | undefined;
       res.json({ success: true, content: String(row?.content || '') });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'notes query failed' });
     }
   });
 
-  r.post('/notes', (req, res) => {
+  r.post('/notes', async (req, res) => {
     try {
       const ownerId = Number(req.body?.ownerId);
       const targetId = Number(req.body?.targetId);
       const content = String(req.body?.content || '');
       if (!ownerId || !targetId) return res.status(400).json({ success: false, message: 'invalid params' });
-      db.prepare(
+      await db.prepare(
         `
           INSERT INTO notes(ownerId,targetId,content,updatedAt)
           VALUES(?,?,?,?)
@@ -2348,15 +2348,15 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/world/npcs', (req, res) => {
+  r.get('/world/npcs', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId', npcs: [] });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found', npcs: [] });
 
-      ensureWorldNpcSystem(db);
-      const rows = loadWorldNpcsWithUserRelation(db, userId);
+      await ensureWorldNpcSystem(db);
+      const rows = await loadWorldNpcsWithUserRelation(db, userId);
       const currentLocation = String(me.currentLocation || '').trim();
       const locationNpcs = currentLocation ? rows.filter((x) => String(x.currentLocation || '') === currentLocation) : [];
 
@@ -2372,16 +2372,16 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/world/npcs/:npcId/status', (req, res) => {
+  r.get('/world/npcs/:npcId/status', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       const npcId = String(req.params.npcId || '').trim();
       if (!userId || !npcId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
 
-      ensureWorldNpcSystem(db);
-      const list = loadWorldNpcsWithUserRelation(db, userId);
+      await ensureWorldNpcSystem(db);
+      const list = await loadWorldNpcsWithUserRelation(db, userId);
       const npc = list.find((x) => String(x.id || '') === npcId);
       if (!npc) return res.status(404).json({ success: false, message: 'npc not found' });
 
@@ -2403,7 +2403,7 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/world/npcs/interact', (req, res) => {
+  r.post('/world/npcs/interact', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const npcId = String(req.body?.npcId || '').trim();
@@ -2411,15 +2411,15 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!userId || !npcId || !action) return res.status(400).json({ success: false, message: 'invalid params' });
       if (!NPC_INTERACT_ACTIONS.has(action)) return res.status(400).json({ success: false, message: 'unsupported action' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
-      ensureWorldNpcSystem(db);
+      await ensureWorldNpcSystem(db);
 
-      const npc = getWorldNpcById(db, npcId);
+      const npc = await getWorldNpcById(db, npcId);
       if (!npc) return res.status(404).json({ success: false, message: 'npc not found' });
       const locationId = normalizeMapLocationId(npc.currentLocation);
 
-      const relation = db.prepare(`
+      const relation = await db.prepare(`
         SELECT affinity, interactionCount, lastRewardDate, rewardCount
         FROM world_npc_relations
         WHERE userId = ? AND npcId = ?
@@ -2463,9 +2463,9 @@ export function createGameplayRouter(ctx: AppContext) {
 
       const canGift = isPositiveAction && nextAffinity >= WORLD_NPC_GIFT_AFFINITY;
       if (canGift && rewardCount < 1) {
-        const giftItem = pickNpcLocationRewardItem(db, locationId);
+        const giftItem = await pickNpcLocationRewardItem(db, locationId);
         if (giftItem) {
-          addItem(
+          await addItem(
             db,
             userId,
             String(giftItem.name || '神秘礼物'),
@@ -2483,9 +2483,9 @@ export function createGameplayRouter(ctx: AppContext) {
           };
         }
 
-        const giftSkill = pickNpcFactionSkill(db, userId, String(npc.skillFaction || '通用'));
+        const giftSkill = await pickNpcFactionSkill(db, userId, String(npc.skillFaction || '通用'));
         if (giftSkill) {
-          const granted = grantSkillOrBook(db, userId, giftSkill, 1);
+          const granted = await grantSkillOrBook(db, userId, giftSkill, 1);
           grantedSkill = {
             id: Number(giftSkill.id || 0),
             name: String(giftSkill.name || ''),
@@ -2513,7 +2513,7 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const nextInteractionCount = Number(relation?.interactionCount || 0) + 1;
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO world_npc_relations(
           userId, npcId, affinity, lastAction, lastActionAt, interactionCount, lastRewardDate, rewardCount
         )
@@ -2568,53 +2568,53 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.put('/users/:id/avatar', (req, res) => {
+  r.put('/users/:id/avatar', async (req, res) => {
     try {
       const id = Number(req.params.id);
       const avatarUrl = String(req.body?.avatarUrl || '').trim();
       if (!id || !avatarUrl) return res.status(400).json({ success: false, message: 'id/avatarUrl required' });
-      db.prepare(`UPDATE users SET avatarUrl=?, avatarUpdatedAt=?, updatedAt=? WHERE id=?`).run(avatarUrl, nowIso(), nowIso(), id);
+      await db.prepare(`UPDATE users SET avatarUrl=?, avatarUpdatedAt=?, updatedAt=? WHERE id=?`).run(avatarUrl, nowIso(), nowIso(), id);
       res.json({ success: true, avatarUrl });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'save avatar failed' });
     }
   });
 
-  r.get('/users/:id/inventory', (req, res) => {
+  r.get('/users/:id/inventory', async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
-      const items = db.prepare(`SELECT * FROM inventory WHERE userId=? ORDER BY id DESC`).all(id) as AnyRow[];
+      const items = await db.prepare(`SELECT * FROM inventory WHERE userId=? ORDER BY id DESC`).all(id) as AnyRow[];
       res.json({ success: true, items });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'inventory query failed', items: [] });
     }
   });
 
-  r.post('/users/:id/inventory/add', (req, res) => {
+  r.post('/users/:id/inventory/add', async (req, res) => {
     try {
       const id = Number(req.params.id);
       const name = String(req.body?.name || '').trim();
       const qty = clamp(Number(req.body?.qty || 1), 1, 99);
       const itemType = String(req.body?.itemType || 'consumable');
       if (!id || !name) return res.status(400).json({ success: false, message: 'invalid params' });
-      addItem(db, id, name, itemType, qty);
+      await addItem(db, id, name, itemType, qty);
       res.json({ success: true, message: `added ${name} x${qty}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'add inventory failed' });
     }
   });
 
-  r.post('/inventory/use', (req, res) => {
+  r.post('/inventory/use', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       const inventoryId = Number(req.body?.inventoryId);
       if (!userId || !inventoryId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const item = db.prepare(`SELECT * FROM inventory WHERE id=? AND userId=? LIMIT 1`).get(inventoryId, userId) as AnyRow | undefined;
+      const item = await db.prepare(`SELECT * FROM inventory WHERE id=? AND userId=? LIMIT 1`).get(inventoryId, userId) as AnyRow | undefined;
       if (!item) return res.status(404).json({ success: false, message: 'item not found' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       let useMessage = 'item used';
@@ -2623,9 +2623,9 @@ export function createGameplayRouter(ctx: AppContext) {
       if (isSkillBook) {
         const skillName = String(item.name || '').replace(/^\[技能书\]\s*/i, '').trim();
         if (skillName) {
-          const skill = db.prepare(`SELECT id, name, faction FROM skills WHERE name=? LIMIT 1`).get(skillName) as AnyRow | undefined;
+          const skill = await db.prepare(`SELECT id, name, faction FROM skills WHERE name=? LIMIT 1`).get(skillName) as AnyRow | undefined;
           if (skill) {
-            const granted = grantSkillOrBook(db, userId, skill, 1);
+            const granted = await grantSkillOrBook(db, userId, skill, 1);
             useMessage = granted.message;
           }
         }
@@ -2633,7 +2633,7 @@ export function createGameplayRouter(ctx: AppContext) {
         useMessage = '任务道具已提交';
       } else if (itemType === '贵重物品') {
         const gain = Math.max(1, Number(item.effectValue || 100));
-        db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt=? WHERE id=?`).run(gain, nowIso(), userId);
+        await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt=? WHERE id=?`).run(gain, nowIso(), userId);
         useMessage = `贵重物品已售出，获得 ${gain}G`;
       } else if (itemType === '违禁品') {
         const itemName = String(item.name || '');
@@ -2644,7 +2644,7 @@ export function createGameplayRouter(ctx: AppContext) {
           const furyGain = Math.max(6, Math.floor(base * 0.55));
           const hpCost = Math.max(4, Math.floor(base * 0.3));
           const stabLoss = Math.max(3, Math.floor(base * 0.2));
-          db.prepare(`
+          await db.prepare(`
             UPDATE users
             SET physicalProgress = COALESCE(physicalProgress, 0) + ?,
                 fury = MIN(100, COALESCE(fury, 0) + ?),
@@ -2659,7 +2659,7 @@ export function createGameplayRouter(ctx: AppContext) {
           const stabGain = Math.max(8, Math.floor(base * 0.6));
           const mpGain = Math.max(8, Math.floor(base * 0.8));
           const hpCost = Math.max(3, Math.floor(base * 0.2));
-          db.prepare(`
+          await db.prepare(`
             UPDATE users
             SET mentalProgress = COALESCE(mentalProgress, 0) + ?,
                 guideStability = MIN(100, COALESCE(guideStability, 100) + ?),
@@ -2674,7 +2674,7 @@ export function createGameplayRouter(ctx: AppContext) {
           const stabDrop = Math.max(8, Math.floor(base * 0.55));
           const mentalLoss = Math.max(5, Math.floor(base * 0.45));
           const phyLoss = Math.max(5, Math.floor(base * 0.45));
-          db.prepare(`
+          await db.prepare(`
             UPDATE users
             SET fury = MAX(0, COALESCE(fury, 0) - ?),
                 guideStability = MAX(0, COALESCE(guideStability, 100) - ?),
@@ -2690,7 +2690,7 @@ export function createGameplayRouter(ctx: AppContext) {
           const mpCost = Math.max(10, Math.floor(base * 0.65));
           const stabLoss = Math.max(8, Math.floor(base * 0.5));
           const furyGain = Math.max(8, Math.floor(base * 0.4));
-          db.prepare(`
+          await db.prepare(`
             UPDATE users
             SET mentalProgress = COALESCE(mentalProgress, 0) + ?,
                 physicalProgress = COALESCE(physicalProgress, 0) + ?,
@@ -2705,7 +2705,7 @@ export function createGameplayRouter(ctx: AppContext) {
         } else {
           const gain = Math.max(6, Math.floor(base * 0.8));
           const hpCost = Math.max(3, Math.floor(base * 0.25));
-          db.prepare(`
+          await db.prepare(`
             UPDATE users
             SET mentalProgress = COALESCE(mentalProgress, 0) + ?,
                 physicalProgress = COALESCE(physicalProgress, 0) + ?,
@@ -2718,14 +2718,14 @@ export function createGameplayRouter(ctx: AppContext) {
       } else if (itemType === '辟邪符') {
         const durationHours = Math.max(1, Number(item.effectValue || 4));
         const immuneUntil = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
-        db.prepare(`UPDATE users SET ghostImmuneUntil=?, updatedAt=? WHERE id=?`).run(immuneUntil, nowIso(), userId);
+        await db.prepare(`UPDATE users SET ghostImmuneUntil=?, updatedAt=? WHERE id=?`).run(immuneUntil, nowIso(), userId);
         useMessage = `辟邪符已激活，将免疫鬼魂光环 ${durationHours} 小时（至 ${immuneUntil.slice(0,16).replace('T',' ')} UTC）`;
       } else {
         const heal = Number(item.effectValue || 20) || 20;
         const descText = `${String(item.name || '')} ${String(item.description || '')}`;
         const shouldCalm = /狂暴|镇静|抚慰|冷静|安神/.test(descText);
         const furyDrop = shouldCalm ? heal : 0;
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET hp = MIN(maxHp, hp + ?),
               mp = MIN(maxMp, mp + ?),
@@ -2736,8 +2736,8 @@ export function createGameplayRouter(ctx: AppContext) {
         useMessage = furyDrop > 0 ? `道具使用成功，狂暴值 -${furyDrop}` : '道具使用成功';
       }
 
-      if (Number(item.qty || 1) <= 1) db.prepare(`DELETE FROM inventory WHERE id=?`).run(inventoryId);
-      else db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id=?`).run(inventoryId);
+      if (Number(item.qty || 1) <= 1) await db.prepare(`DELETE FROM inventory WHERE id=?`).run(inventoryId);
+      else await db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id=?`).run(inventoryId);
 
       res.json({ success: true, message: useMessage });
     } catch (e: any) {
@@ -2746,11 +2746,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 精神体状态面板（仅哨兵/向导可用，其他身份返回 unavailable）
-  r.get('/users/:id/spirit-status', (req, res) => {
+  r.get('/users/:id/spirit-status', async (req, res) => {
     try {
       const userId = Number(req.params.id || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const available = canUseSpiritSystem(String(user.role || ''));
@@ -2762,7 +2762,7 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      const normalized = resetSpiritDailyIfNeeded(db, user);
+      const normalized = await resetSpiritDailyIfNeeded(db, user);
       return res.json({
         success: true,
         available: true,
@@ -2774,18 +2774,18 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 精神体互动：喂食/摸摸/训练（每天每项上限 3 次）
-  r.post('/tower/interact-spirit', (req, res) => {
+  r.post('/tower/interact-spirit', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      let user = getUser(db, userId);
+      let user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (!canUseSpiritSystem(String(user.role || ''))) {
         return res.status(403).json({ success: false, message: '仅哨兵/向导可使用精神体培养功能' });
       }
 
-      user = resetSpiritDailyIfNeeded(db, user);
+      user = await resetSpiritDailyIfNeeded(db, user);
 
       const setName = String(req.body?.name || '').trim();
       const setImage = String(req.body?.imageUrl || '').trim();
@@ -2796,36 +2796,36 @@ export function createGameplayRouter(ctx: AppContext) {
         if (Number(user.spiritNameLocked || 0) === 1 || String(user.spiritName || '').trim()) {
           return res.status(400).json({ success: false, message: '精神体名字已锁定，不能再次修改' });
         }
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET spiritName = ?, spiritNameLocked = 1, updatedAt = ?
           WHERE id = ?
         `).run(setName, nowIso(), userId);
-        user = getUser(db, userId) || user;
+        user = await getUser(db, userId) || user;
       }
 
       if (setImage) {
         if (Number(user.spiritAvatarLocked || 0) === 1 || String(user.spiritImageUrl || '').trim()) {
           return res.status(400).json({ success: false, message: '精神体头像已锁定，不能再次修改' });
         }
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET spiritImageUrl = ?, spiritAvatarLocked = 1, updatedAt = ?
           WHERE id = ?
         `).run(setImage, nowIso(), userId);
-        user = getUser(db, userId) || user;
+        user = await getUser(db, userId) || user;
       }
 
       if (setAppearance) {
         if (Number(user.spiritAppearanceLocked || 0) === 1 || String(user.spiritAppearance || '').trim()) {
           return res.status(400).json({ success: false, message: '精神体外貌已锁定，不能再次修改' });
         }
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET spiritAppearance = ?, spiritAppearanceLocked = 1, updatedAt = ?
           WHERE id = ?
         `).run(setAppearance, nowIso(), userId);
-        user = getUser(db, userId) || user;
+        user = await getUser(db, userId) || user;
       }
 
       const action = normalizeSpiritAction(req.body?.action, req.body?.intimacyGain);
@@ -2852,7 +2852,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const mentalBonus = action === 'train' ? 5 : 0;
       const levelUpMentalBonus = levelUpTimes * 20;
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET spiritIntimacy = ?,
             spiritLevel = ?,
@@ -2870,7 +2870,7 @@ export function createGameplayRouter(ctx: AppContext) {
         userId
       );
 
-      const updated = getUser(db, userId) || user;
+      const updated = await getUser(db, userId) || user;
       return res.json({
         success: true,
         levelUp: levelUpTimes > 0,
@@ -2883,11 +2883,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 签到：每日一次工资结算（主要用于塔区职位）
-  r.post('/tower/checkin', (req, res) => {
+  r.post('/tower/checkin', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const today = todayKey();
@@ -2903,7 +2903,7 @@ export function createGameplayRouter(ctx: AppContext) {
       else if (job.includes('仆从')) reward = 1200;
       reward += Math.floor(Math.random() * 201);
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET gold = COALESCE(gold, 0) + ?,
             lastCheckInDate = ?,
@@ -2918,14 +2918,14 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 休息：回复满 HP / MP（家园与部分地图共用）
-  r.post('/tower/rest', (req, res) => {
+  r.post('/tower/rest', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET hp = COALESCE(maxHp, 100),
             mp = COALESCE(maxMp, 100),
@@ -2933,7 +2933,7 @@ export function createGameplayRouter(ctx: AppContext) {
         WHERE id = ?
       `).run(nowIso(), userId);
 
-      const updated = getUser(db, userId);
+      const updated = await getUser(db, userId);
       return res.json({
         success: true,
         hp: Number(updated?.hp || 0),
@@ -2946,13 +2946,13 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 命之塔净化：按职位净化侵蚀，施术者消耗自身 20% MP
-  r.post('/tower/purify-erosion', (req, res) => {
+  r.post('/tower/purify-erosion', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const targetUserId = Number(req.body?.targetUserId || userId || 0);
       if (!userId || !targetUserId) return res.status(400).json({ success: false, message: 'invalid userId' });
 
-      const purifier = getUser(db, userId);
+      const purifier = await getUser(db, userId);
       if (!purifier) return res.status(404).json({ success: false, message: 'user not found' });
 
       const purifyRate = getTowerPurifyRate(purifier.job);
@@ -2963,7 +2963,7 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '请先进入命之塔后再执行净化' });
       }
 
-      const target = getUser(db, targetUserId);
+      const target = await getUser(db, targetUserId);
       if (!target) return res.status(404).json({ success: false, message: 'target user not found' });
       if (String(target.currentLocation || '') !== 'tower_of_life') {
         return res.status(409).json({ success: false, message: '目标不在命之塔，无法净化侵蚀' });
@@ -2981,7 +2981,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const erosionAfter = clamp(Number((erosionBefore - cleaned).toFixed(2)), 0, WILD_DEBUFF_LEVEL_CAP);
       const purifierMpAfter = clamp(currentMp - mpCost, 0, maxMp);
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET mp = ?,
             updatedAt = ?
@@ -2989,7 +2989,7 @@ export function createGameplayRouter(ctx: AppContext) {
       `).run(purifierMpAfter, nowIso(), userId);
 
       if (erosionBefore > 0) {
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET erosionLevel = ?,
               updatedAt = ?
@@ -2997,8 +2997,8 @@ export function createGameplayRouter(ctx: AppContext) {
         `).run(erosionAfter, nowIso(), targetUserId);
       }
 
-      const refreshedPurifier = getUser(db, userId) || purifier;
-      const refreshedTarget = getUser(db, targetUserId) || target;
+      const refreshedPurifier = await getUser(db, userId) || purifier;
+      const refreshedTarget = await getUser(db, targetUserId) || target;
       const roleRateText = `${Math.round(purifyRate * 100)}%`;
       const targetLabel = userId === targetUserId ? '自身' : String(target.name || `玩家#${targetUserId}`);
       const baseText = erosionBefore > 0
@@ -3027,11 +3027,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 圣所诊所：消耗 10 金币回满 HP
-  r.post('/sanctuary/clinic/heal', (req, res) => {
+  r.post('/sanctuary/clinic/heal', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
       if (String(user.currentLocation || '') !== 'sanctuary') {
         return res.status(403).json({ success: false, message: '请先进入圣所诊所' });
@@ -3047,7 +3047,7 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const nextGold = curGold - goldCost;
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET hp = COALESCE(maxHp, 100),
             gold = ?,
@@ -3055,7 +3055,7 @@ export function createGameplayRouter(ctx: AppContext) {
         WHERE id = ?
       `).run(nextGold, nowIso(), userId);
 
-      const updated = getUser(db, userId) || user;
+      const updated = await getUser(db, userId) || user;
       return res.json({
         success: true,
         hp: Number(updated.hp || 0),
@@ -3069,25 +3069,25 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 圣所止血：清除流血程度
-  r.post('/sanctuary/cure-bleeding', (req, res) => {
+  r.post('/sanctuary/cure-bleeding', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
       if (String(user.currentLocation || '') !== 'sanctuary') {
         return res.status(403).json({ success: false, message: '请先进入圣所后再进行止血治疗' });
       }
 
       const before = clamp(Number(user.bleedingLevel || 0), 0, WILD_DEBUFF_LEVEL_CAP);
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET bleedingLevel = 0,
             updatedAt = ?
         WHERE id = ?
       `).run(nowIso(), userId);
 
-      const updated = getUser(db, userId) || user;
+      const updated = await getUser(db, userId) || user;
       const message = before > 0 ? `止血成功：流血程度 ${before.toFixed(1)}% -> 0%` : '当前没有流血状态';
       return res.json({
         success: true,
@@ -3101,12 +3101,12 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 守塔会互动：冥想 / 赎罪
-  r.post('/tower/guard/ritual', (req, res) => {
+  r.post('/tower/guard/ritual', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const ritualType = String(req.body?.type || '').trim(); // meditate | atonement
       if (!userId || !ritualType) return res.status(400).json({ success: false, message: 'invalid params' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const maxMp = Math.max(1, Number(user.maxMp || 100));
@@ -3133,7 +3133,7 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'unknown ritual type' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET mp = ?,
             fury = ?,
@@ -3153,11 +3153,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 打工：通用日常收益（每日 3 次）
-  r.post('/tower/work', (req, res) => {
+  r.post('/tower/work', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const workCount = Number(user.workCount || 0);
@@ -3171,7 +3171,7 @@ export function createGameplayRouter(ctx: AppContext) {
       else if (loc === 'slums') reward += 120;
       else if (loc === 'army') reward += 260;
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET gold = COALESCE(gold, 0) + ?,
             workCount = COALESCE(workCount, 0) + 1,
@@ -3191,7 +3191,7 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 兼容旧前端：商铺扣款委托（仅用于资金托管扣费）
-  r.post('/commissions', (req, res) => {
+  r.post('/commissions', async (req, res) => {
     try {
       const publisherId = Number(req.body?.publisherId || req.body?.userId || 0);
       const reward = Math.max(0, Math.trunc(Number(req.body?.reward || req.body?.rewardGold || 0)));
@@ -3201,25 +3201,25 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!publisherId) return res.status(400).json({ success: false, message: 'invalid publisherId' });
       if (reward <= 0) return res.status(400).json({ success: false, message: 'invalid reward' });
 
-      const user = getUser(db, publisherId);
+      const user = await getUser(db, publisherId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
       if (Number(user.gold || 0) < reward) {
         return res.status(400).json({ success: false, message: `金币不足：需要 ${reward}G` });
       }
 
       const ts = nowIso();
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(reward, ts, publisherId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt = ? WHERE id = ?`).run(reward, ts, publisherId);
+        await db.prepare(`
           INSERT OR REPLACE INTO legacy_commissions(
             id, publisherUserId, title, reward, createdAt, updatedAt
           )
           VALUES (?, ?, ?, ?, COALESCE((SELECT createdAt FROM legacy_commissions WHERE id = ?), ?), ?)
         `).run(id, publisherId, title, reward, id, ts, ts);
       });
-      tx();
+      await tx();
 
-      const fresh = getUser(db, publisherId) || user;
+      const fresh = await getUser(db, publisherId) || user;
       return res.json({
         success: true,
         id,
@@ -3233,11 +3233,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 训练结算：军队练兵场 / 恶魔会赌场小游戏
-  r.post('/training/complete', (req, res) => {
+  r.post('/training/complete', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const trainCount = Number(user.trainCount || 0);
@@ -3266,7 +3266,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const nextMental = clamp(Number(user.mentalProgress || 0) + mentalGain, 0, 9999);
       const nextPhysical = clamp(Number(user.physicalProgress || 0) + physicalGain, 0, 9999);
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET trainCount = COALESCE(trainCount, 0) + 1,
             gold = COALESCE(gold, 0) + ?,
@@ -3290,13 +3290,13 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 西市阴暗小巷：每日闲逛事件（抢劫/拾荒/炼金产物）
-  r.get('/slums/alley/state', (req, res) => {
+  r.get('/slums/alley/state', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const raw = getUser(db, userId);
+      const raw = await getUser(db, userId);
       if (!raw) return res.status(404).json({ success: false, message: 'user not found' });
-      const me = resetSlumAlleyDailyIfNeeded(db, raw);
+      const me = await resetSlumAlleyDailyIfNeeded(db, raw);
       const robbedCount = Math.max(0, Number(me.slumAlleyRobbedCount || 0));
       return res.json({
         success: true,
@@ -3313,11 +3313,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/slums/alley/stroll', (req, res) => {
+  r.post('/slums/alley/stroll', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const raw = getUser(db, userId);
+      const raw = await getUser(db, userId);
       if (!raw) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(raw.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法在小巷闲逛' });
@@ -3326,7 +3326,7 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '请先抵达西市，再进入阴暗小巷' });
       }
 
-      const me = resetSlumAlleyDailyIfNeeded(db, raw);
+      const me = await resetSlumAlleyDailyIfNeeded(db, raw);
       const robbedBefore = Math.max(0, Number(me.slumAlleyRobbedCount || 0));
       const goldNow = Math.max(0, Number(me.gold || 0));
       const canBeRobbed = robbedBefore < SLUM_ALLEY_ROB_DAILY_MAX && goldNow > 0;
@@ -3335,7 +3335,7 @@ export function createGameplayRouter(ctx: AppContext) {
 
       if (canBeRobbed && roll < SLUM_ALLEY_ROB_CHANCE) {
         const loss = clamp(Math.floor(Math.random() * 50) + 1, 1, Math.min(50, goldNow));
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET gold = COALESCE(gold, 0) - ?,
               slumAlleyRobbedCount = COALESCE(slumAlleyRobbedCount, 0) + 1,
@@ -3343,7 +3343,7 @@ export function createGameplayRouter(ctx: AppContext) {
               updatedAt = ?
           WHERE id = ?
         `).run(loss, ts, userId);
-        const fresh = getUser(db, userId) || me;
+        const fresh = await getUser(db, userId) || me;
         const robbedCount = Math.max(0, Number(fresh.slumAlleyRobbedCount || 0));
         return res.json({
           success: true,
@@ -3363,10 +3363,10 @@ export function createGameplayRouter(ctx: AppContext) {
 
       if (roll < SLUM_ALLEY_ROB_CHANCE + SLUM_ALLEY_ITEM_CHANCE) {
         const preferAlchemy = Math.random() < SLUM_ALLEY_ALCHEMY_RATE;
-        const picked = pickSlumAlleyItem(db, preferAlchemy);
+        const picked = await pickSlumAlleyItem(db, preferAlchemy);
         const rawType = String(picked.item.itemType || '回复道具');
         const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
-        addItem(
+        await addItem(
           db,
           userId,
           String(picked.item.name || '神秘道具'),
@@ -3375,13 +3375,13 @@ export function createGameplayRouter(ctx: AppContext) {
           String(picked.item.description || ''),
           Number(picked.item.effectValue || 0)
         );
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET slumAlleyStrollCount = COALESCE(slumAlleyStrollCount, 0) + 1,
               updatedAt = ?
           WHERE id = ?
         `).run(ts, userId);
-        const fresh = getUser(db, userId) || me;
+        const fresh = await getUser(db, userId) || me;
         const robbedCount = Math.max(0, Number(fresh.slumAlleyRobbedCount || 0));
         return res.json({
           success: true,
@@ -3405,13 +3405,13 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET slumAlleyStrollCount = COALESCE(slumAlleyStrollCount, 0) + 1,
             updatedAt = ?
         WHERE id = ?
       `).run(ts, userId);
-      const fresh = getUser(db, userId) || me;
+      const fresh = await getUser(db, userId) || me;
       const robbedCount = Math.max(0, Number(fresh.slumAlleyRobbedCount || 0));
       return res.json({
         success: true,
@@ -3432,13 +3432,13 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 东市繁华街道：闲逛事件（偏高价值拾取）
-  r.get('/rich/street/state', (req, res) => {
+  r.get('/rich/street/state', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const raw = getUser(db, userId);
+      const raw = await getUser(db, userId);
       if (!raw) return res.status(404).json({ success: false, message: 'user not found' });
-      const me = resetRichStreetDailyIfNeeded(db, raw);
+      const me = await resetRichStreetDailyIfNeeded(db, raw);
       return res.json({
         success: true,
         daily: {
@@ -3451,11 +3451,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/rich/street/stroll', (req, res) => {
+  r.post('/rich/street/stroll', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const raw = getUser(db, userId);
+      const raw = await getUser(db, userId);
       if (!raw) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(raw.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法在繁华街道闲逛' });
@@ -3464,14 +3464,14 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '请先抵达东市，再进入繁华街道' });
       }
 
-      const me = resetRichStreetDailyIfNeeded(db, raw);
-      const pick = pickRichStreetItem(db);
+      const me = await resetRichStreetDailyIfNeeded(db, raw);
+      const pick = await pickRichStreetItem(db);
       const ts = nowIso();
 
       if (pick?.item) {
         const rawType = String(pick.item.itemType || '回复道具');
         const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
-        addItem(
+        await addItem(
           db,
           userId,
           String(pick.item.name || '神秘道具'),
@@ -3480,13 +3480,13 @@ export function createGameplayRouter(ctx: AppContext) {
           String(pick.item.description || ''),
           Number(pick.item.effectValue || 0)
         );
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET richStreetStrollCount = COALESCE(richStreetStrollCount, 0) + 1,
               updatedAt = ?
           WHERE id = ?
         `).run(ts, userId);
-        const fresh = getUser(db, userId) || me;
+        const fresh = await getUser(db, userId) || me;
         const isHigh = pick.tier === 'high';
         return res.json({
           success: true,
@@ -3507,13 +3507,13 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET richStreetStrollCount = COALESCE(richStreetStrollCount, 0) + 1,
             updatedAt = ?
         WHERE id = ?
       `).run(ts, userId);
-      const fresh = getUser(db, userId) || me;
+      const fresh = await getUser(db, userId) || me;
       return res.json({
         success: true,
         eventType: 'safe',
@@ -3529,11 +3529,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 伦敦塔：精神契合度匹配池状态
-  r.get('/london/compat/pool/status', (req, res) => {
+  r.get('/london/compat/pool/status', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
 
       const eligible = isLondonCompatEligibleUser(me);
@@ -3542,7 +3542,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const shouldPrompt = eligible && !prompted;
       const roleType = compatRoleType(me.role);
       const targetRoleType = roleType === 'sentinel' ? 'guide' : roleType === 'guide' ? 'sentinel' : '';
-      const poolData = optedIn ? buildLondonCompatMatches(db, me) : { matches: [] as AnyRow[] };
+      const poolData = optedIn ? await buildLondonCompatMatches(db, me) : { matches: [] as AnyRow[] };
 
       return res.json({
         success: true,
@@ -3561,12 +3561,12 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/london/compat/pool/decision', (req, res) => {
+  r.post('/london/compat/pool/decision', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const join = Boolean(req.body?.join);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
 
       const eligible = isLondonCompatEligibleUser(me);
@@ -3575,7 +3575,7 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const nextOptIn = join && eligible ? 1 : 0;
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET londonCompatPrompted = 1,
             londonCompatOptIn = ?,
@@ -3583,8 +3583,8 @@ export function createGameplayRouter(ctx: AppContext) {
         WHERE id = ?
       `).run(nextOptIn, nowIso(), userId);
 
-      const fresh = getUser(db, userId) || me;
-      const poolData = nextOptIn === 1 ? buildLondonCompatMatches(db, fresh) : { matches: [] as AnyRow[] };
+      const fresh = await getUser(db, userId) || me;
+      const poolData = nextOptIn === 1 ? await buildLondonCompatMatches(db, fresh) : { matches: [] as AnyRow[] };
       return res.json({
         success: true,
         eligible: isLondonCompatEligibleUser(fresh),
@@ -3600,11 +3600,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/london/compat/matches', (req, res) => {
+  r.get('/london/compat/matches', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
 
       const eligible = isLondonCompatEligibleUser(me);
@@ -3634,7 +3634,7 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      const { matches } = buildLondonCompatMatches(db, me);
+      const { matches } = await buildLondonCompatMatches(db, me);
       return res.json({
         success: true,
         eligible: true,
@@ -3650,16 +3650,16 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 恶魔会状态：赌博/借贷/抵押/每日掉落
-  r.get('/demon/state', (req, res) => {
+  r.get('/demon/state', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const meRaw = getUser(db, userId);
+      const meRaw = await getUser(db, userId);
       if (!meRaw) return res.status(404).json({ success: false, message: 'user not found' });
-      const me = resetDemonSkillDailyIfNeeded(db, meRaw);
-      const loan = getOpenDemonLoan(db, userId);
+      const me = await resetDemonSkillDailyIfNeeded(db, meRaw);
+      const loan = await getOpenDemonLoan(db, userId);
 
-      const invRows = db.prepare(`
+      const invRows = await db.prepare(`
         SELECT id, name, description, qty, itemType, effectValue
         FROM inventory
         WHERE userId = ?
@@ -3667,8 +3667,8 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 200
       `).all(userId) as AnyRow[];
 
-      const inventory = invRows.map((x) => {
-        const unitPrice = estimateInventoryUnitPrice(db, x);
+      const inventory = await Promise.all(invRows.map(async (x) => {
+        const unitPrice = await estimateInventoryUnitPrice(db, x);
         return {
           id: Number(x.id || 0),
           name: String(x.name || ''),
@@ -3679,9 +3679,9 @@ export function createGameplayRouter(ctx: AppContext) {
           estimateUnitPrice: unitPrice,
           pledgeValuePerUnit: Math.max(1, Math.floor(unitPrice * 0.8))
         };
-      });
+      }));
 
-      const nearby = db.prepare(`
+      const nearby = await db.prepare(`
         SELECT id, name, role, job, gold
         FROM users
         WHERE currentLocation = ?
@@ -3691,7 +3691,7 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 80
       `).all(DEMON_LOCATION, userId) as AnyRow[];
 
-      const incomingGambleRequests = db.prepare(`
+      const incomingGambleRequests = await db.prepare(`
         SELECT *
         FROM demon_gamble_requests
         WHERE targetId = ?
@@ -3700,7 +3700,7 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 12
       `).all(userId) as AnyRow[];
 
-      const outgoingGambleRequests = db.prepare(`
+      const outgoingGambleRequests = await db.prepare(`
         SELECT *
         FROM demon_gamble_requests
         WHERE challengerId = ?
@@ -3709,7 +3709,7 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 12
       `).all(userId) as AnyRow[];
 
-      const recentGambleEvents = db.prepare(`
+      const recentGambleEvents = await db.prepare(`
         SELECT *
         FROM demon_gamble_requests
         WHERE (challengerId = ? OR targetId = ?)
@@ -3760,15 +3760,15 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 恶魔会：恶劣黑市 NPC（违禁品 5 倍售价）
-  r.get('/demon/blackmarket/shop', (req, res) => {
+  r.get('/demon/blackmarket/shop', async (req, res) => {
     try {
       const userId = Number(req.query.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
 
       const isDemonMember = isDemonMemberJob(me.job);
-      const offers = buildDemonContrabandOffers(db, isDemonMember);
+      const offers = await buildDemonContrabandOffers(db, isDemonMember);
       const canTrade =
         ['approved', 'ghost'].includes(String(me.status || '')) &&
         String(me.currentLocation || '') === DEMON_LOCATION;
@@ -3791,14 +3791,14 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/demon/blackmarket/buy', (req, res) => {
+  r.post('/demon/blackmarket/buy', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const itemId = Number(req.body?.itemId || 0);
       const qty = clamp(Math.trunc(Number(req.body?.qty || 1)), 1, 99);
       if (!userId || !itemId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法购买黑市物品' });
@@ -3807,7 +3807,7 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '请在恶魔会黑市当面交易' });
       }
 
-      const item = db.prepare(`
+      const item = await db.prepare(`
         SELECT id, name, description, itemType, effectValue, tier, price, locationTag
         FROM items
         WHERE id = ?
@@ -3835,9 +3835,9 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: `金币不足，需要 ${totalCost}G` });
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(totalCost, nowIso(), userId);
-        addItem(
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(totalCost, nowIso(), userId);
+        await addItem(
           db,
           userId,
           String(item.name || '违禁品'),
@@ -3847,9 +3847,9 @@ export function createGameplayRouter(ctx: AppContext) {
           Number(item.effectValue || 0)
         );
       });
-      tx();
+      await tx();
 
-      const fresh = getUser(db, userId);
+      const fresh = await getUser(db, userId);
       return res.json({
         success: true,
         item: {
@@ -3870,7 +3870,7 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 恶魔会：单人比大小
-  r.post('/demon/gamble/solo', (req, res) => {
+  r.post('/demon/gamble/solo', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const amount = Math.max(1, Math.trunc(Number(req.body?.amount || 0)));
@@ -3878,7 +3878,7 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!userId || !amount) return res.status(400).json({ success: false, message: 'invalid params' });
       if (!['big', 'small'].includes(guess)) return res.status(400).json({ success: false, message: 'guess must be big/small' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法参与赌博' });
@@ -3892,8 +3892,8 @@ export function createGameplayRouter(ctx: AppContext) {
       const isWin = guess === 'big' ? roll >= 4 : roll <= 3;
       const delta = isWin ? amount : -amount;
 
-      db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(delta, nowIso(), userId);
-      const fresh = getUser(db, userId);
+      await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(delta, nowIso(), userId);
+      const fresh = await getUser(db, userId);
       return res.json({
         success: true,
         isWin,
@@ -3909,7 +3909,7 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // ??????????
-  r.post('/demon/gamble/pvp', (req, res) => {
+  r.post('/demon/gamble/pvp', async (req, res) => {
     try {
       const challengerId = Number(req.body?.challengerId || 0);
       const targetId = Number(req.body?.targetId || 0);
@@ -3917,8 +3917,8 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!challengerId || !targetId || !amount) return res.status(400).json({ success: false, message: 'invalid params' });
       if (challengerId === targetId) return res.status(400).json({ success: false, message: 'You cannot bet against yourself' });
 
-      const challenger = getUser(db, challengerId);
-      const target = getUser(db, targetId);
+      const challenger = await getUser(db, challengerId);
+      const target = await getUser(db, targetId);
       if (!challenger || !target) return res.status(404).json({ success: false, message: 'player not found' });
 
       const bothInDemon = String(challenger.currentLocation || '') === DEMON_LOCATION && String(target.currentLocation || '') === DEMON_LOCATION;
@@ -3930,7 +3930,7 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'One side does not have enough gold' });
       }
 
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT *
         FROM demon_gamble_requests
         WHERE status = 'pending'
@@ -3946,7 +3946,7 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const stamp = nowIso();
-      const result = db.prepare(`
+      const result = await db.prepare(`
         INSERT INTO demon_gamble_requests(
           challengerId, challengerName, targetId, targetName, amount, status, createdAt, updatedAt
         )
@@ -3962,7 +3962,7 @@ export function createGameplayRouter(ctx: AppContext) {
       );
 
       const requestId = Number(result.lastInsertRowid || 0);
-      const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
       return res.json({
         success: true,
         request: mapDemonGambleRequestRow(row, challengerId),
@@ -3974,14 +3974,14 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // ??????????
-  r.post('/demon/gamble/request/:requestId/respond', (req, res) => {
+  r.post('/demon/gamble/request/:requestId/respond', async (req, res) => {
     try {
       const requestId = Number(req.params.requestId || 0);
       const userId = Number(req.body?.userId || 0);
       const accept = Boolean(req.body?.accept);
       if (!requestId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const row = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'request not found' });
       if (Number(row.targetId || 0) !== userId) return res.status(403).json({ success: false, message: 'Only the invited player can respond to this request' });
       if (String(row.status || '') !== 'pending') {
@@ -3994,14 +3994,14 @@ export function createGameplayRouter(ctx: AppContext) {
 
       if (!accept) {
         const stamp = nowIso();
-        db.prepare(`
+        await db.prepare(`
           UPDATE demon_gamble_requests
           SET status = 'rejected',
               responderId = ?,
               updatedAt = ?
           WHERE id = ?
         `).run(userId, stamp, requestId);
-        const fresh = db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+        const fresh = await db.prepare(`SELECT * FROM demon_gamble_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
         return res.json({
           success: true,
           request: mapDemonGambleRequestRow(fresh, userId),
@@ -4009,7 +4009,7 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      const settled = settleDemonGambleRequest(db, requestId);
+      const settled = await settleDemonGambleRequest(db, requestId);
       if (!settled.ok) {
         return res.status(400).json({
           success: false,
@@ -4028,12 +4028,12 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
   // 恶魔会：借款（固定利率 10%）
-  r.post('/demon/loan/borrow', (req, res) => {
+  r.post('/demon/loan/borrow', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const amount = clamp(Math.trunc(Number(req.body?.amount || 0)), 1, 999999999);
       if (!userId || !amount) return res.status(400).json({ success: false, message: 'invalid params' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(me.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法借款' });
@@ -4041,22 +4041,22 @@ export function createGameplayRouter(ctx: AppContext) {
       if (String(me.currentLocation || '') !== DEMON_LOCATION) {
         return res.status(403).json({ success: false, message: '请在恶魔会借款窗口办理' });
       }
-      const open = getOpenDemonLoan(db, userId);
+      const open = await getOpenDemonLoan(db, userId);
       if (open && Number(open.remaining || 0) > 0) {
         return res.status(409).json({ success: false, message: `你还有未还债务 ${open.remaining}G` });
       }
 
       const totalDue = Math.max(amount, Math.ceil(amount * (1 + DEMON_LOAN_INTEREST_RATE)));
-      const tx = db.transaction(() => {
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`
           INSERT INTO demon_loans(userId, principal, interestRate, totalDue, repaidAmount, status, createdAt, updatedAt)
           VALUES (?, ?, ?, ?, 0, 'open', ?, ?)
         `).run(userId, amount, DEMON_LOAN_INTEREST_RATE, totalDue, nowIso(), nowIso());
-        db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), userId);
+        await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) + ?, updatedAt = ? WHERE id = ?`).run(amount, nowIso(), userId);
       });
-      tx();
+      await tx();
 
-      const fresh = getUser(db, userId);
+      const fresh = await getUser(db, userId);
       return res.json({
         success: true,
         principal: amount,
@@ -4071,14 +4071,14 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 恶魔会：现金还款
-  r.post('/demon/loan/repay', (req, res) => {
+  r.post('/demon/loan/repay', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const amountInput = Math.trunc(Number(req.body?.amount || 0));
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
-      const open = getOpenDemonLoan(db, userId);
+      const open = await getOpenDemonLoan(db, userId);
       if (!open) return res.status(409).json({ success: false, message: '当前没有未结清的债务' });
 
       const remaining = Math.max(0, Number(open.remaining || 0));
@@ -4090,9 +4090,9 @@ export function createGameplayRouter(ctx: AppContext) {
       const nextRepaid = Math.max(0, Number(open.repaidAmount || 0)) + pay;
       const shouldClose = nextRepaid >= Number(open.totalDue || 0);
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(pay, nowIso(), userId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE users SET gold = COALESCE(gold, 0) - ?, updatedAt = ? WHERE id = ?`).run(pay, nowIso(), userId);
+        await db.prepare(`
           UPDATE demon_loans
           SET repaidAmount = ?,
               status = ?,
@@ -4100,10 +4100,10 @@ export function createGameplayRouter(ctx: AppContext) {
           WHERE id = ?
         `).run(nextRepaid, shouldClose ? 'closed' : 'open', nowIso(), Number(open.id || 0));
       });
-      tx();
+      await tx();
 
-      const afterLoan = getOpenDemonLoan(db, userId);
-      const fresh = getUser(db, userId);
+      const afterLoan = await getOpenDemonLoan(db, userId);
+      const fresh = await getUser(db, userId);
       const left = afterLoan ? Number(afterLoan.remaining || 0) : 0;
       return res.json({
         success: true,
@@ -4119,19 +4119,19 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 恶魔会：抵押道具还债（按估值 80% 抵债）
-  r.post('/demon/loan/pledge', (req, res) => {
+  r.post('/demon/loan/pledge', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const inventoryId = Number(req.body?.inventoryId || 0);
       const qtyInput = Math.trunc(Number(req.body?.qty || 1));
       if (!userId || !inventoryId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
-      const open = getOpenDemonLoan(db, userId);
+      const open = await getOpenDemonLoan(db, userId);
       if (!open) return res.status(409).json({ success: false, message: '当前没有未结清的债务' });
 
-      const inv = db.prepare(`
+      const inv = await db.prepare(`
         SELECT id, userId, name, description, qty, itemType, effectValue
         FROM inventory
         WHERE id = ?
@@ -4140,20 +4140,20 @@ export function createGameplayRouter(ctx: AppContext) {
       `).get(inventoryId, userId) as AnyRow | undefined;
       if (!inv) return res.status(404).json({ success: false, message: '背包中不存在该道具' });
       const qty = clamp(qtyInput || 1, 1, Math.max(1, Number(inv.qty || 1)));
-      const unitPrice = estimateInventoryUnitPrice(db, inv);
+      const unitPrice = await estimateInventoryUnitPrice(db, inv);
       const pledgeCredit = Math.max(1, Math.floor(unitPrice * 0.8 * qty));
       const repayUsed = Math.min(Math.max(0, Number(open.remaining || 0)), pledgeCredit);
       if (repayUsed <= 0) return res.status(400).json({ success: false, message: '该道具无法抵债' });
 
       const nextRepaid = Math.max(0, Number(open.repaidAmount || 0)) + repayUsed;
       const shouldClose = nextRepaid >= Number(open.totalDue || 0);
-      const tx = db.transaction(() => {
+      const tx = db.transaction(async () => {
         if (Number(inv.qty || 1) <= qty) {
-          db.prepare(`DELETE FROM inventory WHERE id = ?`).run(inventoryId);
+          await db.prepare(`DELETE FROM inventory WHERE id = ?`).run(inventoryId);
         } else {
-          db.prepare(`UPDATE inventory SET qty = qty - ? WHERE id = ?`).run(qty, inventoryId);
+          await db.prepare(`UPDATE inventory SET qty = qty - ? WHERE id = ?`).run(qty, inventoryId);
         }
-        db.prepare(`
+        await db.prepare(`
           UPDATE demon_loans
           SET repaidAmount = ?,
               status = ?,
@@ -4161,9 +4161,9 @@ export function createGameplayRouter(ctx: AppContext) {
           WHERE id = ?
         `).run(nextRepaid, shouldClose ? 'closed' : 'open', nowIso(), Number(open.id || 0));
       });
-      tx();
+      await tx();
 
-      const afterLoan = getOpenDemonLoan(db, userId);
+      const afterLoan = await getOpenDemonLoan(db, userId);
       return res.json({
         success: true,
         pledgedItem: String(inv.name || ''),
@@ -4183,11 +4183,11 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 恶魔会成员专属：每日 3 次随机掉落
-  r.post('/demon/skill/daily-random', (req, res) => {
+  r.post('/demon/skill/daily-random', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const raw = getUser(db, userId);
+      const raw = await getUser(db, userId);
       if (!raw) return res.status(404).json({ success: false, message: 'user not found' });
       if (!['approved', 'ghost'].includes(String(raw.status || ''))) {
         return res.status(403).json({ success: false, message: '当前状态无法使用该技能' });
@@ -4196,13 +4196,13 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: '只有恶魔会成员可使用该技能' });
       }
 
-      const me = resetDemonSkillDailyIfNeeded(db, raw);
+      const me = await resetDemonSkillDailyIfNeeded(db, raw);
       const used = Math.max(0, Number(me.demonSkillCount || 0));
       if (used >= DEMON_DAILY_SKILL_MAX) {
         return res.status(409).json({ success: false, message: '今日随机掉落次数已用尽' });
       }
 
-      const contraband = db.prepare(`
+      const contraband = await db.prepare(`
         SELECT id, name, description, itemType, effectValue, tier
         FROM items
         WHERE itemType = '违禁品'
@@ -4216,7 +4216,7 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 1
       `).get(DEMON_LOCATION) as AnyRow | undefined;
 
-      const picked = db.prepare(`
+      const picked = await db.prepare(`
         SELECT id, name, description, itemType, effectValue, tier
         FROM items
         WHERE (
@@ -4229,7 +4229,7 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 1
       `).get(DEMON_LOCATION) as AnyRow | undefined;
 
-      const fallback = contraband || picked || (db.prepare(`
+      const fallback = contraband || picked || (await db.prepare(`
         SELECT id, name, description, itemType, effectValue, tier
         FROM items
         ORDER BY RANDOM()
@@ -4242,7 +4242,7 @@ export function createGameplayRouter(ctx: AppContext) {
 
       const rawType = String(fallback.itemType || '回复道具');
       const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
-      addItem(
+      await addItem(
         db,
         userId,
         String(fallback.name || '神秘道具'),
@@ -4251,8 +4251,8 @@ export function createGameplayRouter(ctx: AppContext) {
         String(fallback.description || ''),
         Number(fallback.effectValue || 0)
       );
-      db.prepare(`UPDATE users SET demonSkillCount = COALESCE(demonSkillCount, 0) + 1, updatedAt = ? WHERE id = ?`).run(nowIso(), userId);
-      const fresh = getUser(db, userId) || me;
+      await db.prepare(`UPDATE users SET demonSkillCount = COALESCE(demonSkillCount, 0) + 1, updatedAt = ? WHERE id = ?`).run(nowIso(), userId);
+      const fresh = await getUser(db, userId) || me;
       const usedAfter = Math.max(0, Number(fresh.demonSkillCount || 0));
       const remaining = Math.max(0, DEMON_DAILY_SKILL_MAX - usedAfter);
 
@@ -4272,16 +4272,16 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/explore/item', (req, res) => {
+  r.post('/explore/item', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const locationTag = String(req.body?.locationId || user.currentLocation || '').trim();
       const isDemonMember = isDemonMemberJob(user.job);
-      const candidates = db.prepare(`
+      const candidates = await db.prepare(`
         SELECT id, name, description, tier, itemType, effectValue, faction, locationTag
         FROM items
         WHERE (locationTag = '' OR ? = '' OR locationTag LIKE '%' || ? || '%')
@@ -4318,13 +4318,13 @@ export function createGameplayRouter(ctx: AppContext) {
         const fallback = ['应急绷带', '净化注射剂', '口粮包', '[技能书] 感知系低阶入门'];
         const name = rand(fallback);
         const itemType = name.includes('技能书') ? 'skill_book' : '回复道具';
-        addItem(db, userId, name, itemType, 1, '', name.includes('应急') ? 30 : 20);
+        await addItem(db, userId, name, itemType, 1, '', name.includes('应急') ? 30 : 20);
       return res.json({ success: true, message: `found ${name}`, item: { name, tier: '低阶', itemType } });
       }
 
       const rawType = String(picked.itemType || '回复道具');
       const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
-      addItem(
+      await addItem(
         db,
         userId,
         String(picked.name || ''),
@@ -4349,11 +4349,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/explore/skill', (req, res) => {
+  r.post('/explore/skill', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const row = db.prepare(`
+      const row = await db.prepare(`
         SELECT s.id, s.name, s.faction
         FROM skills s
         LEFT JOIN user_skills us ON us.skillId=s.id AND us.userId=?
@@ -4362,22 +4362,22 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 1
       `).get(userId) as AnyRow | undefined;
       if (!row) return res.json({ success: false, message: 'no new skill available' });
-      const granted = grantSkillOrBook(db, userId, row, 1);
+      const granted = await grantSkillOrBook(db, userId, row, 1);
       res.json({ success: true, message: granted.message });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'explore skill failed' });
     }
   });
 
-  r.post('/explore/combat', (req, res) => {
+  r.post('/explore/combat', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (isUndifferentiated(user)) {
-        db.prepare(`UPDATE users SET hp = 0, updatedAt=? WHERE id=?`).run(nowIso(), userId);
+        await db.prepare(`UPDATE users SET hp = 0, updatedAt=? WHERE id=?`).run(nowIso(), userId);
         return res.json({
           success: true,
           isWin: false,
@@ -4393,7 +4393,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const hpDelta = isWin ? -clamp(Math.floor(Math.random() * 10), 0, 8) : -clamp(Math.floor(15 + Math.random() * 30), 15, 40);
       const nextHp = clamp(Number(user.hp || 100) + hpDelta, 0, Number(user.maxHp || 100));
       const furyGain = isSentinelRole(String(user.role || '')) ? 20 : 0;
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET hp=?, fury=MIN(100, COALESCE(fury,0) + ?), lastCombatAt=?, updatedAt=?
         WHERE id=?
@@ -4404,9 +4404,9 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/explore/monsters', (_req, res) => {
+  r.get('/explore/monsters', async (_req, res) => {
     try {
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance, enabled
         FROM wild_monsters
         WHERE enabled = 1
@@ -4432,13 +4432,13 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/explore/wild/logs/:userId', (req, res) => {
+  r.get('/explore/wild/logs/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId || 0);
       const limit = clamp(Number(req.query.limit || 20), 1, 100);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId', logs: [] });
 
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, userId, eventType, monsterId, monsterName, monsterLevel, isWin, resultText,
                hpDelta, mentalDelta, physicalDelta, droppedItem, returnedTo, createdAt
         FROM wild_battle_logs
@@ -4470,11 +4470,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/explore/wild/roll', (req, res) => {
+  r.post('/explore/wild/roll', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const nowMs = Date.now();
@@ -4502,20 +4502,20 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const nextMp = Math.max(0, currentMp - WILD_ROLL_MP_COST);
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET mp = ?, lastWildRollAt = ?, updatedAt = ?
         WHERE id = ?
       `).run(nextMp, nowIso(), nowIso(), userId);
 
-      const encounter = buildWildEncounter(db, user);
+      const encounter = await buildWildEncounter(db, user);
       if (encounter.eventType === 'item') {
-        db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
-        const drop = pickRandomDropByTier(db, 5, isDemonMemberJob(user.job));
+        await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+        const drop = await pickRandomDropByTier(db, 5, isDemonMemberJob(user.job));
         if (drop) {
           const rawType = String(drop.itemType || '回复道具');
           const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
-          addItem(
+          await addItem(
             db,
             userId,
             String(drop.name || '神秘道具'),
@@ -4524,7 +4524,7 @@ export function createGameplayRouter(ctx: AppContext) {
             String(drop.description || ''),
             Number(drop.effectValue || 0)
           );
-          writeWildBattleLog(db, {
+          await writeWildBattleLog(db, {
             userId,
             eventType: 'item',
             isWin: true,
@@ -4547,8 +4547,8 @@ export function createGameplayRouter(ctx: AppContext) {
             }
           });
         }
-        addItem(db, userId, 'Monster Core', '贵重物品', 1, '可出售的怪物素材', 120);
-        writeWildBattleLog(db, {
+        await addItem(db, userId, 'Monster Core', '贵重物品', 1, '可出售的怪物素材', 120);
+        await writeWildBattleLog(db, {
           userId,
           eventType: 'item',
           isWin: true,
@@ -4567,7 +4567,7 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO wild_encounters(userId, eventType, monsterId, monsterLevel, expiresAt, createdAt)
         VALUES(?,?,?,?,?,?)
         ON CONFLICT(userId) DO UPDATE SET
@@ -4597,16 +4597,16 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/explore/wild/fight', (req, res) => {
+  r.post('/explore/wild/fight', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const requestedLevel = Number(req.body?.level || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
-      const pending = db.prepare(`
+      const pending = await db.prepare(`
         SELECT id, monsterId, monsterLevel, expiresAt
         FROM wild_encounters
         WHERE userId = ?
@@ -4619,14 +4619,14 @@ export function createGameplayRouter(ctx: AppContext) {
       }
       const monsterId = Number(pending.monsterId || 0);
       if (!monsterId) {
-        db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+        await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
         return res.status(409).json({ success: false, message: '遭遇数据异常，请重新刷新遭遇' });
       }
 
       if (isUndifferentiated(user)) {
-        db.prepare(`UPDATE users SET hp = 0, updatedAt=? WHERE id=?`).run(nowIso(), userId);
-        db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
-        writeWildBattleLog(db, {
+        await db.prepare(`UPDATE users SET hp = 0, updatedAt=? WHERE id=?`).run(nowIso(), userId);
+        await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+        await writeWildBattleLog(db, {
           userId,
           eventType: 'monster',
           monsterId,
@@ -4648,7 +4648,7 @@ export function createGameplayRouter(ctx: AppContext) {
         });
       }
 
-      const monster = db.prepare(`
+      const monster = await db.prepare(`
         SELECT id, name, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance
         FROM wild_monsters
         WHERE id = ?
@@ -4656,7 +4656,7 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 1
       `).get(monsterId) as AnyRow | undefined;
       if (!monster) {
-        db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+        await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
         return res.status(409).json({ success: false, message: '该怪物已不可用，请重新刷新遭遇' });
       }
 
@@ -4684,14 +4684,14 @@ export function createGameplayRouter(ctx: AppContext) {
         const dropChance = clamp(Number(monster.dropChance || 0.7), 0.05, 1);
         if (Math.random() <= dropChance) {
           dropName = String(monster.dropItemName || '').trim() || 'Monster Core';
-          addItem(db, userId, dropName, '贵重物品', 1, '来自界外魔物的掉落素材', 180);
+          await addItem(db, userId, dropName, '贵重物品', 1, '来自界外魔物的掉落素材', 180);
         } else {
-          const randomDrop = pickRandomDropByTier(db, level, isDemonMemberJob(user.job));
+          const randomDrop = await pickRandomDropByTier(db, level, isDemonMemberJob(user.job));
           if (randomDrop) {
             const rawType = String(randomDrop.itemType || '回复道具');
             const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
             dropName = String(randomDrop.name || '神秘道具');
-            addItem(
+            await addItem(
               db,
               userId,
               dropName,
@@ -4702,19 +4702,19 @@ export function createGameplayRouter(ctx: AppContext) {
             );
           } else {
             dropName = 'Monster Core';
-            addItem(db, userId, dropName, '贵重物品', 1, '来自界外魔物的掉落素材', 120);
+            await addItem(db, userId, dropName, '贵重物品', 1, '来自界外魔物的掉落素材', 120);
           }
         }
 
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET mentalProgress = ?,
               physicalProgress = ?,
               updatedAt = ?
           WHERE id = ?
         `).run(nextMentalProgress, nextPhysicalProgress, nowIso(), userId);
-        db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
-        writeWildBattleLog(db, {
+        await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+        await writeWildBattleLog(db, {
           userId,
           eventType: 'monster',
           monsterId: Number(monster.id || 0),
@@ -4728,8 +4728,8 @@ export function createGameplayRouter(ctx: AppContext) {
           droppedItem: dropName || ''
         });
 
-        const debuff = applyWildDebuff(db, userId);
-        const refreshed = getUser(db, userId) || user;
+        const debuff = await applyWildDebuff(db, userId);
+        const refreshed = await getUser(db, userId) || user;
         const winText = `击败 ${String(monster.name || '未知魔物')}，精神力与肉体强度各提升 ${WILD_WIN_STAT_GAIN}%`;
         const message = debuff?.message ? `${winText}；${debuff.message}` : winText;
 
@@ -4756,7 +4756,7 @@ export function createGameplayRouter(ctx: AppContext) {
       nextPhysicalProgress = clamp(physicalProgress - WILD_LOSS_STAT_PENALTY, 0, 9999);
       const retreatLocation = String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET hp = ?,
             mentalProgress = ?,
@@ -4764,8 +4764,8 @@ export function createGameplayRouter(ctx: AppContext) {
             updatedAt = ?
         WHERE id = ?
       `).run(nextHp, nextMentalProgress, nextPhysicalProgress, nowIso(), userId);
-      db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
-      writeWildBattleLog(db, {
+      await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+      await writeWildBattleLog(db, {
         userId,
         eventType: 'monster',
         monsterId: Number(monster.id || 0),
@@ -4778,8 +4778,8 @@ export function createGameplayRouter(ctx: AppContext) {
         physicalDelta: -WILD_LOSS_STAT_PENALTY
       });
 
-      const debuff = applyWildDebuff(db, userId);
-      const refreshed = getUser(db, userId) || user;
+      const debuff = await applyWildDebuff(db, userId);
+      const refreshed = await getUser(db, userId) || user;
       const lossText = `战败：HP -10%，精神力 -${WILD_LOSS_STAT_PENALTY}%，肉体强度 -${WILD_LOSS_STAT_PENALTY}%。请选择“头铁再战”或“知难而退”`;
       const message = debuff?.message ? `${lossText}；${debuff.message}` : lossText;
 
@@ -4805,20 +4805,20 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/explore/wild-encounter', (req, res) => {
+  r.post('/explore/wild-encounter', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
-      db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
-      const encounter = buildWildEncounter(db, user);
+      await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+      const encounter = await buildWildEncounter(db, user);
       if (encounter.eventType === 'item') {
-        const drop = pickRandomDropByTier(db, 5, isDemonMemberJob(user.job));
+        const drop = await pickRandomDropByTier(db, 5, isDemonMemberJob(user.job));
         if (drop) {
           const rawType = String(drop.itemType || '回复道具');
           const invType = rawType === '技能书道具' ? 'skill_book' : rawType;
-          addItem(
+          await addItem(
             db,
             userId,
             String(drop.name || '神秘道具'),
@@ -4827,7 +4827,7 @@ export function createGameplayRouter(ctx: AppContext) {
             String(drop.description || ''),
             Number(drop.effectValue || 0)
           );
-          writeWildBattleLog(db, {
+          await writeWildBattleLog(db, {
             userId,
             eventType: 'item',
             isWin: true,
@@ -4843,8 +4843,8 @@ export function createGameplayRouter(ctx: AppContext) {
             message: `你在界外区域拾取了 ${String(drop.name || '神秘道具')}`
           });
         }
-        addItem(db, userId, 'Monster Core', '贵重物品', 1, '可出售的怪物素材', 120);
-        writeWildBattleLog(db, {
+        await addItem(db, userId, 'Monster Core', '贵重物品', 1, '可出售的怪物素材', 120);
+        await writeWildBattleLog(db, {
           userId,
           eventType: 'item',
           isWin: true,
@@ -4861,8 +4861,8 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(500).json({ success: false, message: 'monster data invalid' });
       }
       if (isUndifferentiated(user)) {
-        db.prepare(`UPDATE users SET hp = 0, updatedAt=? WHERE id=?`).run(nowIso(), userId);
-        writeWildBattleLog(db, {
+        await db.prepare(`UPDATE users SET hp = 0, updatedAt=? WHERE id=?`).run(nowIso(), userId);
+        await writeWildBattleLog(db, {
           userId,
           eventType: 'monster',
           monsterId: Number(monster.id || 0),
@@ -4893,13 +4893,13 @@ export function createGameplayRouter(ctx: AppContext) {
       if (isWin) {
         const nextMental = clamp(Number(user.mentalProgress || 0) + WILD_WIN_STAT_GAIN, 0, 9999);
         const nextPhysical = clamp(Number(user.physicalProgress || 0) + WILD_WIN_STAT_GAIN, 0, 9999);
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET mentalProgress = ?, physicalProgress = ?, updatedAt = ?
           WHERE id = ?
         `).run(nextMental, nextPhysical, nowIso(), userId);
-        addItem(db, userId, 'Monster Core', '贵重物品', 1, '可出售的怪物素材', 180);
-        writeWildBattleLog(db, {
+        await addItem(db, userId, 'Monster Core', '贵重物品', 1, '可出售的怪物素材', 180);
+        await writeWildBattleLog(db, {
           userId,
           eventType: 'monster',
           monsterId: Number(monster.id || 0),
@@ -4913,8 +4913,8 @@ export function createGameplayRouter(ctx: AppContext) {
           droppedItem: 'Monster Core'
         });
 
-        const debuff = applyWildDebuff(db, userId);
-        const refreshed = getUser(db, userId) || user;
+        const debuff = await applyWildDebuff(db, userId);
+        const refreshed = await getUser(db, userId) || user;
         const winText = `击败 ${monster.name}，精神力与肉体强度各提升 ${WILD_WIN_STAT_GAIN}%`;
         const message = debuff?.message ? `${winText}；${debuff.message}` : winText;
         return res.json({
@@ -4940,7 +4940,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const nextMental = clamp(Number(user.mentalProgress || 0) - WILD_LOSS_STAT_PENALTY, 0, 9999);
       const nextPhysical = clamp(Number(user.physicalProgress || 0) - WILD_LOSS_STAT_PENALTY, 0, 9999);
       const retreatLocation = String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET hp = ?,
             mentalProgress = ?,
@@ -4948,7 +4948,7 @@ export function createGameplayRouter(ctx: AppContext) {
             updatedAt = ?
         WHERE id = ?
       `).run(nextHp, nextMental, nextPhysical, nowIso(), userId);
-      writeWildBattleLog(db, {
+      await writeWildBattleLog(db, {
         userId,
         eventType: 'monster',
         monsterId: Number(monster.id || 0),
@@ -4960,8 +4960,8 @@ export function createGameplayRouter(ctx: AppContext) {
         mentalDelta: -WILD_LOSS_STAT_PENALTY,
         physicalDelta: -WILD_LOSS_STAT_PENALTY
       });
-      const debuff = applyWildDebuff(db, userId);
-      const refreshed = getUser(db, userId) || user;
+      const debuff = await applyWildDebuff(db, userId);
+      const refreshed = await getUser(db, userId) || user;
       const lossText = `战败：HP -10%，精神力 -${WILD_LOSS_STAT_PENALTY}%，肉体强度 -${WILD_LOSS_STAT_PENALTY}%。请选择“头铁再战”或“知难而退”`;
       const message = debuff?.message ? `${lossText}；${debuff.message}` : lossText;
       return res.json({
@@ -4986,21 +4986,21 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/explore/wild/retreat', (req, res) => {
+  r.post('/explore/wild/retreat', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       const preferred = String(req.body?.returnLocation || '').trim();
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const returnLocation = preferred || String(user.homeLocation || 'tower_of_life') || 'tower_of_life';
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET currentLocation = ?, updatedAt = ?
         WHERE id = ?
       `).run(returnLocation, nowIso(), userId);
-      db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
+      await db.prepare(`DELETE FROM wild_encounters WHERE userId = ?`).run(userId);
 
       return res.json({
         success: true,
@@ -5012,9 +5012,9 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/admin/monsters', auth.requireAdminAuth, (_req: any, res) => {
+  r.get('/admin/monsters', auth.requireAdminAuth, async (_req: any, res) => {
     try {
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance, enabled, createdAt
         FROM wild_monsters
         ORDER BY id DESC
@@ -5025,7 +5025,7 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/admin/monsters', auth.requireAdminAuth, (req: any, res) => {
+  r.post('/admin/monsters', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const body = req.body || {};
       const name = String(body.name || '').trim();
@@ -5046,7 +5046,7 @@ export function createGameplayRouter(ctx: AppContext) {
       );
       const dropItemName = String(body.dropItemName || 'Monster Core').trim() || 'Monster Core';
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO wild_monsters(name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance, enabled, createdAt)
         VALUES(?,?,?,?,?,?,?,?,?,?)
       `).run(
@@ -5063,7 +5063,7 @@ export function createGameplayRouter(ctx: AppContext) {
       );
 
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `编辑怪物 ${name}`, 'monster', name, {
+      await writeAdminLog(db, adminName, `编辑怪物 ${name}`, 'monster', name, {
         minLevel,
         maxLevel,
         basePower,
@@ -5078,12 +5078,12 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.put('/admin/monsters/:id', auth.requireAdminAuth, (req: any, res) => {
+  r.put('/admin/monsters/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
 
-      const row = db.prepare(`
+      const row = await db.prepare(`
         SELECT id, name, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance, enabled
         FROM wild_monsters
         WHERE id = ?
@@ -5122,7 +5122,7 @@ export function createGameplayRouter(ctx: AppContext) {
         ? String(body.description || '')
         : String(row.description || '');
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE wild_monsters
         SET name = ?,
             description = ?,
@@ -5137,7 +5137,7 @@ export function createGameplayRouter(ctx: AppContext) {
       `).run(nameRaw, description, minLevel, maxLevel, basePower, baseHp, dropItemName, dropChance, enabled, id);
 
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `更新怪物 ${nameRaw}`, 'monster', String(id), {
+      await writeAdminLog(db, adminName, `更新怪物 ${nameRaw}`, 'monster', String(id), {
         minLevel,
         maxLevel,
         basePower,
@@ -5157,29 +5157,29 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.delete('/admin/monsters/:id', auth.requireAdminAuth, (req: any, res) => {
+  r.delete('/admin/monsters/:id', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const id = Number(req.params.id || 0);
       if (!id) return res.status(400).json({ success: false, message: 'invalid id' });
 
-      const row = db.prepare(`SELECT id, name FROM wild_monsters WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT id, name FROM wild_monsters WHERE id = ? LIMIT 1`).get(id) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'monster not found' });
 
-      db.prepare(`DELETE FROM wild_monsters WHERE id = ?`).run(id);
+      await db.prepare(`DELETE FROM wild_monsters WHERE id = ?`).run(id);
       const adminName = String(req.admin?.name || 'admin');
-      writeAdminLog(db, adminName, `删除怪物 ${String(row.name || id)}`, 'monster', String(id));
+      await writeAdminLog(db, adminName, `删除怪物 ${String(row.name || id)}`, 'monster', String(id));
       res.json({ success: true, message: `管理员 ${adminName} 编辑了怪物库：删除 ${String(row.name || id)}` });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'delete monster failed' });
     }
   });
 
-  r.post('/interact/combat', (req, res) => {
+  r.post('/interact/combat', async (req, res) => {
     try {
       const attackerId = Number(req.body?.attackerId);
       const defenderId = Number(req.body?.defenderId);
       if (!attackerId || !defenderId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const ret = resolveCombat(
+      const ret = await resolveCombat(
         db,
         attackerId,
         defenderId,
@@ -5195,12 +5195,12 @@ export function createGameplayRouter(ctx: AppContext) {
 
   r.post('/combat/end', (_req, res) => res.json({ success: true }));
 
-  r.post('/interact/steal', (req, res) => {
+  r.post('/interact/steal', async (req, res) => {
     try {
       const thiefId = Number(req.body?.thiefId);
       const targetId = Number(req.body?.targetId);
       if (!thiefId || !targetId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const ret = resolveSteal(db, thiefId, targetId);
+      const ret = await resolveSteal(db, thiefId, targetId);
       if (!ret.success) return res.json(ret);
       res.json(ret);
     } catch (e: any) {
@@ -5208,12 +5208,12 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/interact/prank', (req, res) => {
+  r.post('/interact/prank', async (req, res) => {
     try {
       const ghostId = Number(req.body?.ghostId);
       const targetId = Number(req.body?.targetId);
       if (!ghostId || !targetId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const ret = resolvePrank(db, ghostId, targetId);
+      const ret = await resolvePrank(db, ghostId, targetId);
       if (!ret.success) return res.status(400).json(ret);
       res.json(ret);
     } catch (e: any) {
@@ -5221,13 +5221,13 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/interact/probe', (req, res) => {
+  r.post('/interact/probe', async (req, res) => {
     try {
       const actorId = Number(req.body?.actorId || 0);
       const targetId = Number(req.body?.targetId);
       if (!targetId || !actorId) return res.status(400).json({ success: false, message: 'invalid targetId/actorId' });
-      const actor = getUser(db, actorId);
-      const target = getUser(db, targetId);
+      const actor = await getUser(db, actorId);
+      const target = await getUser(db, targetId);
       if (!actor) return res.status(404).json({ success: false, message: 'actor not found' });
       if (!target) return res.status(404).json({ success: false, message: 'target not found' });
       if (!isSentinelRole(String(actor.role || ''))) {
@@ -5246,12 +5246,12 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/guide/soothe', (req, res) => {
+  r.post('/guide/soothe', async (req, res) => {
     try {
       const sentinelId = Number(req.body?.sentinelId);
       const guideId = Number(req.body?.guideId);
       if (!sentinelId || !guideId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const ret = resolveSoothe(db, sentinelId, guideId);
+      const ret = await resolveSoothe(db, sentinelId, guideId);
       if (!ret.success) return res.status(400).json(ret);
       res.json(ret);
     } catch (e: any) {
@@ -5259,19 +5259,19 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/trade/request', (req, res) => {
+  r.post('/trade/request', async (req, res) => {
     try {
       const fromUserId = Number(req.body?.fromUserId || 0);
       const toUserId = Number(req.body?.toUserId || 0);
       if (!fromUserId || !toUserId) return res.status(400).json({ success: false, message: 'invalid params' });
       if (fromUserId === toUserId) return res.status(400).json({ success: false, message: '不能和自己交易' });
 
-      const fromUser = getUser(db, fromUserId);
-      const toUser = getUser(db, toUserId);
+      const fromUser = await getUser(db, fromUserId);
+      const toUser = await getUser(db, toUserId);
       if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
 
       const pair = normalizeTradePair(fromUserId, toUserId);
-      const activeSession = db.prepare(`
+      const activeSession = await db.prepare(`
         SELECT *
         FROM interaction_trade_sessions
         WHERE userAId = ? AND userBId = ? AND status = 'pending'
@@ -5283,12 +5283,12 @@ export function createGameplayRouter(ctx: AppContext) {
           success: true,
           created: false,
           sessionId: String(activeSession.id || ''),
-          session: loadTradeSessionPayload(db, activeSession),
+          session: await loadTradeSessionPayload(db, activeSession),
           message: '你们已经有进行中的交易会话'
         });
       }
 
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT *
         FROM interaction_trade_requests
         WHERE fromUserId = ? AND toUserId = ? AND status = 'pending'
@@ -5299,13 +5299,13 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.json({ success: true, created: false, requestId: Number(existing.id || 0), message: '交易请求已发出，等待对方回应' });
       }
 
-      const ret = db.prepare(`
+      const ret = await db.prepare(`
         INSERT INTO interaction_trade_requests(fromUserId, toUserId, status, sessionId, createdAt, updatedAt)
         VALUES(?,?,?,?,?,?)
       `).run(fromUserId, toUserId, 'pending', '', nowIso(), nowIso());
       const requestId = Number(ret.lastInsertRowid || 0);
 
-      pushInteractionEvent(
+      await pushInteractionEvent(
         db,
         toUserId,
         fromUserId,
@@ -5315,7 +5315,7 @@ export function createGameplayRouter(ctx: AppContext) {
         `${String(fromUser.name || `玩家#${fromUserId}`)} 希望与你交易`,
         { requestId, fromUserId, toUserId }
       );
-      pushInteractionEvent(
+      await pushInteractionEvent(
         db,
         fromUserId,
         fromUserId,
@@ -5332,11 +5332,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/trade/request/pending/:userId', (req, res) => {
+  r.get('/trade/request/pending/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId', requests: [] });
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT r.id, r.fromUserId, r.toUserId, r.status, r.sessionId, r.createdAt, r.updatedAt, u.name AS fromUserName
         FROM interaction_trade_requests r
         JOIN users u ON u.id = r.fromUserId
@@ -5361,14 +5361,14 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/trade/request/:id/respond', (req, res) => {
+  r.post('/trade/request/:id/respond', async (req, res) => {
     try {
       const requestId = Number(req.params.id || 0);
       const userId = Number(req.body?.userId || 0);
       const accept = req.body?.accept === false ? 0 : 1;
       if (!requestId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const request = db.prepare(`SELECT * FROM interaction_trade_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      const request = await db.prepare(`SELECT * FROM interaction_trade_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
       if (!request) return res.status(404).json({ success: false, message: 'trade request not found' });
       if (Number(request.toUserId || 0) !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
       if (String(request.status || '') !== 'pending') {
@@ -5376,19 +5376,19 @@ export function createGameplayRouter(ctx: AppContext) {
       }
 
       const fromUserId = Number(request.fromUserId || 0);
-      const fromUser = getUser(db, fromUserId);
-      const toUser = getUser(db, userId);
+      const fromUser = await getUser(db, fromUserId);
+      const toUser = await getUser(db, userId);
       if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (!accept) {
-        db.prepare(`UPDATE interaction_trade_requests SET status = 'rejected', updatedAt = ? WHERE id = ?`).run(nowIso(), requestId);
-        pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade_request', '交易请求被拒绝', `${String(toUser.name || `玩家#${userId}`)} 拒绝了你的交易请求`, { requestId });
-        pushInteractionEvent(db, userId, fromUserId, userId, 'trade_request', '你已拒绝交易请求', `你拒绝了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId });
+        await db.prepare(`UPDATE interaction_trade_requests SET status = 'rejected', updatedAt = ? WHERE id = ?`).run(nowIso(), requestId);
+        await pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade_request', '交易请求被拒绝', `${String(toUser.name || `玩家#${userId}`)} 拒绝了你的交易请求`, { requestId });
+        await pushInteractionEvent(db, userId, fromUserId, userId, 'trade_request', '你已拒绝交易请求', `你拒绝了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId });
         return res.json({ success: true, status: 'rejected', message: '已拒绝该交易请求' });
       }
 
       const pair = normalizeTradePair(fromUserId, userId);
-      let sessionRow = db.prepare(`
+      let sessionRow = await db.prepare(`
         SELECT *
         FROM interaction_trade_sessions
         WHERE userAId = ? AND userBId = ? AND status = 'pending'
@@ -5397,47 +5397,47 @@ export function createGameplayRouter(ctx: AppContext) {
       `).get(pair.userAId, pair.userBId) as AnyRow | undefined;
       if (!sessionRow) {
         const sessionId = `trade-${Date.now()}-${pair.userAId}-${pair.userBId}-${Math.floor(Math.random() * 10000)}`;
-        const tx = db.transaction(() => {
-          db.prepare(`
+        const tx = db.transaction(async () => {
+          await db.prepare(`
             INSERT INTO interaction_trade_sessions(id, userAId, userBId, status, confirmA, confirmB, cancelledBy, completedAt, createdAt, updatedAt)
             VALUES(?,?,?,?,?,?,?,?,?,?)
           `).run(sessionId, pair.userAId, pair.userBId, 'pending', 0, 0, 0, null, nowIso(), nowIso());
-          db.prepare(`
+          await db.prepare(`
             INSERT OR IGNORE INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
             VALUES(?,?,?,?,?,?)
           `).run(sessionId, pair.userAId, '', 0, 0, nowIso());
-          db.prepare(`
+          await db.prepare(`
             INSERT OR IGNORE INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
             VALUES(?,?,?,?,?,?)
           `).run(sessionId, pair.userBId, '', 0, 0, nowIso());
         });
-        tx();
-        sessionRow = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+        await tx();
+        sessionRow = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       }
 
-      db.prepare(`UPDATE interaction_trade_requests SET status = 'accepted', sessionId = ?, updatedAt = ? WHERE id = ?`).run(String(sessionRow?.id || ''), nowIso(), requestId);
-      const payload = loadTradeSessionPayload(db, sessionRow);
+      await db.prepare(`UPDATE interaction_trade_requests SET status = 'accepted', sessionId = ?, updatedAt = ? WHERE id = ?`).run(String(sessionRow?.id || ''), nowIso(), requestId);
+      const payload = await loadTradeSessionPayload(db, sessionRow);
       void gameplayRuntime?.publishUsers([fromUserId, userId], 'trade.session.changed', { sessionId: String(sessionRow?.id || ''), status: 'pending', reason: 'accepted' });
-      pushInteractionEvent(db, userId, fromUserId, userId, 'trade', '交易请求已接受', `你接受了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
-      pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade', '交易请求已接受', `${String(toUser.name || `玩家#${userId}`)} 接受了你的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
+      await pushInteractionEvent(db, userId, fromUserId, userId, 'trade', '交易请求已接受', `你接受了 ${String(fromUser.name || `玩家#${fromUserId}`)} 的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
+      await pushInteractionEvent(db, fromUserId, userId, fromUserId, 'trade', '交易请求已接受', `${String(toUser.name || `玩家#${userId}`)} 接受了你的交易请求`, { requestId, sessionId: String(sessionRow?.id || '') });
       return res.json({ success: true, status: 'accepted', sessionId: String(sessionRow?.id || ''), session: payload, message: '已接受该交易请求，交易窗口已打开' });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'respond trade request failed' });
     }
   });
 
-  r.post('/trade/session/start', (req, res) => {
+  r.post('/trade/session/start', async (req, res) => {
     try {
       const fromUserId = Number(req.body?.fromUserId || 0);
       const toUserId = Number(req.body?.toUserId || 0);
       if (!fromUserId || !toUserId) return res.status(400).json({ success: false, message: 'invalid params' });
       if (fromUserId === toUserId) return res.status(400).json({ success: false, message: '不能和自己交易' });
-      const fromUser = getUser(db, fromUserId);
-      const toUser = getUser(db, toUserId);
+      const fromUser = await getUser(db, fromUserId);
+      const toUser = await getUser(db, toUserId);
       if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
 
       const pair = normalizeTradePair(fromUserId, toUserId);
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT *
         FROM interaction_trade_sessions
         WHERE userAId = ? AND userBId = ? AND status = 'pending'
@@ -5445,30 +5445,30 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 1
       `).get(pair.userAId, pair.userBId) as AnyRow | undefined;
       if (existing) {
-        const payload = loadTradeSessionPayload(db, existing);
+        const payload = await loadTradeSessionPayload(db, existing);
         return res.json({ success: true, created: false, sessionId: String(existing.id || ''), session: payload });
       }
 
       const sessionId = `trade-${Date.now()}-${pair.userAId}-${pair.userBId}-${Math.floor(Math.random() * 10000)}`;
-      const tx = db.transaction(() => {
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`
           INSERT INTO interaction_trade_sessions(id, userAId, userBId, status, confirmA, confirmB, cancelledBy, completedAt, createdAt, updatedAt)
           VALUES(?,?,?,?,?,?,?,?,?,?)
         `).run(sessionId, pair.userAId, pair.userBId, 'pending', 0, 0, 0, null, nowIso(), nowIso());
-        db.prepare(`
+        await db.prepare(`
           INSERT OR IGNORE INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
           VALUES(?,?,?,?,?,?)
         `).run(sessionId, pair.userAId, '', 0, 0, nowIso());
-        db.prepare(`
+        await db.prepare(`
           INSERT OR IGNORE INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
           VALUES(?,?,?,?,?,?)
         `).run(sessionId, pair.userBId, '', 0, 0, nowIso());
       });
-      tx();
+      await tx();
 
-      const created = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
-      const payload = loadTradeSessionPayload(db, created);
-      pushInteractionEvent(
+      const created = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const payload = await loadTradeSessionPayload(db, created);
+      await pushInteractionEvent(
         db,
         toUserId,
         fromUserId,
@@ -5478,7 +5478,7 @@ export function createGameplayRouter(ctx: AppContext) {
         `${String(fromUser.name || `玩家#${fromUserId}`)} 向你发起了交易`,
         { sessionId }
       );
-      pushInteractionEvent(
+      await pushInteractionEvent(
         db,
         fromUserId,
         fromUserId,
@@ -5494,11 +5494,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/trade/session/active/:userId', (req, res) => {
+  r.get('/trade/session/active/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const row = db.prepare(`
+      const row = await db.prepare(`
         SELECT *
         FROM interaction_trade_sessions
         WHERE status = 'pending'
@@ -5507,31 +5507,31 @@ export function createGameplayRouter(ctx: AppContext) {
         LIMIT 1
       `).get(userId, userId) as AnyRow | undefined;
       if (!row) return res.json({ success: true, sessionId: null, session: null });
-      const payload = loadTradeSessionPayload(db, row);
+      const payload = await loadTradeSessionPayload(db, row);
       return res.json({ success: true, sessionId: String(row.id || ''), session: payload });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'query active trade session failed' });
     }
   });
 
-  r.get('/trade/session/:sessionId', (req, res) => {
+  r.get('/trade/session/:sessionId', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = Number(req.query.userId || 0);
       if (!sessionId) return res.status(400).json({ success: false, message: 'invalid sessionId' });
-      const row = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'trade session not found' });
       if (userId && Number(row.userAId || 0) !== userId && Number(row.userBId || 0) !== userId) {
         return res.status(403).json({ success: false, message: 'forbidden' });
       }
-      const payload = loadTradeSessionPayload(db, row);
+      const payload = await loadTradeSessionPayload(db, row);
       return res.json({ success: true, session: payload });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'query trade session failed' });
     }
   });
 
-  r.post('/trade/session/:sessionId/offer', (req, res) => {
+  r.post('/trade/session/:sessionId/offer', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = Number(req.body?.userId || 0);
@@ -5541,35 +5541,35 @@ export function createGameplayRouter(ctx: AppContext) {
       const userSkillId = Math.max(0, Math.floor(Number(req.body?.userSkillId || req.body?.skillEntryId || 0)));
       if (!sessionId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const session = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const session = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       if (!session) return res.status(404).json({ success: false, message: 'trade session not found' });
       if (String(session.status || '') !== 'pending') return res.status(400).json({ success: false, message: '交易已结束' });
       if (Number(session.userAId || 0) !== userId && Number(session.userBId || 0) !== userId) {
         return res.status(403).json({ success: false, message: 'forbidden' });
       }
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (Number(me.gold || 0) < gold) return res.status(400).json({ success: false, message: '你的金币不足' });
 
       let itemName = rawItemName;
       if (!itemName) qty = 0;
-      if (itemName && qty > 0 && inventoryTotalQty(db, userId, itemName) < qty) {
+      if (itemName && qty > 0 && await inventoryTotalQty(db, userId, itemName) < qty) {
         return res.status(400).json({ success: false, message: '你的物品数量不足' });
       }
 
       if (userSkillId > 0) {
-        const skillRow = pickTradeSkillEntry(db, userId, userSkillId);
+        const skillRow = await pickTradeSkillEntry(db, userId, userSkillId);
         if (!skillRow) return res.status(400).json({ success: false, message: '你不再持有该技能' });
         const peerId = Number(session.userAId || 0) === userId ? Number(session.userBId || 0) : Number(session.userAId || 0);
-        const peerHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(peerId, Number(skillRow.skillId || 0));
+        const peerHas = await db.prepare(`SELECT 1 FROM user_skills WHERE userId = ? AND skillId = ? LIMIT 1`).get(peerId, Number(skillRow.skillId || 0));
         if (peerHas) return res.status(400).json({ success: false, message: '对方已掌握该技能' });
         itemName = encodeTradeSkillOffer(userSkillId, String(skillRow.name || ''));
         qty = 1;
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`
           INSERT INTO interaction_trade_offers(sessionId, userId, itemName, qty, gold, updatedAt)
           VALUES(?,?,?,?,?,?)
           ON CONFLICT(sessionId, userId)
@@ -5580,7 +5580,7 @@ export function createGameplayRouter(ctx: AppContext) {
             updatedAt = excluded.updatedAt
         `).run(sessionId, userId, itemName, qty, gold, nowIso());
 
-        db.prepare(`
+        await db.prepare(`
           UPDATE interaction_trade_sessions
           SET confirmA = 0,
               confirmB = 0,
@@ -5588,11 +5588,11 @@ export function createGameplayRouter(ctx: AppContext) {
           WHERE id = ?
         `).run(nowIso(), sessionId);
       });
-      tx();
+      await tx();
 
       const peerId = Number(session.userAId || 0) === userId ? Number(session.userBId || 0) : Number(session.userAId || 0);
       if (peerId) {
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           peerId,
           userId,
@@ -5604,22 +5604,22 @@ export function createGameplayRouter(ctx: AppContext) {
         );
       }
 
-      const fresh = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
-      const payload = loadTradeSessionPayload(db, fresh);
+      const fresh = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const payload = await loadTradeSessionPayload(db, fresh);
       void gameplayRuntime?.publishUsers([userId, peerId], 'trade.session.changed', { sessionId, status: String(fresh?.status || 'pending'), reason: 'offer' });
       return res.json({ success: true, session: payload, message: '交易报价已更新（双方确认已重置）' });
     } catch (e: any) {
       return res.status(500).json({ success: false, message: e?.message || 'update trade offer failed' });
     }
   });
-  r.post('/trade/session/:sessionId/confirm', (req, res) => {
+  r.post('/trade/session/:sessionId/confirm', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = Number(req.body?.userId || 0);
       const confirm = req.body?.confirm === false ? 0 : 1;
       if (!sessionId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const session = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const session = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       if (!session) return res.status(404).json({ success: false, message: 'trade session not found' });
       if (String(session.status || '') !== 'pending') return res.status(400).json({ success: false, message: '交易已结束' });
       const userAId = Number(session.userAId || 0);
@@ -5627,31 +5627,31 @@ export function createGameplayRouter(ctx: AppContext) {
       if (userAId !== userId && userBId !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
 
       const field = userAId === userId ? 'confirmA' : 'confirmB';
-      db.prepare(`
+      await db.prepare(`
         UPDATE interaction_trade_sessions
         SET ${field} = ?,
             updatedAt = ?
         WHERE id = ?
       `).run(confirm, nowIso(), sessionId);
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       const peerId = userAId === userId ? userBId : userAId;
-      const peer = getUser(db, peerId);
+      const peer = await getUser(db, peerId);
 
-      const fresh = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const fresh = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       if (!fresh) return res.status(404).json({ success: false, message: 'trade session lost' });
 
       if (confirm && Number(fresh.confirmA || 0) === 1 && Number(fresh.confirmB || 0) === 1) {
-        const done = completeTradeSession(db, sessionId);
+        const done = await completeTradeSession(db, sessionId);
         if (!done.success) {
-          db.prepare(`
+          await db.prepare(`
             UPDATE interaction_trade_sessions
             SET status = 'cancelled',
                 cancelledBy = 0,
                 updatedAt = ?
             WHERE id = ?
           `).run(nowIso(), sessionId);
-          pushInteractionEvent(
+          await pushInteractionEvent(
             db,
             userAId,
             0,
@@ -5661,7 +5661,7 @@ export function createGameplayRouter(ctx: AppContext) {
             `交易自动取消：${done.message}`,
             { sessionId }
           );
-          pushInteractionEvent(
+          await pushInteractionEvent(
             db,
             userBId,
             0,
@@ -5674,14 +5674,14 @@ export function createGameplayRouter(ctx: AppContext) {
           void gameplayRuntime?.publishUsers([userAId, userBId], 'trade.session.changed', { sessionId, status: 'cancelled', reason: 'failed' });
           return res.status(400).json({ success: false, message: done.message });
         }
-        const completed = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
-        const payload = loadTradeSessionPayload(db, completed);
+        const completed = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+        const payload = await loadTradeSessionPayload(db, completed);
         void gameplayRuntime?.publishUsers([userAId, userBId], 'trade.session.changed', { sessionId, status: 'completed', reason: 'completed' });
         return res.json({ success: true, completed: true, session: payload, message: done.message || '交易已完成' });
       }
 
       if (peerId) {
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           peerId,
           userId,
@@ -5693,7 +5693,7 @@ export function createGameplayRouter(ctx: AppContext) {
         );
       }
 
-      const payload = loadTradeSessionPayload(db, fresh);
+      const payload = await loadTradeSessionPayload(db, fresh);
       void gameplayRuntime?.publishUsers([userAId, userBId], 'trade.session.changed', { sessionId, status: String(fresh.status || 'pending'), reason: 'confirm' });
       return res.json({
         success: true,
@@ -5708,19 +5708,19 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/trade/session/:sessionId/cancel', (req, res) => {
+  r.post('/trade/session/:sessionId/cancel', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = Number(req.body?.userId || 0);
       if (!sessionId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const session = db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
+      const session = await db.prepare(`SELECT * FROM interaction_trade_sessions WHERE id = ? LIMIT 1`).get(sessionId) as AnyRow | undefined;
       if (!session) return res.status(404).json({ success: false, message: 'trade session not found' });
       if (String(session.status || '') !== 'pending') return res.status(400).json({ success: false, message: '交易已结束' });
       const userAId = Number(session.userAId || 0);
       const userBId = Number(session.userBId || 0);
       if (userAId !== userId && userBId !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE interaction_trade_sessions
         SET status = 'cancelled',
             cancelledBy = ?,
@@ -5728,9 +5728,9 @@ export function createGameplayRouter(ctx: AppContext) {
         WHERE id = ?
       `).run(userId, nowIso(), sessionId);
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       const peerId = userAId === userId ? userBId : userAId;
-      pushInteractionEvent(
+      await pushInteractionEvent(
         db,
         userId,
         userId,
@@ -5741,7 +5741,7 @@ export function createGameplayRouter(ctx: AppContext) {
         { sessionId }
       );
       if (peerId) {
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           peerId,
           userId,
@@ -5759,7 +5759,7 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/interact/trade', (req, res) => {
+  r.post('/interact/trade', async (req, res) => {
     try {
       const fromUserId = Number(req.body?.fromUserId);
       const toUserId = Number(req.body?.toUserId);
@@ -5767,18 +5767,18 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!fromUserId || !toUserId || !mode) return res.status(400).json({ success: false, message: 'invalid params' });
       if (fromUserId === toUserId) return res.status(400).json({ success: false, message: 'cannot trade with self' });
 
-      const fromUser = getUser(db, fromUserId);
-      const toUser = getUser(db, toUserId);
+      const fromUser = await getUser(db, fromUserId);
+      const toUser = await getUser(db, toUserId);
       if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
 
       if (mode === 'gold') {
         const amount = clamp(Number(req.body?.amount || 0), 1, 99999999);
         if (Number(fromUser.gold || 0) < amount) return res.status(400).json({ success: false, message: '你的金币不足' });
-        db.prepare(`UPDATE users SET gold = gold - ?, updatedAt=? WHERE id=?`).run(amount, nowIso(), fromUserId);
-        db.prepare(`UPDATE users SET gold = gold + ?, updatedAt=? WHERE id=?`).run(amount, nowIso(), toUserId);
-        db.prepare(`INSERT INTO interaction_trade_logs(fromUserId,toUserId,mode,payloadJson,createdAt) VALUES(?,?,?,?,?)`)
+        await db.prepare(`UPDATE users SET gold = gold - ?, updatedAt=? WHERE id=?`).run(amount, nowIso(), fromUserId);
+        await db.prepare(`UPDATE users SET gold = gold + ?, updatedAt=? WHERE id=?`).run(amount, nowIso(), toUserId);
+        await db.prepare(`INSERT INTO interaction_trade_logs(fromUserId,toUserId,mode,payloadJson,createdAt) VALUES(?,?,?,?,?)`)
           .run(fromUserId, toUserId, mode, JSON.stringify({ amount }), nowIso());
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           fromUserId,
           fromUserId,
@@ -5788,7 +5788,7 @@ export function createGameplayRouter(ctx: AppContext) {
           `你向 ${String(toUser.name || `玩家#${toUserId}`)} 转移了 ${amount}G`,
           { mode, amount }
         );
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           toUserId,
           fromUserId,
@@ -5804,17 +5804,17 @@ export function createGameplayRouter(ctx: AppContext) {
       if (mode === 'item') {
         const itemName = String(req.body?.itemName || '').trim();
         if (!itemName) return res.status(400).json({ success: false, message: 'itemName required' });
-        const item = db.prepare(`SELECT * FROM inventory WHERE userId=? AND name=? AND qty>0 ORDER BY id DESC LIMIT 1`).get(fromUserId, itemName) as AnyRow | undefined;
+        const item = await db.prepare(`SELECT * FROM inventory WHERE userId=? AND name=? AND qty>0 ORDER BY id DESC LIMIT 1`).get(fromUserId, itemName) as AnyRow | undefined;
         if (!item) return res.status(400).json({ success: false, message: '你没有该物品或数量不足' });
-        const tx = db.transaction(() => {
-          if (Number(item.qty || 1) <= 1) db.prepare(`DELETE FROM inventory WHERE id=?`).run(Number(item.id));
-          else db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id=?`).run(Number(item.id));
-          addItem(db, toUserId, itemName, String(item.itemType || 'consumable'), 1, String(item.description || ''), Number(item.effectValue || 0));
-          db.prepare(`INSERT INTO interaction_trade_logs(fromUserId,toUserId,mode,payloadJson,createdAt) VALUES(?,?,?,?,?)`)
+        const tx = db.transaction(async () => {
+          if (Number(item.qty || 1) <= 1) await db.prepare(`DELETE FROM inventory WHERE id=?`).run(Number(item.id));
+          else await db.prepare(`UPDATE inventory SET qty = qty - 1 WHERE id=?`).run(Number(item.id));
+          await addItem(db, toUserId, itemName, String(item.itemType || 'consumable'), 1, String(item.description || ''), Number(item.effectValue || 0));
+          await db.prepare(`INSERT INTO interaction_trade_logs(fromUserId,toUserId,mode,payloadJson,createdAt) VALUES(?,?,?,?,?)`)
             .run(fromUserId, toUserId, mode, JSON.stringify({ itemName }), nowIso());
         });
-        tx();
-        pushInteractionEvent(
+        await tx();
+        await pushInteractionEvent(
           db,
           fromUserId,
           fromUserId,
@@ -5824,7 +5824,7 @@ export function createGameplayRouter(ctx: AppContext) {
           `你向 ${String(toUser.name || `玩家#${toUserId}`)} 转移了物品「${itemName}」`,
           { mode, itemName }
         );
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           toUserId,
           fromUserId,
@@ -5840,7 +5840,7 @@ export function createGameplayRouter(ctx: AppContext) {
       if (mode === 'skill') {
         const skillName = String(req.body?.skillName || '').trim();
         if (!skillName) return res.status(400).json({ success: false, message: 'skillName required' });
-        const row = db.prepare(`
+        const row = await db.prepare(`
           SELECT us.id AS userSkillId, us.level, s.id AS skillId, s.name
           FROM user_skills us
           JOIN skills s ON s.id = us.skillId
@@ -5849,23 +5849,23 @@ export function createGameplayRouter(ctx: AppContext) {
           LIMIT 1
         `).get(fromUserId, skillName) as AnyRow | undefined;
         if (!row) return res.status(400).json({ success: false, message: '你尚未掌握该技能' });
-        const targetHas = db.prepare(`SELECT 1 FROM user_skills WHERE userId=? AND skillId=? LIMIT 1`).get(toUserId, Number(row.skillId));
+        const targetHas = await db.prepare(`SELECT 1 FROM user_skills WHERE userId=? AND skillId=? LIMIT 1`).get(toUserId, Number(row.skillId));
         if (targetHas) return res.status(400).json({ success: false, message: '对方已掌握该技能，无法重复交易' });
         let tradeMessage = `交易完成：转移技能 ${skillName}`;
-        const tx = db.transaction(() => {
-          db.prepare(`DELETE FROM user_skills WHERE id=?`).run(Number(row.userSkillId));
-          const skillInfo = db.prepare(`SELECT id, name, faction FROM skills WHERE id = ? LIMIT 1`).get(Number(row.skillId)) as AnyRow | undefined;
+        const tx = db.transaction(async () => {
+          await db.prepare(`DELETE FROM user_skills WHERE id=?`).run(Number(row.userSkillId));
+          const skillInfo = await db.prepare(`SELECT id, name, faction FROM skills WHERE id = ? LIMIT 1`).get(Number(row.skillId)) as AnyRow | undefined;
           if (skillInfo) {
-            const granted = grantSkillOrBook(db, toUserId, skillInfo, Math.max(1, Number(row.level || 1)));
+            const granted = await grantSkillOrBook(db, toUserId, skillInfo, Math.max(1, Number(row.level || 1)));
             if (granted.converted) {
               tradeMessage = `交易完成：${skillName} 因派系限制已转为技能书交付`;
             }
           }
-          db.prepare(`INSERT INTO interaction_trade_logs(fromUserId,toUserId,mode,payloadJson,createdAt) VALUES(?,?,?,?,?)`)
+          await db.prepare(`INSERT INTO interaction_trade_logs(fromUserId,toUserId,mode,payloadJson,createdAt) VALUES(?,?,?,?,?)`)
             .run(fromUserId, toUserId, mode, JSON.stringify({ skillName }), nowIso());
         });
-        tx();
-        pushInteractionEvent(
+        await tx();
+        await pushInteractionEvent(
           db,
           fromUserId,
           fromUserId,
@@ -5875,7 +5875,7 @@ export function createGameplayRouter(ctx: AppContext) {
           `你向 ${String(toUser.name || `玩家#${toUserId}`)} 转移了技能「${skillName}」`,
           { mode, skillName }
         );
-        pushInteractionEvent(
+        await pushInteractionEvent(
           db,
           toUserId,
           fromUserId,
@@ -5894,7 +5894,7 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/interact/events/:userId', (req, res) => {
+  r.get('/interact/events/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId || 0);
       const afterIdRaw = Number(req.query.afterId || 0);
@@ -5902,12 +5902,12 @@ export function createGameplayRouter(ctx: AppContext) {
       const latestOnly = String(req.query.latestOnly || '') === '1';
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId', events: [] });
       if (latestOnly) {
-        const row = db.prepare(`SELECT COALESCE(MAX(id), 0) AS maxId FROM interaction_events WHERE userId = ?`).get(userId) as AnyRow | undefined;
+        const row = await db.prepare(`SELECT COALESCE(MAX(id), 0) AS maxId FROM interaction_events WHERE userId = ?`).get(userId) as AnyRow | undefined;
         return res.json({ success: true, maxId: Number(row?.maxId || 0), events: [] });
       }
       const afterId = Number.isFinite(afterIdRaw) && afterIdRaw > 0 ? Math.floor(afterIdRaw) : 0;
       const limit = clamp(Number.isFinite(limitRaw) ? Math.floor(limitRaw) : 20, 1, 100);
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, userId, sourceUserId, targetUserId, actionType, title, message, payloadJson, createdAt
         FROM interaction_events
         WHERE userId = ? AND id > ?
@@ -5939,18 +5939,18 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/interact/report', (req, res) => {
+  r.post('/interact/report', async (req, res) => {
     try {
       const reporterId = Number(req.body?.reporterId);
       const targetId = Number(req.body?.targetId);
       const reason = String(req.body?.reason || '').trim();
       if (!reporterId || !targetId || !reason) return res.status(400).json({ success: false, message: 'invalid params' });
       if (reporterId === targetId) return res.status(400).json({ success: false, message: 'cannot report self' });
-      const reporter = getUser(db, reporterId);
-      const target = getUser(db, targetId);
+      const reporter = await getUser(db, reporterId);
+      const target = await getUser(db, targetId);
       if (!reporter || !target) return res.status(404).json({ success: false, message: 'user not found' });
 
-      const ret = db.prepare(`
+      const ret = await db.prepare(`
         INSERT INTO interaction_reports(reporterId,targetId,reason,status,createdAt,updatedAt)
         VALUES(?,?,?,?,?,?)
       `).run(reporterId, targetId, reason, 'pending', nowIso(), nowIso());
@@ -5965,13 +5965,13 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/admin/reports', auth.requireAdminAuth, (req, res) => {
+  r.get('/admin/reports', auth.requireAdminAuth, async (req, res) => {
     try {
       const status = String(req.query.status || '').trim();
       const whereSql = status ? `WHERE r.status = ?` : '';
       const params: any[] = [];
       if (status) params.push(status);
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT
           r.id,
           r.reporterId,
@@ -6015,14 +6015,14 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/admin/reports/:reportId/vote', auth.requireAdminAuth, (req: any, res) => {
+  r.post('/admin/reports/:reportId/vote', auth.requireAdminAuth, async (req: any, res) => {
     try {
       const reportId = Number(req.params.reportId);
       const decision = String(req.body?.decision || '').trim();
       if (!reportId || !['ban', 'reject'].includes(decision)) {
         return res.status(400).json({ success: false, message: 'invalid params' });
       }
-      const report = db.prepare(`SELECT * FROM interaction_reports WHERE id = ? LIMIT 1`).get(reportId) as AnyRow | undefined;
+      const report = await db.prepare(`SELECT * FROM interaction_reports WHERE id = ? LIMIT 1`).get(reportId) as AnyRow | undefined;
       if (!report) return res.status(404).json({ success: false, message: 'report not found' });
       if (['banned', 'rejected'].includes(String(report.status || ''))) {
         return res.json({ success: true, status: report.status, message: '该举报已结案' });
@@ -6030,14 +6030,14 @@ export function createGameplayRouter(ctx: AppContext) {
 
       const adminUserId = Number(req.admin?.userId || 0);
       const adminName = String(req.admin?.name || 'admin');
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO interaction_report_votes(reportId,adminUserId,adminName,decision,createdAt,updatedAt)
         VALUES(?,?,?,?,?,?)
         ON CONFLICT(reportId,adminUserId)
         DO UPDATE SET decision=excluded.decision, adminName=excluded.adminName, updatedAt=excluded.updatedAt
       `).run(reportId, adminUserId, adminName, decision, nowIso(), nowIso());
 
-      const stat = db.prepare(`
+      const stat = await db.prepare(`
         SELECT
           SUM(CASE WHEN decision='ban' THEN 1 ELSE 0 END) AS banVotes,
           SUM(CASE WHEN decision='reject' THEN 1 ELSE 0 END) AS rejectVotes
@@ -6053,18 +6053,18 @@ export function createGameplayRouter(ctx: AppContext) {
 
       if (banVotes >= threshold) {
         nextStatus = 'banned';
-        db.prepare(`UPDATE interaction_reports SET status='banned', updatedAt=? WHERE id=?`).run(nowIso(), reportId);
-        db.prepare(`UPDATE users SET status='banned', forceOfflineAt=?, updatedAt=? WHERE id=?`).run(nowIso(), nowIso(), Number(report.targetId));
+        await db.prepare(`UPDATE interaction_reports SET status='banned', updatedAt=? WHERE id=?`).run(nowIso(), reportId);
+        await db.prepare(`UPDATE users SET status='banned', forceOfflineAt=?, updatedAt=? WHERE id=?`).run(nowIso(), nowIso(), Number(report.targetId));
         message = '投票达标，目标已封号';
       } else if (rejectVotes >= threshold) {
         nextStatus = 'rejected';
-        db.prepare(`UPDATE interaction_reports SET status='rejected', updatedAt=? WHERE id=?`).run(nowIso(), reportId);
+        await db.prepare(`UPDATE interaction_reports SET status='rejected', updatedAt=? WHERE id=?`).run(nowIso(), reportId);
         message = '投票达标，该举报已驳回';
       } else {
-        db.prepare(`UPDATE interaction_reports SET status='voting', updatedAt=? WHERE id=?`).run(nowIso(), reportId);
+        await db.prepare(`UPDATE interaction_reports SET status='voting', updatedAt=? WHERE id=?`).run(nowIso(), reportId);
       }
 
-      writeAdminLog(
+      await writeAdminLog(
         db,
         adminName,
         `举报投票 ${decision} #${reportId}`,
@@ -6079,7 +6079,7 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/interact/skip/request', (req, res) => {
+  r.post('/interact/skip/request', async (req, res) => {
     try {
       const fromUserId = Number(req.body?.fromUserId);
       const toUserId = Number(req.body?.toUserId);
@@ -6088,8 +6088,8 @@ export function createGameplayRouter(ctx: AppContext) {
       if (!fromUserId || !toUserId || !actionType) return res.status(400).json({ success: false, message: 'invalid params' });
       if (fromUserId === toUserId) return res.status(400).json({ success: false, message: 'cannot target self' });
 
-      const fromUser = getUser(db, fromUserId);
-      const toUser = getUser(db, toUserId);
+      const fromUser = await getUser(db, fromUserId);
+      const toUser = await getUser(db, toUserId);
       if (!fromUser || !toUser) return res.status(404).json({ success: false, message: 'user not found' });
 
       const allowed = new Set(['combat', 'steal', 'prank', 'soothe']);
@@ -6097,13 +6097,13 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: '该动作暂不支持跳过流程' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE interaction_skip_requests
         SET status = 'cancelled', updatedAt = ?
         WHERE fromUserId = ? AND toUserId = ? AND actionType = ? AND status = 'pending'
       `).run(nowIso(), fromUserId, toUserId, actionType);
 
-      const ret = db.prepare(`
+      const ret = await db.prepare(`
         INSERT INTO interaction_skip_requests(fromUserId,toUserId,actionType,payloadJson,status,resultMessage,createdAt,updatedAt)
         VALUES(?,?,?,?,?,?,?,?)
       `).run(fromUserId, toUserId, actionType, JSON.stringify(payload || {}), 'pending', '', nowIso(), nowIso());
@@ -6114,11 +6114,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/interact/skip/pending/:userId', (req, res) => {
+  r.get('/interact/skip/pending/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT
           r.id,
           r.fromUserId,
@@ -6153,11 +6153,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/interact/skip/status/:requestId', (req, res) => {
+  r.get('/interact/skip/status/:requestId', async (req, res) => {
     try {
       const requestId = Number(req.params.requestId);
       if (!requestId) return res.status(400).json({ success: false, message: 'invalid requestId' });
-      const row = db.prepare(`
+      const row = await db.prepare(`
         SELECT id, fromUserId, toUserId, actionType, payloadJson, status, resultMessage, createdAt, updatedAt
         FROM interaction_skip_requests
         WHERE id = ?
@@ -6183,31 +6183,31 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/interact/skip/respond', (req, res) => {
+  r.post('/interact/skip/respond', async (req, res) => {
     try {
       const requestId = Number(req.body?.requestId);
       const userId = Number(req.body?.userId);
       const accept = Boolean(req.body?.accept);
       if (!requestId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const row = db.prepare(`SELECT * FROM interaction_skip_requests WHERE id=? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM interaction_skip_requests WHERE id=? LIMIT 1`).get(requestId) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'request not found' });
       if (Number(row.toUserId) !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
       if (String(row.status) !== 'pending') return res.json({ success: true, status: row.status, message: row.resultMessage || 'already handled' });
 
       if (!accept) {
-        db.prepare(`UPDATE interaction_skip_requests SET status='rejected', resultMessage=?, updatedAt=? WHERE id=?`)
+        await db.prepare(`UPDATE interaction_skip_requests SET status='rejected', resultMessage=?, updatedAt=? WHERE id=?`)
           .run('对方拒绝了跳过请求，动作取消', nowIso(), requestId);
         return res.json({ success: true, status: 'rejected', message: '已拒绝该请求' });
       }
 
       const actionType = String(row.actionType || '');
       const payload = (() => { try { return JSON.parse(String(row.payloadJson || '{}')); } catch { return {}; } })();
-      const ret = executeInteractionAction(db, actionType, Number(row.fromUserId), Number(row.toUserId), payload);
+      const ret = await executeInteractionAction(db, actionType, Number(row.fromUserId), Number(row.toUserId), payload);
       const ok = Boolean(ret?.success);
       const status = ok ? 'accepted' : 'failed';
       const msg = String(ret?.message || (ok ? '动作执行成功' : '动作执行失败'));
-      db.prepare(`UPDATE interaction_skip_requests SET status=?, resultMessage=?, updatedAt=? WHERE id=?`)
+      await db.prepare(`UPDATE interaction_skip_requests SET status=?, resultMessage=?, updatedAt=? WHERE id=?`)
         .run(status, msg, nowIso(), requestId);
       res.json({ success: true, status, message: msg, actionResult: ret });
     } catch (e: any) {
@@ -6215,15 +6215,15 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/party/request', (req, res) => {
+  r.post('/party/request', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       const targetId = Number(req.body?.targetId);
       if (!userId || !targetId) return res.status(400).json({ success: false, message: 'invalid params' });
       if (userId === targetId) return res.status(400).json({ success: false, message: 'cannot target self' });
 
-      const me = getUser(db, userId);
-      const target = getUser(db, targetId);
+      const me = await getUser(db, userId);
+      const target = await getUser(db, targetId);
       if (!me || !target) return res.status(404).json({ success: false, message: 'user not found' });
 
       const myPartyId = String(me.partyId || '').trim();
@@ -6231,9 +6231,9 @@ export function createGameplayRouter(ctx: AppContext) {
       const ts = nowIso();
 
       if (myPartyId && targetPartyId && myPartyId === targetPartyId) {
-        const others = getPartyMembers(db, myPartyId).filter((m) => Number(m.id) !== userId);
+        const others = (await getPartyMembers(db, myPartyId)).filter((m) => Number(m.id) !== userId);
         if (others.length === 0) {
-          db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE id = ?`).run(ts, userId);
+          await db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE id = ?`).run(ts, userId);
           return res.json({ success: true, mode: 'leave_done', message: '已解除组队' });
         }
         const batchKey = `leave-${Date.now()}-${userId}-${myPartyId}`;
@@ -6242,7 +6242,7 @@ export function createGameplayRouter(ctx: AppContext) {
           VALUES(?,?,?,?,?,?,?,?,?,?,?)
         `);
         for (const m of others) {
-          ins.run(batchKey, 'leave', myPartyId, userId, Number(m.id), 0, '{}', 'pending', '', ts, ts);
+          await ins.run(batchKey, 'leave', myPartyId, userId, Number(m.id), 0, '{}', 'pending', '', ts, ts);
         }
         return res.json({
           success: true,
@@ -6258,7 +6258,7 @@ export function createGameplayRouter(ctx: AppContext) {
 
       if (!myPartyId && !targetPartyId) {
         const batchKey = `join-direct-${Date.now()}-${Math.min(userId, targetId)}-${Math.max(userId, targetId)}`;
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO party_requests(batchKey,requestType,partyId,fromUserId,toUserId,targetUserId,payloadJson,status,resultMessage,createdAt,updatedAt)
           VALUES(?,?,?,?,?,?,?,?,?,?,?)
         `).run(batchKey, 'join_direct', '', userId, targetId, targetId, '{}', 'pending', '', ts, ts);
@@ -6267,10 +6267,10 @@ export function createGameplayRouter(ctx: AppContext) {
 
       const partyId = myPartyId || targetPartyId;
       const applicantId = myPartyId ? targetId : userId;
-      const members = getPartyMembers(db, partyId);
+      const members = await getPartyMembers(db, partyId);
       const approverIds = members.map((m) => Number(m.id)).filter((id) => id !== applicantId);
       if (!approverIds.length) {
-        db.prepare(`UPDATE users SET partyId = ?, updatedAt = ? WHERE id IN (?, ?)`).run(partyId, ts, userId, targetId);
+        await db.prepare(`UPDATE users SET partyId = ?, updatedAt = ? WHERE id IN (?, ?)`).run(partyId, ts, userId, targetId);
         return res.json({ success: true, mode: 'join_done', partyId, message: '组队完成' });
       }
       const batchKey = `join-vote-${Date.now()}-${applicantId}-${partyId}`;
@@ -6279,7 +6279,7 @@ export function createGameplayRouter(ctx: AppContext) {
         VALUES(?,?,?,?,?,?,?,?,?,?,?)
       `);
       for (const approverId of approverIds) {
-        ins.run(
+        await ins.run(
           batchKey,
           'join_vote',
           partyId,
@@ -6304,11 +6304,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/party/requests/:userId', (req, res) => {
+  r.get('/party/requests/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT
           pr.*,
           fu.name AS fromUserName,
@@ -6343,14 +6343,14 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/party/respond', (req, res) => {
+  r.post('/party/respond', async (req, res) => {
     try {
       const requestId = Number(req.body?.requestId);
       const userId = Number(req.body?.userId);
       const accept = Boolean(req.body?.accept);
       if (!requestId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const row = db.prepare(`SELECT * FROM party_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM party_requests WHERE id = ? LIMIT 1`).get(requestId) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'request not found' });
       if (Number(row.toUserId) !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
       if (String(row.status || '') !== 'pending') {
@@ -6362,7 +6362,7 @@ export function createGameplayRouter(ctx: AppContext) {
       const partyId = String(row.partyId || '');
       const ts = nowIso();
 
-      db.prepare(`UPDATE party_requests SET status = ?, resultMessage = ?, updatedAt = ? WHERE id = ?`)
+      await db.prepare(`UPDATE party_requests SET status = ?, resultMessage = ?, updatedAt = ? WHERE id = ?`)
         .run(accept ? 'accepted' : 'rejected', accept ? '已同意' : '已拒绝', ts, requestId);
 
       if (requestType === 'join_direct') {
@@ -6370,16 +6370,16 @@ export function createGameplayRouter(ctx: AppContext) {
         const reqFrom = Number(row.fromUserId || 0);
         const reqTo = Number(row.toUserId || 0);
         const freshPartyId = partyId || `party-${Date.now()}-${Math.min(reqFrom, reqTo)}-${Math.max(reqFrom, reqTo)}`;
-        db.prepare(`UPDATE users SET partyId = ?, updatedAt = ? WHERE id IN (?, ?)`).run(freshPartyId, ts, reqFrom, reqTo);
+        await db.prepare(`UPDATE users SET partyId = ?, updatedAt = ? WHERE id IN (?, ?)`).run(freshPartyId, ts, reqFrom, reqTo);
         return res.json({ success: true, status: 'accepted', partyId: freshPartyId, message: '已同意组队，行动已绑定' });
       }
 
       if (requestType === 'join_vote') {
-        const allRows = db.prepare(`SELECT * FROM party_requests WHERE batchKey = ? ORDER BY id ASC`).all(batchKey) as AnyRow[];
+        const allRows = await db.prepare(`SELECT * FROM party_requests WHERE batchKey = ? ORDER BY id ASC`).all(batchKey) as AnyRow[];
         const anyReject = allRows.some((x) => String(x.status || '') === 'rejected');
         const allAccepted = allRows.length > 0 && allRows.every((x) => String(x.status || '') === 'accepted');
         if (anyReject) {
-          db.prepare(`UPDATE party_requests SET status = 'cancelled', resultMessage = ?, updatedAt = ? WHERE batchKey = ? AND status = 'pending'`)
+          await db.prepare(`UPDATE party_requests SET status = 'cancelled', resultMessage = ?, updatedAt = ? WHERE batchKey = ? AND status = 'pending'`)
             .run('有成员拒绝，入队失败', ts, batchKey);
           return res.json({ success: true, status: 'rejected', message: '你已拒绝，入队申请已终止' });
         }
@@ -6392,39 +6392,39 @@ export function createGameplayRouter(ctx: AppContext) {
         if (!applicantId || !finalPartyId) {
           return res.status(400).json({ success: false, message: 'join vote payload invalid' });
         }
-        db.prepare(`UPDATE users SET partyId = ?, updatedAt = ? WHERE id = ?`).run(finalPartyId, ts, applicantId);
-        db.prepare(`UPDATE party_requests SET resultMessage = ?, updatedAt = ? WHERE batchKey = ?`)
+        await db.prepare(`UPDATE users SET partyId = ?, updatedAt = ? WHERE id = ?`).run(finalPartyId, ts, applicantId);
+        await db.prepare(`UPDATE party_requests SET resultMessage = ?, updatedAt = ? WHERE batchKey = ?`)
           .run('投票通过，申请者已入队', ts, batchKey);
         return res.json({ success: true, status: 'accepted', partyId: finalPartyId, message: '投票通过，申请者已入队' });
       }
 
       if (requestType === 'leave') {
-        const allRows = db.prepare(`SELECT * FROM party_requests WHERE batchKey = ? ORDER BY id ASC`).all(batchKey) as AnyRow[];
+        const allRows = await db.prepare(`SELECT * FROM party_requests WHERE batchKey = ? ORDER BY id ASC`).all(batchKey) as AnyRow[];
         const proposerId = Number(allRows[0]?.fromUserId || 0);
         const anyReject = allRows.some((x) => String(x.status || '') === 'rejected');
         const allAccepted = allRows.length > 0 && allRows.every((x) => String(x.status || '') === 'accepted');
         if (anyReject) {
-          db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE id = ?`).run(ts, proposerId);
+          await db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE id = ?`).run(ts, proposerId);
           const rejecters = allRows.filter((x) => String(x.status || '') === 'rejected').map((x) => Number(x.toUserId || 0)).filter(Boolean);
           for (const rid of rejecters) {
             const pair = normPair(proposerId, rid);
-            db.prepare(`
+            await db.prepare(`
               INSERT INTO party_entanglements(userAId,userBId,sourcePartyId,active,createdAt,updatedAt)
               VALUES(?,?,?,?,?,?)
               ON CONFLICT(userAId,userBId) DO UPDATE SET active=1,sourcePartyId=excluded.sourcePartyId,updatedAt=excluded.updatedAt
             `).run(pair.x, pair.y, partyId, 1, ts, ts);
           }
-          db.prepare(`UPDATE party_requests SET status='cancelled', resultMessage=?, updatedAt=? WHERE batchKey=? AND status='pending'`)
+          await db.prepare(`UPDATE party_requests SET status='cancelled', resultMessage=?, updatedAt=? WHERE batchKey=? AND status='pending'`)
             .run('有成员拒绝，发起者脱队并进入纠缠状态', ts, batchKey);
-          collapsePartyIfNeeded(db, partyId);
+          await collapsePartyIfNeeded(db, partyId);
           return res.json({ success: true, status: 'rejected', message: '你拒绝了解绑，双方进入纠缠状态' });
         }
         if (!allAccepted) {
           const acceptedCount = allRows.filter((x) => String(x.status || '') === 'accepted').length;
           return res.json({ success: true, status: 'pending', message: `已记录确认，当前 ${acceptedCount}/${allRows.length}` });
         }
-        db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE partyId = ?`).run(ts, partyId);
-        db.prepare(`UPDATE party_requests SET resultMessage=?, updatedAt=? WHERE batchKey=?`).run('全员同意，队伍已解除', ts, batchKey);
+        await db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE partyId = ?`).run(ts, partyId);
+        await db.prepare(`UPDATE party_requests SET resultMessage=?, updatedAt=? WHERE batchKey=?`).run('全员同意，队伍已解除', ts, batchKey);
         return res.json({ success: true, status: 'accepted', message: '全员同意，队伍已解除' });
       }
 
@@ -6432,11 +6432,11 @@ export function createGameplayRouter(ctx: AppContext) {
         const payload = (() => { try { return JSON.parse(String(row.payloadJson || '{}')); } catch { return {}; } })();
         const dest = String(payload.locationId || '').trim();
         if (accept && dest) {
-          db.prepare(`UPDATE users SET currentLocation = ?, updatedAt = ? WHERE id = ?`).run(dest, ts, userId);
+          await db.prepare(`UPDATE users SET currentLocation = ?, updatedAt = ? WHERE id = ?`).run(dest, ts, userId);
           return res.json({ success: true, status: 'accepted', message: `已跟随至 ${dest}` });
         }
-        db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE id = ?`).run(ts, userId);
-        collapsePartyIfNeeded(db, partyId);
+        await db.prepare(`UPDATE users SET partyId = NULL, updatedAt = ? WHERE id = ?`).run(ts, userId);
+        await collapsePartyIfNeeded(db, partyId);
         return res.json({ success: true, status: 'rejected', message: '你拒绝了跟随，已解除组队' });
       }
 
@@ -6446,11 +6446,11 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/party/entangle/:userId', (req, res) => {
+  r.get('/party/entangle/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT
           e.id,
           e.userAId,
@@ -6488,16 +6488,16 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/party/entangle/resolve', (req, res) => {
+  r.post('/party/entangle/resolve', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       const otherUserId = Number(req.body?.otherUserId);
       const continueEntangle = Boolean(req.body?.continueEntangle);
       if (!userId || !otherUserId) return res.status(400).json({ success: false, message: 'invalid params' });
       const pair = normPair(userId, otherUserId);
-      const row = db.prepare(`SELECT * FROM party_entanglements WHERE userAId=? AND userBId=? LIMIT 1`).get(pair.x, pair.y) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM party_entanglements WHERE userAId=? AND userBId=? LIMIT 1`).get(pair.x, pair.y) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'entanglement not found' });
-      db.prepare(`UPDATE party_entanglements SET active=?, updatedAt=? WHERE userAId=? AND userBId=?`)
+      await db.prepare(`UPDATE party_entanglements SET active=?, updatedAt=? WHERE userAId=? AND userBId=?`)
         .run(continueEntangle ? 1 : 0, nowIso(), pair.x, pair.y);
       res.json({
         success: true,
@@ -6509,73 +6509,73 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/party/toggle', (req, res) => {
+  r.post('/party/toggle', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       const targetId = Number(req.body?.targetId);
       if (!userId || !targetId) return res.status(400).json({ success: false, message: 'invalid params' });
       if (userId === targetId) return res.status(400).json({ success: false, message: 'cannot party with self' });
 
-      const me = getUser(db, userId);
-      const target = getUser(db, targetId);
+      const me = await getUser(db, userId);
+      const target = await getUser(db, targetId);
       if (!me || !target) return res.status(404).json({ success: false, message: 'user not found' });
 
       const myParty = String(me.partyId || '').trim();
       const targetParty = String(target.partyId || '').trim();
       if (myParty && targetParty && myParty === targetParty) {
-        db.prepare(`UPDATE users SET partyId = NULL, updatedAt=? WHERE partyId = ?`).run(nowIso(), myParty);
+        await db.prepare(`UPDATE users SET partyId = NULL, updatedAt=? WHERE partyId = ?`).run(nowIso(), myParty);
         return res.json({ success: true, joined: false, message: 'party disbanded' });
       }
 
       const partyId = myParty || targetParty || `party-${Date.now()}-${Math.min(userId, targetId)}-${Math.max(userId, targetId)}`;
-      db.prepare(`UPDATE users SET partyId = ?, updatedAt=? WHERE id IN (?, ?)`).run(partyId, nowIso(), userId, targetId);
+      await db.prepare(`UPDATE users SET partyId = ?, updatedAt=? WHERE id IN (?, ?)`).run(partyId, nowIso(), userId, targetId);
       res.json({ success: true, joined: true, partyId, message: 'party formed' });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'party toggle failed' });
     }
   });
 
-  r.post('/party/leave', (req, res) => {
+  r.post('/party/leave', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       const partyId = String(me.partyId || '').trim();
       if (!partyId) return res.json({ success: true, message: 'not in party' });
-      db.prepare(`UPDATE users SET partyId = NULL, updatedAt=? WHERE id=?`).run(nowIso(), userId);
+      await db.prepare(`UPDATE users SET partyId = NULL, updatedAt=? WHERE id=?`).run(nowIso(), userId);
 
-      const left = db.prepare(`SELECT id FROM users WHERE partyId = ?`).all(partyId) as AnyRow[];
-      if (left.length <= 1) db.prepare(`UPDATE users SET partyId = NULL, updatedAt=? WHERE partyId = ?`).run(nowIso(), partyId);
+      const left = await db.prepare(`SELECT id FROM users WHERE partyId = ?`).all(partyId) as AnyRow[];
+      if (left.length <= 1) await db.prepare(`UPDATE users SET partyId = NULL, updatedAt=? WHERE partyId = ?`).run(nowIso(), partyId);
       res.json({ success: true, message: 'left party' });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'party leave failed' });
     }
   });
 
-  r.get('/party/status/:userId', (req, res) => {
+  r.get('/party/status/:userId', async (req, res) => {
     try {
       const userId = Number(req.params.userId);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       const partyId = String(me.partyId || '').trim();
       if (!partyId) return res.json({ success: true, partyId: null, members: [] });
-      const members = db.prepare(`SELECT id,name,role,currentLocation,partyId FROM users WHERE partyId = ?`).all(partyId) as AnyRow[];
+      const members = await db.prepare(`SELECT id,name,role,currentLocation,partyId FROM users WHERE partyId = ?`).all(partyId) as AnyRow[];
       res.json({ success: true, partyId, members });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'party status failed' });
     }
   });
 
-  r.post('/growth/advance', (req, res) => {
+  r.post('/growth/advance', async (req, res) => {
     try {
       const userId = Number(req.body?.userId);
       const action = String(req.body?.action || '').trim();
       const enrollStudent = Boolean(req.body?.enrollStudent);
       if (!userId || !action) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const user = getUser(db, userId);
+      const user = await getUser(db, userId);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
 
       const age = Number(user.age || 0);
@@ -6591,13 +6591,13 @@ export function createGameplayRouter(ctx: AppContext) {
         const nextJob = enrollStudent ? '伦敦塔学生' : '';
         const nextLocation = enrollStudent ? 'london_tower' : String(user.currentLocation || 'sanctuary');
 
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET age = ?, role = ?, job = ?, currentLocation = ?, updatedAt = ?
           WHERE id = ?
         `).run(nextAge, nextRole, nextJob, nextLocation, nowIso(), userId);
 
-        const updated = getUser(db, userId);
+        const updated = await getUser(db, userId);
         return res.json({
           success: true,
           message: enrollStudent ? 'advanced to student stage and enrolled in london tower' : 'advanced to student stage',
@@ -6615,13 +6615,13 @@ export function createGameplayRouter(ctx: AppContext) {
         }
         const currentJob = String(user.job || '');
         const nextJob = currentJob.includes('伦敦塔') && currentJob.includes('学生') ? '' : currentJob;
-        db.prepare(`
+        await db.prepare(`
           UPDATE users
           SET age = 20, role = ?, job = ?, updatedAt = ?
           WHERE id = ?
         `).run(nextRole, nextJob, nowIso(), userId);
 
-        const updated = getUser(db, userId);
+        const updated = await getUser(db, userId);
         return res.json({ success: true, message: 'graduated', user: updated });
       }
 
@@ -6631,55 +6631,55 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.post('/rescue/request', (req, res) => {
+  r.post('/rescue/request', async (req, res) => {
     try {
       const patientId = Number(req.body?.patientId);
       const healerId = Number(req.body?.healerId || 0);
       if (!patientId) return res.status(400).json({ success: false, message: 'invalid patientId' });
-      const existing = db.prepare(`SELECT * FROM rescue_requests WHERE patientId=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(patientId) as AnyRow | undefined;
+      const existing = await db.prepare(`SELECT * FROM rescue_requests WHERE patientId=? AND status='pending' ORDER BY id DESC LIMIT 1`).get(patientId) as AnyRow | undefined;
       if (existing) return res.json({ success: true, requestId: Number(existing.id), message: 'already requested' });
-      const ret = db.prepare(`INSERT INTO rescue_requests(patientId,healerId,status,createdAt,updatedAt) VALUES(?,?,?,?,?)`).run(patientId, healerId, 'pending', nowIso(), nowIso());
+      const ret = await db.prepare(`INSERT INTO rescue_requests(patientId,healerId,status,createdAt,updatedAt) VALUES(?,?,?,?,?)`).run(patientId, healerId, 'pending', nowIso(), nowIso());
       res.json({ success: true, requestId: Number(ret.lastInsertRowid || 0) });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'rescue request failed' });
     }
   });
 
-  r.get('/rescue/check/:patientId', (req, res) => {
+  r.get('/rescue/check/:patientId', async (req, res) => {
     try {
       const patientId = Number(req.params.patientId);
       if (!patientId) return res.status(400).json({ success: false, message: 'invalid patientId' });
-      const outgoing = db.prepare(`SELECT * FROM rescue_requests WHERE patientId=? ORDER BY id DESC LIMIT 1`).get(patientId) as AnyRow | undefined;
+      const outgoing = await db.prepare(`SELECT * FROM rescue_requests WHERE patientId=? ORDER BY id DESC LIMIT 1`).get(patientId) as AnyRow | undefined;
       res.json({ success: true, outgoing: outgoing || null });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'rescue check failed' });
     }
   });
 
-  r.post('/rescue/confirm', (req, res) => {
+  r.post('/rescue/confirm', async (req, res) => {
     try {
       const patientId = Number(req.body?.patientId);
       if (!patientId) return res.status(400).json({ success: false, message: 'invalid patientId' });
-      db.prepare(`UPDATE users SET hp = MAX(1, hp), updatedAt=? WHERE id=?`).run(nowIso(), patientId);
-      db.prepare(`UPDATE rescue_requests SET status='accepted', updatedAt=? WHERE patientId=? AND status='pending'`).run(nowIso(), patientId);
+      await db.prepare(`UPDATE users SET hp = MAX(1, hp), updatedAt=? WHERE id=?`).run(nowIso(), patientId);
+      await db.prepare(`UPDATE rescue_requests SET status='accepted', updatedAt=? WHERE patientId=? AND status='pending'`).run(nowIso(), patientId);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'rescue confirm failed' });
     }
   });
 
-  r.post('/users/:id/submit-death', (req, res) => {
+  r.post('/users/:id/submit-death', async (req, res) => {
     try {
       const id = Number(req.params.id);
       const type = String(req.body?.type || '');
       const text = String(req.body?.text || '');
       if (!id || !type) return res.status(400).json({ success: false, message: 'invalid params' });
       const status = type === 'pending_ghost' ? 'pending_ghost' : 'pending_death';
-      const user = getUser(db, id);
+      const user = await getUser(db, id);
       if (!user) return res.status(404).json({ success: false, message: 'user not found' });
-      db.prepare(`UPDATE users SET status=?, deathDescription=?, updatedAt=? WHERE id=?`).run(status, text, nowIso(), id);
+      await db.prepare(`UPDATE users SET status=?, deathDescription=?, updatedAt=? WHERE id=?`).run(status, text, nowIso(), id);
       if (status === 'pending_death') {
-        db.prepare(
+        await db.prepare(
           `
             INSERT INTO graveyard_tombstones(userId,name,deathDescription,role,mentalRank,physicalRank,ability,spiritName,isHidden,createdAt)
             VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -6703,9 +6703,9 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/graveyard', (_req, res) => {
+  r.get('/graveyard', async (_req, res) => {
     try {
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, userId, name, deathDescription, role, mentalRank, physicalRank, ability, spiritName, isHidden, createdAt
         FROM graveyard_tombstones
         ORDER BY id DESC
@@ -6716,40 +6716,40 @@ export function createGameplayRouter(ctx: AppContext) {
     }
   });
 
-  r.get('/graveyard/:tombstoneId/comments', (req, res) => {
+  r.get('/graveyard/:tombstoneId/comments', async (req, res) => {
     try {
       const tombstoneId = Number(req.params.tombstoneId);
       if (!tombstoneId) return res.status(400).json({ success: false, message: 'invalid tombstoneId' });
-      const comments = db.prepare(`SELECT * FROM graveyard_comments WHERE tombstoneId=? ORDER BY id DESC`).all(tombstoneId) as AnyRow[];
+      const comments = await db.prepare(`SELECT * FROM graveyard_comments WHERE tombstoneId=? ORDER BY id DESC`).all(tombstoneId) as AnyRow[];
       res.json({ success: true, comments });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'comments query failed', comments: [] });
     }
   });
 
-  r.post('/graveyard/:tombstoneId/comments', (req, res) => {
+  r.post('/graveyard/:tombstoneId/comments', async (req, res) => {
     try {
       const tombstoneId = Number(req.params.tombstoneId);
       const userId = Number(req.body?.userId);
       const userName = String(req.body?.userName || '').trim();
       const content = String(req.body?.content || '').trim();
       if (!tombstoneId || !userId || !userName || !content) return res.status(400).json({ success: false, message: 'invalid params' });
-      db.prepare(`INSERT INTO graveyard_comments(tombstoneId,userId,userName,content,createdAt) VALUES(?,?,?,?,?)`).run(tombstoneId, userId, userName, content, nowIso());
+      await db.prepare(`INSERT INTO graveyard_comments(tombstoneId,userId,userName,content,createdAt) VALUES(?,?,?,?,?)`).run(tombstoneId, userId, userName, content, nowIso());
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'add comment failed' });
     }
   });
 
-  r.delete('/graveyard/comments/:commentId', (req, res) => {
+  r.delete('/graveyard/comments/:commentId', async (req, res) => {
     try {
       const commentId = Number(req.params.commentId);
       const userId = Number(req.body?.userId);
       if (!commentId || !userId) return res.status(400).json({ success: false, message: 'invalid params' });
-      const row = db.prepare(`SELECT userId FROM graveyard_comments WHERE id=?`).get(commentId) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT userId FROM graveyard_comments WHERE id=?`).get(commentId) as AnyRow | undefined;
       if (!row) return res.status(404).json({ success: false, message: 'comment not found' });
       if (Number(row.userId) !== userId) return res.status(403).json({ success: false, message: 'forbidden' });
-      db.prepare(`DELETE FROM graveyard_comments WHERE id=?`).run(commentId);
+      await db.prepare(`DELETE FROM graveyard_comments WHERE id=?`).run(commentId);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ success: false, message: e?.message || 'delete comment failed' });
@@ -6760,12 +6760,12 @@ export function createGameplayRouter(ctx: AppContext) {
   // 鬼魂光环：同一位置的非鬼魂玩家 MP 缓慢衰减（不清零，保底 1）
   // POST /api/ghost/aura/tick  { userId }
   // ──────────────────────────────────────────────────────────────
-  r.post('/ghost/aura/tick', (req, res) => {
+  r.post('/ghost/aura/tick', async (req, res) => {
     try {
       const userId = Number(req.body?.userId || 0);
       if (!userId) return res.status(400).json({ success: false, message: 'invalid userId' });
 
-      const me = getUser(db, userId);
+      const me = await getUser(db, userId);
       if (!me) return res.status(404).json({ success: false, message: 'user not found' });
       if (String(me.status || '') !== 'ghost') {
         return res.json({ success: true, drained: false, message: '非鬼魂，无光环效果' });
@@ -6776,7 +6776,7 @@ export function createGameplayRouter(ctx: AppContext) {
 
       // 同区域 10 分钟内有活动的非鬼魂在线玩家（跳过持有辟邪符免疫的玩家）
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const targets = db.prepare(`
+      const targets = await db.prepare(`
         SELECT id, mp
         FROM users
         WHERE currentLocation = ?
@@ -6794,7 +6794,7 @@ export function createGameplayRouter(ctx: AppContext) {
         const curMp = Math.max(0, Number(t.mp ?? 0));
         const newMp = Math.max(MIN_MP, curMp - DRAIN);
         if (newMp < curMp) {
-          db.prepare(`UPDATE users SET mp=?, updatedAt=? WHERE id=?`).run(newMp, nowIso(), Number(t.id));
+          await db.prepare(`UPDATE users SET mp=?, updatedAt=? WHERE id=?`).run(newMp, nowIso(), Number(t.id));
           drainedCount++;
         }
       }
@@ -6809,21 +6809,21 @@ export function createGameplayRouter(ctx: AppContext) {
   // 繁荣度竞争结算：高繁荣度市长从低繁荣度市长扣 10%
   // POST /api/market/prosperity/settle  { initiatorId }
   // ──────────────────────────────────────────────────────────────
-  r.post('/market/prosperity/settle', (req, res) => {
+  r.post('/market/prosperity/settle', async (req, res) => {
     try {
       const initiatorId = Number(req.body?.initiatorId || 0);
       if (!initiatorId) return res.status(400).json({ success: false, message: 'invalid initiatorId' });
 
-      const eastMayor = db.prepare(`SELECT id, name, gold FROM users WHERE job='东区市长' AND status='approved' LIMIT 1`).get() as AnyRow | undefined;
-      const westMayor = db.prepare(`SELECT id, name, gold FROM users WHERE job='西区市长' AND status='approved' LIMIT 1`).get() as AnyRow | undefined;
+      const eastMayor = await db.prepare(`SELECT id, name, gold FROM users WHERE job='东区市长' AND status='approved' LIMIT 1`).get() as AnyRow | undefined;
+      const westMayor = await db.prepare(`SELECT id, name, gold FROM users WHERE job='西区市长' AND status='approved' LIMIT 1`).get() as AnyRow | undefined;
 
       if (!eastMayor || !westMayor) {
         return res.json({ success: false, message: '东西市必须各有一位市长才能发起竞争结算' });
       }
 
       const CUTOFF = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const eastCount = (db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE currentLocation='rich_area' AND status='approved' AND updatedAt>?`).get(CUTOFF) as AnyRow).cnt as number;
-      const westCount = (db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE currentLocation='slums' AND status='approved' AND updatedAt>?`).get(CUTOFF) as AnyRow).cnt as number;
+      const eastCount = (await db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE currentLocation='rich_area' AND status='approved' AND updatedAt>?`).get(CUTOFF) as AnyRow).cnt as number;
+      const westCount = (await db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE currentLocation='slums' AND status='approved' AND updatedAt>?`).get(CUTOFF) as AnyRow).cnt as number;
 
       const eastPros = eastCount * 1000;
       const westPros = westCount * 100;
@@ -6845,8 +6845,8 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.json({ success: false, message: '对方市长资金不足，无法扣除' });
       }
 
-      db.prepare(`UPDATE users SET gold=gold-?, updatedAt=? WHERE id=?`).run(take, nowIso(), Number(loser.id));
-      db.prepare(`UPDATE users SET gold=gold+?, updatedAt=? WHERE id=?`).run(take, nowIso(), Number(winner.id));
+      await db.prepare(`UPDATE users SET gold=gold-?, updatedAt=? WHERE id=?`).run(take, nowIso(), Number(loser.id));
+      await db.prepare(`UPDATE users SET gold=gold+?, updatedAt=? WHERE id=?`).run(take, nowIso(), Number(winner.id));
 
       res.json({
         success: true,
@@ -6865,23 +6865,23 @@ export function createGameplayRouter(ctx: AppContext) {
   // ──────────────────────────────────────────────────────────────
 
   // 发起挑战 POST /api/job/challenge
-  r.post('/job/challenge', (req, res) => {
+  r.post('/job/challenge', async (req, res) => {
     try {
       const challengerId = Number(req.body?.challengerId || 0);
       const targetJobName = String(req.body?.targetJobName || '').trim();
       if (!challengerId || !targetJobName) return res.status(400).json({ success: false, message: 'invalid params' });
 
-      const challenger = getUser(db, challengerId);
+      const challenger = await getUser(db, challengerId);
       if (!challenger) return res.status(404).json({ success: false, message: 'challenger not found' });
 
-      const holder = db.prepare(`SELECT id, name FROM users WHERE job=? AND status='approved' LIMIT 1`).get(targetJobName) as AnyRow | undefined;
+      const holder = await db.prepare(`SELECT id, name FROM users WHERE job=? AND status='approved' LIMIT 1`).get(targetJobName) as AnyRow | undefined;
       if (!holder) return res.status(409).json({ success: false, message: '该职位暂无人占据，直接申请入职即可' });
       if (Number(holder.id) === challengerId) return res.status(400).json({ success: false, message: '不能挑战自己' });
 
-      const existing = db.prepare(`SELECT id FROM job_challenges WHERE targetJobName=? AND status='voting' LIMIT 1`).get(targetJobName) as AnyRow | undefined;
+      const existing = await db.prepare(`SELECT id FROM job_challenges WHERE targetJobName=? AND status='voting' LIMIT 1`).get(targetJobName) as AnyRow | undefined;
       if (existing) return res.status(409).json({ success: false, message: '该职位已有进行中的挑战，请等待结束' });
 
-      const challengeId = (db.prepare(`
+      const challengeId = (await db.prepare(`
         INSERT INTO job_challenges(challengerId, holderId, targetJobName, status, createdAt, updatedAt)
         VALUES(?,?,?,?,?,?)
       `).run(challengerId, Number(holder.id), targetJobName, 'voting', nowIso(), nowIso()) as any).lastInsertRowid;
@@ -6893,7 +6893,7 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 投票 POST /api/job/challenge/vote
-  r.post('/job/challenge/vote', (req, res) => {
+  r.post('/job/challenge/vote', async (req, res) => {
     try {
       const challengeId = Number(req.body?.challengeId || 0);
       const voterId = Number(req.body?.voterId || 0);
@@ -6902,25 +6902,25 @@ export function createGameplayRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'invalid params' });
       }
 
-      const challenge = db.prepare(`SELECT * FROM job_challenges WHERE id=? LIMIT 1`).get(challengeId) as AnyRow | undefined;
+      const challenge = await db.prepare(`SELECT * FROM job_challenges WHERE id=? LIMIT 1`).get(challengeId) as AnyRow | undefined;
       if (!challenge || String(challenge.status || '') !== 'voting') {
         return res.status(404).json({ success: false, message: '挑战不存在或已结束' });
       }
 
-      const voter = getUser(db, voterId);
-      const challengerRow = db.prepare(`SELECT faction FROM users WHERE id=? LIMIT 1`).get(Number(challenge.challengerId)) as AnyRow | undefined;
+      const voter = await getUser(db, voterId);
+      const challengerRow = await db.prepare(`SELECT faction FROM users WHERE id=? LIMIT 1`).get(Number(challenge.challengerId)) as AnyRow | undefined;
       if (!voter || !challengerRow || String(voter.faction || '') !== String(challengerRow.faction || '')) {
         return res.status(403).json({ success: false, message: '只有同阵营成员才能投票' });
       }
 
-      const dup = db.prepare(`SELECT id FROM job_challenge_votes WHERE challengeId=? AND voterId=? LIMIT 1`).get(challengeId, voterId);
+      const dup = await db.prepare(`SELECT id FROM job_challenge_votes WHERE challengeId=? AND voterId=? LIMIT 1`).get(challengeId, voterId);
       if (dup) return res.status(409).json({ success: false, message: '您已投过票' });
 
-      db.prepare(`INSERT INTO job_challenge_votes(challengeId, voterId, vote, createdAt) VALUES(?,?,?,?)`).run(challengeId, voterId, vote, nowIso());
+      await db.prepare(`INSERT INTO job_challenge_votes(challengeId, voterId, vote, createdAt) VALUES(?,?,?,?)`).run(challengeId, voterId, vote, nowIso());
 
       const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const factionSize = Math.max(1, (db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE faction=? AND status='approved' AND updatedAt>?`).get(String(challengerRow.faction || ''), cutoff) as AnyRow).cnt as number);
-      const voteCounts = db.prepare(`SELECT vote, COUNT(*) as cnt FROM job_challenge_votes WHERE challengeId=? GROUP BY vote`).all(challengeId) as AnyRow[];
+      const factionSize = Math.max(1, (await db.prepare(`SELECT COUNT(*) as cnt FROM users WHERE faction=? AND status='approved' AND updatedAt>?`).get(String(challengerRow.faction || ''), cutoff) as AnyRow).cnt as number);
+      const voteCounts = await db.prepare(`SELECT vote, COUNT(*) as cnt FROM job_challenge_votes WHERE challengeId=? GROUP BY vote`).all(challengeId) as AnyRow[];
       const forChallenger = Number(voteCounts.find((v: AnyRow) => v.vote === 'challenger')?.cnt || 0);
       const forHolder = Number(voteCounts.find((v: AnyRow) => v.vote === 'holder')?.cnt || 0);
       const totalVotes = forChallenger + forHolder;
@@ -6931,15 +6931,15 @@ export function createGameplayRouter(ctx: AppContext) {
       if (totalVotes >= Math.max(1, Math.ceil(factionSize / 2))) {
         const winnerId = forChallenger >= forHolder ? Number(challenge.challengerId) : Number(challenge.holderId);
         const loserId  = forChallenger >= forHolder ? Number(challenge.holderId)    : Number(challenge.challengerId);
-        const winner = getUser(db, winnerId);
-        const loser  = getUser(db, loserId);
+        const winner = await getUser(db, winnerId);
+        const loser  = await getUser(db, loserId);
 
         const targetJob = String(challenge.targetJobName || '');
         const winnerOldJob = String(winner?.job || '无');
 
-        db.prepare(`UPDATE users SET job=?, updatedAt=? WHERE id=?`).run(targetJob, nowIso(), winnerId);
-        db.prepare(`UPDATE users SET job=?, updatedAt=? WHERE id=?`).run(winnerOldJob === targetJob ? '无' : winnerOldJob, nowIso(), loserId);
-        db.prepare(`UPDATE job_challenges SET status='settled', updatedAt=? WHERE id=?`).run(nowIso(), challengeId);
+        await db.prepare(`UPDATE users SET job=?, updatedAt=? WHERE id=?`).run(targetJob, nowIso(), winnerId);
+        await db.prepare(`UPDATE users SET job=?, updatedAt=? WHERE id=?`).run(winnerOldJob === targetJob ? '无' : winnerOldJob, nowIso(), loserId);
+        await db.prepare(`UPDATE job_challenges SET status='settled', updatedAt=? WHERE id=?`).run(nowIso(), challengeId);
 
         settled = true;
         message = `投票结束！${winner?.name || '挑战者'} 赢得 [${targetJob}]，${loser?.name || '现任'} 接任原职位`;
@@ -6952,13 +6952,13 @@ export function createGameplayRouter(ctx: AppContext) {
   });
 
   // 查询活跃挑战 GET /api/job/challenge/active?jobName=xxx
-  r.get('/job/challenge/active', (req, res) => {
+  r.get('/job/challenge/active', async (req, res) => {
     try {
       const jobName = String(req.query?.jobName || '').trim();
       if (!jobName) return res.status(400).json({ success: false, message: 'missing jobName' });
-      const row = db.prepare(`SELECT * FROM job_challenges WHERE targetJobName=? AND status='voting' LIMIT 1`).get(jobName) as AnyRow | undefined;
+      const row = await db.prepare(`SELECT * FROM job_challenges WHERE targetJobName=? AND status='voting' LIMIT 1`).get(jobName) as AnyRow | undefined;
       if (!row) return res.json({ success: true, active: false });
-      const votes = db.prepare(`SELECT vote, COUNT(*) as cnt FROM job_challenge_votes WHERE challengeId=? GROUP BY vote`).all(Number(row.id)) as AnyRow[];
+      const votes = await db.prepare(`SELECT vote, COUNT(*) as cnt FROM job_challenge_votes WHERE challengeId=? GROUP BY vote`).all(Number(row.id)) as AnyRow[];
       const forChallenger = Number(votes.find((v: AnyRow) => v.vote === 'challenger')?.cnt || 0);
       const forHolder = Number(votes.find((v: AnyRow) => v.vote === 'holder')?.cnt || 0);
       res.json({ success: true, active: true, challenge: { ...row, forChallenger, forHolder } });

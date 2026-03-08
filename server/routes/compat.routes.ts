@@ -13,7 +13,7 @@ export function createCompatRouter(ctx: AppContext) {
   router.get('/world/presence', async (_req, res) => {
     try {
       const merged = new Map<number, any>();
-      for (const row of loadOnlinePresenceFallback(db)) {
+      for (const row of await loadOnlinePresenceFallback(db)) {
         merged.set(Number(row.id || 0), row);
       }
       for (const row of await runtime.getWorldPresence()) {
@@ -30,9 +30,9 @@ export function createCompatRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/admin/users', (_req, res) => {
+  router.get('/admin/users', async (_req, res) => {
     try {
-      const users = db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as any[];
+      const users = await db.prepare(`SELECT * FROM users ORDER BY id DESC`).all() as any[];
       res.json({ success: true, users });
     } catch (error: any) {
       res.status(500).json({
@@ -43,9 +43,9 @@ export function createCompatRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/announcements/active', (_req, res) => {
+  router.get('/announcements/active', async (_req, res) => {
     try {
-      const rows = db.prepare(`SELECT * FROM announcements ORDER BY id DESC LIMIT 20`).all() as any[];
+      const rows = await db.prepare(`SELECT * FROM announcements ORDER BY id DESC LIMIT 20`).all() as any[];
       res.json({ success: true, rows, announcements: rows });
     } catch {
       res.json({ success: true, rows: [], announcements: [] });

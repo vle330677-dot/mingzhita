@@ -9,11 +9,11 @@ export const getLocalToday = () => {
 };
 
 export const resolveInitialHome = (age: number, gold: number, role?: string) => {
-  if (String(role || '') === '\u672a\u5206\u5316' || Number(age) < 16) return 'sanctuary';
+  if (String(role || '') === '未分化' || Number(age) < 16) return 'sanctuary';
   return Number(gold) > 9999 ? 'rich_area' : 'slums';
 };
 
-export const writeAdminLog = (
+export const writeAdminLog = async (
   db: AppDatabase,
   adminName: string,
   action: string,
@@ -21,7 +21,7 @@ export const writeAdminLog = (
   targetId?: string,
   detail?: any
 ) => {
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO admin_action_logs (adminName, action, targetType, targetId, detail)
     VALUES (?, ?, ?, ?, ?)
   `).run(adminName, action, targetType || null, targetId || null, detail ? JSON.stringify(detail) : null);
@@ -44,19 +44,19 @@ const MAP_DEFAULT_ANCHOR: Record<RoomMapId, { x: number; y: number }> = {
 
 const MAP_JOB_ANCHOR: Record<RoomMapId, Record<string, { x: number; y: number }>> = {
   sanctuary: {
-    '\u5723\u6240\u5e7c\u5d3d': { x: 30, y: 36 },
-    '\u5723\u6240\u4fdd\u80b2\u5458': { x: 24, y: 42 },
-    '\u5723\u6240\u804c\u5de5': { x: 36, y: 42 }
+    '圣所幼崽': { x: 30, y: 36 },
+    '圣所保育员': { x: 24, y: 42 },
+    '圣所职工': { x: 36, y: 42 }
   },
   slums: {
-    '\u897f\u533a\u6280\u5de5': { x: 46, y: 72 },
-    '\u897f\u533a\u526f\u5e02\u957f': { x: 52, y: 74 },
-    '\u897f\u533a\u5e02\u957f': { x: 58, y: 70 }
+    '西区技工': { x: 46, y: 72 },
+    '西区副市长': { x: 52, y: 74 },
+    '西区市长': { x: 58, y: 70 }
   },
   rich_area: {
-    '\u4e1c\u533a\u8d35\u65cf': { x: 62, y: 36 },
-    '\u4e1c\u533a\u526f\u5e02\u957f': { x: 70, y: 34 },
-    '\u4e1c\u533a\u5e02\u957f': { x: 76, y: 32 }
+    '东区贵族': { x: 62, y: 36 },
+    '东区副市长': { x: 70, y: 34 },
+    '东区市长': { x: 76, y: 32 }
   }
 };
 

@@ -110,11 +110,11 @@ function mapSessionShape(session: SessionRow, members: MemberRow[]) {
   };
 }
 
-export function createRpRouter(ctx: AppContext) {
+export async function createRpRouter(ctx: AppContext) {
   const router = express.Router();
   const { db, runtime } = ctx;
 
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS rp_mediation_invites (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sessionId TEXT NOT NULL,
@@ -128,10 +128,10 @@ export function createRpRouter(ctx: AppContext) {
     );
   `);
 
-  const cleanupGroupMembers = (dateKey: string, locationId?: string) => {
-    db.prepare(`DELETE FROM active_group_rp_members WHERE dateKey <> ?`).run(dateKey);
+  const cleanupGroupMembers = async (dateKey: string, locationId?: string) => {
+    await db.prepare(`DELETE FROM active_group_rp_members WHERE dateKey <> ?`).run(dateKey);
     if (locationId) {
-      db.prepare(`
+      await db.prepare(`
         DELETE FROM active_group_rp_members
         WHERE dateKey = ?
           AND locationId = ?
@@ -139,18 +139,18 @@ export function createRpRouter(ctx: AppContext) {
       `).run(dateKey, locationId, `-${GROUP_MEMBER_STALE_SECONDS} seconds`);
       return;
     }
-    db.prepare(`
+    await db.prepare(`
       DELETE FROM active_group_rp_members
       WHERE dateKey = ?
         AND datetime(updatedAt) < datetime('now', ?)
     `).run(dateKey, `-${GROUP_MEMBER_STALE_SECONDS} seconds`);
   };
 
-  const loadSessionMembers = (sessionId: string) =>
-    db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? ORDER BY userId ASC`).all(sessionId) as MemberRow[];
+  const loadSessionMembers = async (sessionId: string) =>
+    await db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? ORDER BY userId ASC`).all(sessionId) as MemberRow[];
 
-  const loadSessionMessages = (sessionId: string) =>
-    db.prepare(`
+  const loadSessionMessages = async (sessionId: string) =>
+    await db.prepare(`
       SELECT m.id, m.sessionId, m.senderId, m.senderName, m.content, m.type, m.createdAt,
              u.avatarUrl AS senderAvatar, u.avatarUpdatedAt AS senderAvatarUpdatedAt
       FROM active_rp_messages m
@@ -159,8 +159,8 @@ export function createRpRouter(ctx: AppContext) {
       ORDER BY m.id ASC
     `).all(sessionId) as RPMessageRow[];
 
-  const loadGroupMessages = (archiveId: string) =>
-    db.prepare(`
+  const loadGroupMessages = async (archiveId: string) =>
+    await db.prepare(`
       SELECT m.id, m.archiveId, m.senderId, m.senderName, m.content, m.type, m.createdAt,
              u.avatarUrl AS senderAvatar, u.avatarUpdatedAt AS senderAvatarUpdatedAt
       FROM rp_archive_messages m
@@ -169,10 +169,10 @@ export function createRpRouter(ctx: AppContext) {
       ORDER BY m.id ASC
     `).all(archiveId) as RPMessageRow[];
 
-  const ensureGroupArchive = (archiveId: string, locationId: string, locationName: string) => {
-    const exists = db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
+  const ensureGroupArchive = async (archiveId: string, locationId: string, locationName: string) => {
+    const exists = await db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
     if (!exists) {
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO rp_archives
         (id, title, locationId, locationName, participants, participantNames, status, createdAt)
         VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
@@ -188,7 +188,7 @@ export function createRpRouter(ctx: AppContext) {
       return;
     }
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE rp_archives
       SET title = ?,
           locationId = ?,
@@ -203,8 +203,8 @@ export function createRpRouter(ctx: AppContext) {
     );
   };
 
-  const touchGroupArchiveParticipants = (archiveId: string, userId: number, userName: string, locationName: string) => {
-    const archive = db.prepare(`
+  const touchGroupArchiveParticipants = async (archiveId: string, userId: number, userName: string, locationName: string) => {
+    const archive = await db.prepare(`
       SELECT participants, participantNames
       FROM rp_archives
       WHERE id = ?
@@ -214,7 +214,7 @@ export function createRpRouter(ctx: AppContext) {
     const ids = parseParticipantIds(archive.participants);
     if (!ids.includes(userId)) ids.push(userId);
     const names = mergeParticipantNames(archive.participantNames, userName);
-    db.prepare(`
+    await db.prepare(`
       UPDATE rp_archives
       SET participants = ?,
           participantNames = ?,
@@ -224,11 +224,11 @@ export function createRpRouter(ctx: AppContext) {
     `).run(JSON.stringify(ids), names, locationName || '', archiveId);
   };
 
-  const ensurePairArchive = (sessionId: string, session: SessionRow, members: MemberRow[]) => {
+  const ensurePairArchive = async (sessionId: string, session: SessionRow, members: MemberRow[]) => {
     const archiveId = `ARC-${sessionId}`;
-    const exists = db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
+    const exists = await db.prepare(`SELECT id FROM rp_archives WHERE id = ? LIMIT 1`).get(archiveId);
     if (!exists) {
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO rp_archives
         (id, title, locationId, locationName, participants, participantNames, status, createdAt)
         VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
@@ -242,7 +242,7 @@ export function createRpRouter(ctx: AppContext) {
         now()
       );
     } else {
-      db.prepare(`
+      await db.prepare(`
         UPDATE rp_archives
         SET title = ?,
             locationId = ?,
@@ -261,10 +261,10 @@ export function createRpRouter(ctx: AppContext) {
     }
     return archiveId;
   };
-  const syncPairArchiveMessages = (archiveId: string, sessionId: string) => {
-    const archivedCountRow = db.prepare(`SELECT COUNT(*) AS c FROM rp_archive_messages WHERE archiveId = ?`).get(archiveId) as { c?: number } | undefined;
+  const syncPairArchiveMessages = async (archiveId: string, sessionId: string) => {
+    const archivedCountRow = await db.prepare(`SELECT COUNT(*) AS c FROM rp_archive_messages WHERE archiveId = ?`).get(archiveId) as { c?: number } | undefined;
     const archivedCount = Number(archivedCountRow?.c || 0);
-    const messages = db.prepare(`
+    const messages = await db.prepare(`
       SELECT senderId, senderName, content, type, createdAt
       FROM active_rp_messages
       WHERE sessionId = ?
@@ -275,7 +275,7 @@ export function createRpRouter(ctx: AppContext) {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     for (const message of messages.slice(archivedCount)) {
-      insertMessage.run(
+      await insertMessage.run(
         archiveId,
         message.senderId ?? 0,
         message.senderName || 'Unknown',
@@ -286,8 +286,8 @@ export function createRpRouter(ctx: AppContext) {
     }
   };
 
-  const listActiveSessionsForUser = (userId: number) => {
-    const rows = db.prepare(`
+  const listActiveSessionsForUser = async (userId: number) => {
+    const rows = await db.prepare(`
       SELECT s.id, s.locationId, s.locationName, s.status, s.endProposedBy, s.createdAt,
              MAX(msg.createdAt) AS lastMessageAt
       FROM active_rp_sessions s
@@ -297,27 +297,27 @@ export function createRpRouter(ctx: AppContext) {
       GROUP BY s.id, s.locationId, s.locationName, s.status, s.endProposedBy, s.createdAt
       ORDER BY COALESCE(MAX(msg.createdAt), s.createdAt, s.id) DESC
     `).all(userId) as Array<SessionRow & { lastMessageAt?: string | null }>;
-    return rows.map((row) => {
-      const members = loadSessionMembers(row.id);
+    return Promise.all(rows.map(async (row) => {
+      const members = await loadSessionMembers(row.id);
       return {
         ...mapSessionShape(row, members),
         lastMessageAt: row.lastMessageAt || null,
       };
-    });
+    }));
   };
 
-  const reconcileMediationStatus = (sessionId: string) => {
-    const pendingRow = db.prepare(`SELECT COUNT(*) AS c FROM rp_mediation_invites WHERE sessionId = ? AND status = 'pending'`).get(sessionId) as { c?: number } | undefined;
-    const mediatorRow = db.prepare(`SELECT COUNT(*) AS c FROM active_rp_members WHERE sessionId = ? AND role = 'mediator'`).get(sessionId) as { c?: number } | undefined;
+  const reconcileMediationStatus = async (sessionId: string) => {
+    const pendingRow = await db.prepare(`SELECT COUNT(*) AS c FROM rp_mediation_invites WHERE sessionId = ? AND status = 'pending'`).get(sessionId) as { c?: number } | undefined;
+    const mediatorRow = await db.prepare(`SELECT COUNT(*) AS c FROM active_rp_members WHERE sessionId = ? AND role = 'mediator'`).get(sessionId) as { c?: number } | undefined;
     const pendingCount = Number(pendingRow?.c || 0);
     const mediatorCount = Number(mediatorRow?.c || 0);
     if (pendingCount === 0 && mediatorCount === 0) {
-      db.prepare(`UPDATE active_rp_sessions SET status = 'active', endProposedBy = NULL WHERE id = ? AND status = 'mediating'`).run(sessionId);
+      await db.prepare(`UPDATE active_rp_sessions SET status = 'active', endProposedBy = NULL WHERE id = ? AND status = 'mediating'`).run(sessionId);
     }
   };
 
-  const notifyPairSession = (sessionId: string, extra: Record<string, any> = {}) => {
-    const userIds = loadSessionMembers(sessionId)
+  const notifyPairSession = async (sessionId: string, extra: Record<string, any> = {}) => {
+    const userIds = (await loadSessionMembers(sessionId))
       .map((member) => Number(member.userId || 0))
       .filter((value) => Number.isFinite(value) && value > 0);
     if (!userIds.length) return;
@@ -330,7 +330,7 @@ export function createRpRouter(ctx: AppContext) {
     void runtime.publishBroadcast('rp.group.changed', { locationId, archiveId, ...extra });
   };
 
-  router.post('/rp/session/upsert', (req, res) => {
+  router.post('/rp/session/upsert', async (req, res) => {
     try {
       const { sessionId, userAId, userAName, userBId, userBName, locationId, locationName } = req.body || {};
       const aId = toSafeUserId(userAId);
@@ -342,7 +342,7 @@ export function createRpRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'Roleplay requires two different users' });
       }
 
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT s.id
         FROM active_rp_sessions s
         JOIN active_rp_members m1 ON m1.sessionId = s.id
@@ -352,20 +352,20 @@ export function createRpRouter(ctx: AppContext) {
         LIMIT 1
       `).get(aId, bId, bId, aId) as { id?: string } | undefined;
       const finalSessionId = String(existing?.id || sessionId);
-      const oldSession = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(finalSessionId) as SessionRow | undefined;
+      const oldSession = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(finalSessionId) as SessionRow | undefined;
 
-      const tx = db.transaction(() => {
+      const tx = db.transaction(async () => {
         if (!oldSession) {
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO active_rp_sessions (id, locationId, locationName, status, endProposedBy)
             VALUES (?, ?, ?, 'active', NULL)
           `).run(finalSessionId, locationId || 'unknown', locationName || 'Unknown location');
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO active_rp_messages (sessionId, senderId, senderName, content, type)
             VALUES (?, 0, 'System', 'Roleplay session started.', 'system')
           `).run(finalSessionId);
         } else {
-          db.prepare(`
+          await db.prepare(`
             UPDATE active_rp_sessions
             SET locationId = ?,
                 locationName = ?,
@@ -379,14 +379,14 @@ export function createRpRouter(ctx: AppContext) {
           );
         }
 
-        db.prepare(`INSERT OR IGNORE INTO active_rp_members (sessionId, userId, userName, role) VALUES (?, ?, ?, '')`).run(finalSessionId, aId, String(userAName || `U${aId}`));
-        db.prepare(`INSERT OR IGNORE INTO active_rp_members (sessionId, userId, userName, role) VALUES (?, ?, ?, '')`).run(finalSessionId, bId, String(userBName || `U${bId}`));
-        db.prepare(`UPDATE active_rp_members SET userName = ? WHERE sessionId = ? AND userId = ?`).run(String(userAName || `U${aId}`), finalSessionId, aId);
-        db.prepare(`UPDATE active_rp_members SET userName = ? WHERE sessionId = ? AND userId = ?`).run(String(userBName || `U${bId}`), finalSessionId, bId);
-        db.prepare(`DELETE FROM active_rp_leaves WHERE sessionId = ?`).run(finalSessionId);
+        await db.prepare(`INSERT OR IGNORE INTO active_rp_members (sessionId, userId, userName, role) VALUES (?, ?, ?, '')`).run(finalSessionId, aId, String(userAName || `U${aId}`));
+        await db.prepare(`INSERT OR IGNORE INTO active_rp_members (sessionId, userId, userName, role) VALUES (?, ?, ?, '')`).run(finalSessionId, bId, String(userBName || `U${bId}`));
+        await db.prepare(`UPDATE active_rp_members SET userName = ? WHERE sessionId = ? AND userId = ?`).run(String(userAName || `U${aId}`), finalSessionId, aId);
+        await db.prepare(`UPDATE active_rp_members SET userName = ? WHERE sessionId = ? AND userId = ?`).run(String(userBName || `U${bId}`), finalSessionId, bId);
+        await db.prepare(`DELETE FROM active_rp_leaves WHERE sessionId = ?`).run(finalSessionId);
       });
-      tx();
-      notifyPairSession(finalSessionId, { reason: 'upsert' });
+      await tx();
+      await notifyPairSession(finalSessionId, { reason: 'upsert' });
 
       return res.json({ success: true, sessionId: finalSessionId });
     } catch (error: any) {
@@ -394,25 +394,25 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/rp/session/list/:userId', (req, res) => {
+  router.get('/rp/session/list/:userId', async (req, res) => {
     try {
       const userId = toSafeUserId(req.params.userId);
       if (!userId) {
         return res.status(400).json({ success: false, message: 'Invalid user id', sessions: [] });
       }
-      return res.json({ success: true, sessions: listActiveSessionsForUser(userId) });
+      return res.json({ success: true, sessions: await listActiveSessionsForUser(userId) });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || 'Failed to load sessions', sessions: [] });
     }
   });
 
-  router.get('/rp/session/active/:userId', (req, res) => {
+  router.get('/rp/session/active/:userId', async (req, res) => {
     try {
       const userId = toSafeUserId(req.params.userId);
       if (!userId) {
         return res.status(400).json({ success: false, message: 'Invalid user id' });
       }
-      const sessions = listActiveSessionsForUser(userId);
+      const sessions = await listActiveSessionsForUser(userId);
       const session = sessions[0] || null;
       return res.json({ success: true, sessionId: session?.sessionId || null, session, sessions });
     } catch (error: any) {
@@ -420,22 +420,22 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/rp/session/:sessionId/messages', (req, res) => {
+  router.get('/rp/session/:sessionId/messages', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
-      const session = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
+      const session = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
       if (!session) {
         return res.status(404).json({ success: false, message: 'Session not found' });
       }
-      const members = loadSessionMembers(sessionId);
-      const messages = loadSessionMessages(sessionId);
+      const members = await loadSessionMembers(sessionId);
+      const messages = await loadSessionMessages(sessionId);
       return res.json({ success: true, session: mapSessionShape(session, members), messages });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || 'Failed to load roleplay messages' });
     }
   });
 
-  router.post('/rp/session/:sessionId/messages', (req, res) => {
+  router.post('/rp/session/:sessionId/messages', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = toSafeUserId(req.body?.userId);
@@ -445,21 +445,21 @@ export function createRpRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'Missing required parameters' });
       }
 
-      const session = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
+      const session = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
       if (!session || session.status === 'closed') {
         return res.status(404).json({ success: false, message: 'Session not available' });
       }
 
-      const member = db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? AND userId = ? LIMIT 1`).get(sessionId, userId) as MemberRow | undefined;
+      const member = await db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? AND userId = ? LIMIT 1`).get(sessionId, userId) as MemberRow | undefined;
       if (!member) {
         return res.status(403).json({ success: false, message: 'You are not in this session' });
       }
 
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO active_rp_messages (sessionId, senderId, senderName, content, type)
         VALUES (?, ?, ?, ?, 'user')
       `).run(sessionId, userId, userName || member.userName || `U${userId}`, content);
-      notifyPairSession(sessionId, { reason: 'message', userId });
+      await notifyPairSession(sessionId, { reason: 'message', userId });
 
       return res.json({ success: true });
     } catch (error: any) {
@@ -467,7 +467,7 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/rp/session/:sessionId/leave', (req, res) => {
+  router.post('/rp/session/:sessionId/leave', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = toSafeUserId(req.body?.userId);
@@ -476,49 +476,49 @@ export function createRpRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'Missing required parameters' });
       }
 
-      const session = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
+      const session = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
       if (!session) {
         return res.status(404).json({ success: false, message: 'Session not found' });
       }
 
-      const member = db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? AND userId = ? LIMIT 1`).get(sessionId, userId) as MemberRow | undefined;
+      const member = await db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? AND userId = ? LIMIT 1`).get(sessionId, userId) as MemberRow | undefined;
       if (!member) {
         return res.status(403).json({ success: false, message: 'You are not in this session' });
       }
 
       let closed = false;
       let archiveId = '';
-      const tx = db.transaction(() => {
-        db.prepare(`INSERT OR IGNORE INTO active_rp_leaves (sessionId, userId) VALUES (?, ?)`).run(sessionId, userId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`INSERT OR IGNORE INTO active_rp_leaves (sessionId, userId) VALUES (?, ?)`).run(sessionId, userId);
+        await db.prepare(`
           INSERT INTO active_rp_messages (sessionId, senderId, senderName, content, type)
           VALUES (?, 0, 'System', ?, 'system')
         `).run(sessionId, `${userName || member.userName || `U${userId}`} left the roleplay.`);
 
-        const totalRow = db.prepare(`SELECT COUNT(*) AS c FROM active_rp_members WHERE sessionId = ?`).get(sessionId) as { c?: number } | undefined;
-        const leaveRow = db.prepare(`SELECT COUNT(*) AS c FROM active_rp_leaves WHERE sessionId = ?`).get(sessionId) as { c?: number } | undefined;
+        const totalRow = await db.prepare(`SELECT COUNT(*) AS c FROM active_rp_members WHERE sessionId = ?`).get(sessionId) as { c?: number } | undefined;
+        const leaveRow = await db.prepare(`SELECT COUNT(*) AS c FROM active_rp_leaves WHERE sessionId = ?`).get(sessionId) as { c?: number } | undefined;
         const total = Number(totalRow?.c || 0);
         const left = Number(leaveRow?.c || 0);
         if (total > 0 && left >= total) {
-          const latestSession = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow;
-          const members = loadSessionMembers(sessionId);
-          archiveId = ensurePairArchive(sessionId, latestSession, members);
-          syncPairArchiveMessages(archiveId, sessionId);
-          db.prepare(`UPDATE rp_archives SET status = 'closed' WHERE id = ?`).run(archiveId);
-          db.prepare(`UPDATE active_rp_sessions SET status = 'closed', endProposedBy = NULL WHERE id = ?`).run(sessionId);
-          db.prepare(`UPDATE rp_mediation_invites SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP WHERE sessionId = ? AND status = 'pending'`).run(sessionId);
+          const latestSession = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow;
+          const members = await loadSessionMembers(sessionId);
+          archiveId = await ensurePairArchive(sessionId, latestSession, members);
+          await syncPairArchiveMessages(archiveId, sessionId);
+          await db.prepare(`UPDATE rp_archives SET status = 'closed' WHERE id = ?`).run(archiveId);
+          await db.prepare(`UPDATE active_rp_sessions SET status = 'closed', endProposedBy = NULL WHERE id = ?`).run(sessionId);
+          await db.prepare(`UPDATE rp_mediation_invites SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP WHERE sessionId = ? AND status = 'pending'`).run(sessionId);
           closed = true;
         }
       });
-      tx();
-      notifyPairSession(sessionId, { reason: 'leave', userId, closed, archiveId: archiveId || null });
+      await tx();
+      await notifyPairSession(sessionId, { reason: 'leave', userId, closed, archiveId: archiveId || null });
 
       return res.json({ success: true, closed, archiveId: archiveId || null });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error?.message || 'Failed to leave roleplay session' });
     }
   });
-  router.post('/rp/session/:sessionId/mediate/request', (req, res) => {
+  router.post('/rp/session/:sessionId/mediate/request', async (req, res) => {
     try {
       const sessionId = String(req.params.sessionId || '').trim();
       const userId = toSafeUserId(req.body?.userId);
@@ -528,17 +528,17 @@ export function createRpRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'Missing required parameters' });
       }
 
-      const session = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
+      const session = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
       if (!session || session.status === 'closed') {
         return res.status(404).json({ success: false, message: 'Session not available' });
       }
 
-      const requester = db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? AND userId = ? LIMIT 1`).get(sessionId, userId) as MemberRow | undefined;
+      const requester = await db.prepare(`SELECT * FROM active_rp_members WHERE sessionId = ? AND userId = ? LIMIT 1`).get(sessionId, userId) as MemberRow | undefined;
       if (!requester) {
         return res.status(403).json({ success: false, message: 'You are not in this session' });
       }
 
-      const candidates = db.prepare(`
+      const candidates = await db.prepare(`
         SELECT DISTINCT u.id, u.name
         FROM users u
         JOIN user_sessions us ON us.userId = u.id
@@ -559,17 +559,17 @@ export function createRpRouter(ctx: AppContext) {
       `).all(`-${MEDIATOR_ONLINE_SECONDS} seconds`, userId, sessionId) as Array<{ id: number; name: string }>;
 
       let created = 0;
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE active_rp_sessions SET status = 'mediating' WHERE id = ?`).run(sessionId);
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE active_rp_sessions SET status = 'mediating' WHERE id = ?`).run(sessionId);
         for (const row of candidates) {
-          const exists = db.prepare(`
+          const exists = await db.prepare(`
             SELECT id
             FROM rp_mediation_invites
             WHERE sessionId = ? AND invitedUserId = ? AND status = 'pending'
             LIMIT 1
           `).get(sessionId, row.id) as { id?: number } | undefined;
           if (exists) continue;
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO rp_mediation_invites
             (sessionId, invitedUserId, requestedByUserId, requestedByName, reason, status)
             VALUES (?, ?, ?, ?, ?, 'pending')
@@ -577,7 +577,7 @@ export function createRpRouter(ctx: AppContext) {
           created += 1;
         }
 
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO active_rp_messages (sessionId, senderId, senderName, content, type)
           VALUES (?, 0, 'System', ?, 'system')
         `).run(
@@ -585,7 +585,7 @@ export function createRpRouter(ctx: AppContext) {
           created > 0 ? 'Mediation requested. Waiting for an army member to join.' : 'Mediation requested, but no online army member was found.'
         );
       });
-      tx();
+      await tx();
 
       return res.json({
         success: true,
@@ -597,13 +597,13 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/rp/mediation/invites/:userId', (req, res) => {
+  router.get('/rp/mediation/invites/:userId', async (req, res) => {
     try {
       const userId = toSafeUserId(req.params.userId);
       if (!userId) {
         return res.status(400).json({ success: false, message: 'Invalid user id', invites: [] });
       }
-      const invites = db.prepare(`
+      const invites = await db.prepare(`
         SELECT i.*, s.locationId, s.locationName
         FROM rp_mediation_invites i
         LEFT JOIN active_rp_sessions s ON s.id = i.sessionId
@@ -616,7 +616,7 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/rp/mediation/invites/:inviteId/respond', (req, res) => {
+  router.post('/rp/mediation/invites/:inviteId/respond', async (req, res) => {
     try {
       const inviteId = Number(req.params.inviteId || 0);
       const userId = toSafeUserId(req.body?.userId);
@@ -625,7 +625,7 @@ export function createRpRouter(ctx: AppContext) {
         return res.status(400).json({ success: false, message: 'Missing required parameters' });
       }
 
-      const invite = db.prepare(`SELECT * FROM rp_mediation_invites WHERE id = ? LIMIT 1`).get(inviteId) as any;
+      const invite = await db.prepare(`SELECT * FROM rp_mediation_invites WHERE id = ? LIMIT 1`).get(inviteId) as any;
       if (!invite) {
         return res.status(404).json({ success: false, message: 'Invite not found' });
       }
@@ -637,51 +637,51 @@ export function createRpRouter(ctx: AppContext) {
       }
 
       const sessionId = String(invite.sessionId || '').trim();
-      const session = db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
+      const session = await db.prepare(`SELECT * FROM active_rp_sessions WHERE id = ? LIMIT 1`).get(sessionId) as SessionRow | undefined;
       if (!session || session.status === 'closed') {
-        db.prepare(`UPDATE rp_mediation_invites SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
+        await db.prepare(`UPDATE rp_mediation_invites SET status = 'cancelled', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
         return res.status(404).json({ success: false, message: 'Session is no longer available' });
       }
 
-      const userRow = db.prepare(`SELECT id, name FROM users WHERE id = ? LIMIT 1`).get(userId) as { id: number; name: string } | undefined;
+      const userRow = await db.prepare(`SELECT id, name FROM users WHERE id = ? LIMIT 1`).get(userId) as { id: number; name: string } | undefined;
       const displayName = String(userRow?.name || invite.requestedByName || `U${userId}`);
 
       if (!accept) {
-        const tx = db.transaction(() => {
-          db.prepare(`UPDATE rp_mediation_invites SET status = 'rejected', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
-          reconcileMediationStatus(sessionId);
+        const tx = db.transaction(async () => {
+          await db.prepare(`UPDATE rp_mediation_invites SET status = 'rejected', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
+          await reconcileMediationStatus(sessionId);
         });
-        tx();
+        await tx();
         return res.json({ success: true, sessionId, message: 'You declined the mediation invite.' });
       }
 
-      const mediatorExists = db.prepare(`
+      const mediatorExists = await db.prepare(`
         SELECT userId
         FROM active_rp_members
         WHERE sessionId = ? AND role = 'mediator'
         LIMIT 1
       `).get(sessionId) as { userId?: number } | undefined;
       if (mediatorExists && Number(mediatorExists.userId || 0) !== userId) {
-        db.prepare(`UPDATE rp_mediation_invites SET status = 'superseded', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
+        await db.prepare(`UPDATE rp_mediation_invites SET status = 'superseded', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
         return res.json({ success: false, message: 'Another mediator already joined this session.' });
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`UPDATE rp_mediation_invites SET status = 'accepted', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`UPDATE rp_mediation_invites SET status = 'accepted', updatedAt = CURRENT_TIMESTAMP WHERE id = ?`).run(inviteId);
+        await db.prepare(`
           UPDATE rp_mediation_invites
           SET status = 'superseded', updatedAt = CURRENT_TIMESTAMP
           WHERE sessionId = ? AND status = 'pending' AND id <> ?
         `).run(sessionId, inviteId);
-        db.prepare(`INSERT OR IGNORE INTO active_rp_members (sessionId, userId, userName, role) VALUES (?, ?, ?, 'mediator')`).run(sessionId, userId, displayName);
-        db.prepare(`UPDATE active_rp_members SET userName = ?, role = 'mediator' WHERE sessionId = ? AND userId = ?`).run(displayName, sessionId, userId);
-        db.prepare(`UPDATE active_rp_sessions SET status = 'mediating' WHERE id = ?`).run(sessionId);
-        db.prepare(`
+        await db.prepare(`INSERT OR IGNORE INTO active_rp_members (sessionId, userId, userName, role) VALUES (?, ?, ?, 'mediator')`).run(sessionId, userId, displayName);
+        await db.prepare(`UPDATE active_rp_members SET userName = ?, role = 'mediator' WHERE sessionId = ? AND userId = ?`).run(displayName, sessionId, userId);
+        await db.prepare(`UPDATE active_rp_sessions SET status = 'mediating' WHERE id = ?`).run(sessionId);
+        await db.prepare(`
           INSERT INTO active_rp_messages (sessionId, senderId, senderName, content, type)
           VALUES (?, 0, 'System', ?, 'system')
         `).run(sessionId, `${displayName} joined as the mediator.`);
       });
-      tx();
+      await tx();
 
       return res.json({ success: true, sessionId, message: 'You joined the mediation session.' });
     } catch (error: any) {
@@ -689,7 +689,7 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/rp/group/join', (req, res) => {
+  router.post('/rp/group/join', async (req, res) => {
     try {
       const userId = toSafeUserId(req.body?.userId);
       const userName = String(req.body?.userName || '').trim();
@@ -701,35 +701,35 @@ export function createRpRouter(ctx: AppContext) {
 
       const dateKey = getLocalDateKey();
       const archiveId = buildGroupArchiveId(dateKey, locationId);
-      cleanupGroupMembers(dateKey, locationId);
-      ensureGroupArchive(archiveId, locationId, locationName);
+      await cleanupGroupMembers(dateKey, locationId);
+      await ensureGroupArchive(archiveId, locationId, locationName);
 
-      const existing = db.prepare(`
+      const existing = await db.prepare(`
         SELECT * FROM active_group_rp_members
         WHERE locationId = ? AND dateKey = ? AND userId = ?
         LIMIT 1
       `).get(locationId, dateKey, userId) as GroupMemberRow | undefined;
 
-      const tx = db.transaction(() => {
+      const tx = db.transaction(async () => {
         if (!existing) {
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO active_group_rp_members (locationId, dateKey, archiveId, userId, userName)
             VALUES (?, ?, ?, ?, ?)
           `).run(locationId, dateKey, archiveId, userId, userName || `U${userId}`);
-          db.prepare(`
+          await db.prepare(`
             INSERT INTO rp_archive_messages (archiveId, senderId, senderName, content, type, createdAt)
             VALUES (?, 0, 'System', ?, 'system', ?)
           `).run(archiveId, `${userName || `U${userId}`} joined the group roleplay.`, now());
         } else {
-          db.prepare(`
+          await db.prepare(`
             UPDATE active_group_rp_members
             SET userName = ?, archiveId = ?, updatedAt = CURRENT_TIMESTAMP
             WHERE locationId = ? AND dateKey = ? AND userId = ?
           `).run(userName || existing.userName || `U${userId}`, archiveId, locationId, dateKey, userId);
         }
-        touchGroupArchiveParticipants(archiveId, userId, userName || `U${userId}`, locationName);
+        await touchGroupArchiveParticipants(archiveId, userId, userName || `U${userId}`, locationName);
       });
-      tx();
+      await tx();
       notifyGroupLocation(locationId, archiveId, { reason: 'join', userId });
 
       return res.json({ success: true, joined: true, archiveId, locationId, locationName });
@@ -738,7 +738,7 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.get('/rp/group/session', (req, res) => {
+  router.get('/rp/group/session', async (req, res) => {
     try {
       const userId = toSafeUserId(req.query.userId);
       const locationId = toSafeLocationId(req.query.locationId);
@@ -747,8 +747,8 @@ export function createRpRouter(ctx: AppContext) {
       }
 
       const dateKey = getLocalDateKey();
-      cleanupGroupMembers(dateKey, locationId);
-      const member = db.prepare(`
+      await cleanupGroupMembers(dateKey, locationId);
+      const member = await db.prepare(`
         SELECT * FROM active_group_rp_members
         WHERE locationId = ? AND dateKey = ? AND userId = ?
         LIMIT 1
@@ -758,20 +758,20 @@ export function createRpRouter(ctx: AppContext) {
         return res.json({ success: true, joined: false, archiveId: buildGroupArchiveId(dateKey, locationId), locationId });
       }
 
-      db.prepare(`
+      await db.prepare(`
         UPDATE active_group_rp_members
         SET updatedAt = CURRENT_TIMESTAMP
         WHERE locationId = ? AND dateKey = ? AND userId = ?
       `).run(locationId, dateKey, userId);
 
-      const members = db.prepare(`
+      const members = await db.prepare(`
         SELECT locationId, dateKey, archiveId, userId, userName, joinedAt, updatedAt
         FROM active_group_rp_members
         WHERE locationId = ? AND dateKey = ?
         ORDER BY datetime(joinedAt) ASC, userId ASC
       `).all(locationId, dateKey) as GroupMemberRow[];
-      const archive = db.prepare(`SELECT locationName FROM rp_archives WHERE id = ? LIMIT 1`).get(member.archiveId) as { locationName?: string } | undefined;
-      const messages = loadGroupMessages(member.archiveId);
+      const archive = await db.prepare(`SELECT locationName FROM rp_archives WHERE id = ? LIMIT 1`).get(member.archiveId) as { locationName?: string } | undefined;
+      const messages = await loadGroupMessages(member.archiveId);
 
       return res.json({
         success: true,
@@ -787,7 +787,7 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/rp/group/messages', (req, res) => {
+  router.post('/rp/group/messages', async (req, res) => {
     try {
       const userId = toSafeUserId(req.body?.userId);
       const userName = String(req.body?.userName || '').trim();
@@ -799,8 +799,8 @@ export function createRpRouter(ctx: AppContext) {
       }
 
       const dateKey = getLocalDateKey();
-      cleanupGroupMembers(dateKey, locationId);
-      const member = db.prepare(`
+      await cleanupGroupMembers(dateKey, locationId);
+      const member = await db.prepare(`
         SELECT * FROM active_group_rp_members
         WHERE locationId = ? AND dateKey = ? AND userId = ?
         LIMIT 1
@@ -809,19 +809,19 @@ export function createRpRouter(ctx: AppContext) {
         return res.status(403).json({ success: false, message: 'Join the group roleplay before sending messages' });
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`
           UPDATE active_group_rp_members
           SET userName = ?, updatedAt = CURRENT_TIMESTAMP
           WHERE locationId = ? AND dateKey = ? AND userId = ?
         `).run(userName || member.userName || `U${userId}`, locationId, dateKey, userId);
-        touchGroupArchiveParticipants(member.archiveId, userId, userName || member.userName || `U${userId}`, locationName);
-        db.prepare(`
+        await touchGroupArchiveParticipants(member.archiveId, userId, userName || member.userName || `U${userId}`, locationName);
+        await db.prepare(`
           INSERT INTO rp_archive_messages (archiveId, senderId, senderName, content, type, createdAt)
           VALUES (?, ?, ?, ?, 'user', ?)
         `).run(member.archiveId, userId, userName || member.userName || `U${userId}`, content, now());
       });
-      tx();
+      await tx();
       notifyGroupLocation(locationId, member.archiveId, { reason: 'message', userId });
 
       return res.json({ success: true, archiveId: member.archiveId });
@@ -830,7 +830,7 @@ export function createRpRouter(ctx: AppContext) {
     }
   });
 
-  router.post('/rp/group/leave', (req, res) => {
+  router.post('/rp/group/leave', async (req, res) => {
     try {
       const userId = toSafeUserId(req.body?.userId);
       const userName = String(req.body?.userName || '').trim();
@@ -840,8 +840,8 @@ export function createRpRouter(ctx: AppContext) {
       }
 
       const dateKey = getLocalDateKey();
-      cleanupGroupMembers(dateKey, locationId);
-      const member = db.prepare(`
+      await cleanupGroupMembers(dateKey, locationId);
+      const member = await db.prepare(`
         SELECT * FROM active_group_rp_members
         WHERE locationId = ? AND dateKey = ? AND userId = ?
         LIMIT 1
@@ -851,23 +851,23 @@ export function createRpRouter(ctx: AppContext) {
       }
 
       let remaining = 0;
-      const tx = db.transaction(() => {
-        db.prepare(`
+      const tx = db.transaction(async () => {
+        await db.prepare(`
           INSERT INTO rp_archive_messages (archiveId, senderId, senderName, content, type, createdAt)
           VALUES (?, 0, 'System', ?, 'system', ?)
         `).run(member.archiveId, `${userName || member.userName || `U${userId}`} left the group roleplay.`, now());
-        db.prepare(`DELETE FROM active_group_rp_members WHERE locationId = ? AND dateKey = ? AND userId = ?`).run(locationId, dateKey, userId);
-        const row = db.prepare(`
+        await db.prepare(`DELETE FROM active_group_rp_members WHERE locationId = ? AND dateKey = ? AND userId = ?`).run(locationId, dateKey, userId);
+        const row = await db.prepare(`
           SELECT COUNT(*) AS c
           FROM active_group_rp_members
           WHERE locationId = ? AND dateKey = ?
         `).get(locationId, dateKey) as { c?: number } | undefined;
         remaining = Number(row?.c || 0);
         if (remaining <= 0) {
-          db.prepare(`UPDATE rp_archives SET status = 'closed' WHERE id = ?`).run(member.archiveId);
+          await db.prepare(`UPDATE rp_archives SET status = 'closed' WHERE id = ?`).run(member.archiveId);
         }
       });
-      tx();
+      await tx();
       notifyGroupLocation(locationId, member.archiveId, { reason: 'leave', userId, remaining });
 
       return res.json({ success: true, left: true, remaining });
