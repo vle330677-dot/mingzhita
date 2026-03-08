@@ -20,9 +20,16 @@
 
 2. 创建 `.env` 文件：
    ```env
-   ADMIN_ENTRY_CODE=your_admin_code
    PORT=3000
-   DB_PATH=./data/game.db
+   NODE_ENV=development
+   ADMIN_ENTRY_CODE=your_admin_code
+   DB_CLIENT=mysql
+   MYSQL_HOST=127.0.0.1
+   MYSQL_PORT=3306
+   MYSQL_USER=mingzhita
+   MYSQL_PASSWORD=change_me
+   MYSQL_DATABASE=mingzhita
+   MYSQL_CHARSET=utf8mb4
    ```
 
 3. 启动开发服务器：
@@ -31,6 +38,20 @@
    ```
 
 4. 访问 `http://localhost:3000`
+
+### 从现有 SQLite 数据迁移到 MySQL
+
+如果你当前数据还在 `data/game.db`，先在 `.env` 中保留：
+
+```env
+SQLITE_IMPORT_PATH=./data/game.db
+```
+
+然后执行：
+
+```bash
+npm run db:mysql:import
+```
 
 ### 生产构建
 
@@ -54,7 +75,13 @@ npm run start
 ```env
 NODE_ENV=production
 ADMIN_ENTRY_CODE=<strong_random_code>
-DB_PATH=/data/game.db
+DB_CLIENT=mysql
+MYSQL_HOST=your-mysql-host
+MYSQL_PORT=3306
+MYSQL_USER=your-mysql-user
+MYSQL_PASSWORD=your-mysql-password
+MYSQL_DATABASE=mingzhita
+MYSQL_CHARSET=utf8mb4
 PORT=3000
 NODE_OPTIONS=--max-old-space-size=512
 ```
@@ -77,7 +104,7 @@ NODE_OPTIONS=--max-old-space-size=512
 
 - **前端**：React 19 + TypeScript + Tailwind CSS + Motion
 - **后端**：Node.js + Express + TypeScript
-- **数据库**：SQLite (better-sqlite3)
+- **数据库**：MySQL（兼容导入现有 SQLite 数据）
 - **构建工具**：Vite
 
 ## 📦 项目结构
@@ -108,9 +135,9 @@ mingzhita-main/
 
 ## 📝 注意事项
 
-- 数据库自动恢复：如果 SQLite 文件损坏，会自动备份为 `*.corrupt.<timestamp>.bak` 并重建
+- 如果你仍在用 SQLite 过渡，可继续设置 `DB_CLIENT=sqlite` 和 `DB_PATH=./data/game.db`
 - 生产环境：如果 `dist/` 缺失，服务器会回退到 Vite 中间件模式保持服务可用
-- 持久化存储：务必在 Zeabur 配置持久化卷，否则数据会丢失
+- 如果使用 MySQL，请先确认 `MYSQL_HOST`、`MYSQL_USER`、`MYSQL_DATABASE` 已正确填写
 
 ## 🐛 问题排查
 
@@ -136,4 +163,3 @@ mingzhita-main/
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
-
