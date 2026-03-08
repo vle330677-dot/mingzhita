@@ -1,0 +1,16 @@
+[Unit]
+Description=Mingzhita Node Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/mingzhita
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
