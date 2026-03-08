@@ -6,18 +6,18 @@ export type DbRunResult = {
 };
 
 export interface AppStatement {
-  get(...params: any[]): any;
-  all(...params: any[]): any[];
-  run(...params: any[]): DbRunResult;
+  get(...params: any[]): Promise<any>;
+  all(...params: any[]): Promise<any[]>;
+  run(...params: any[]): Promise<DbRunResult>;
 }
 
 export interface AppDatabase {
   dialect: DbDialect;
   prepare(sql: string): AppStatement;
-  exec(sql: string): void;
-  pragma(sql: string): any;
-  transaction<T extends (...args: any[]) => any>(fn: T): T;
-  close(): void;
+  exec(sql: string): Promise<void>;
+  pragma(sql: string): Promise<any>;
+  transaction<T extends (...args: any[]) => any>(fn: T): (...args: Parameters<T>) => Promise<Awaited<ReturnType<T>>>;
+  close(): Promise<void>;
 }
 
 export interface MySqlConnectionConfig {
@@ -28,4 +28,5 @@ export interface MySqlConnectionConfig {
   database: string;
   charset?: string;
   multipleStatements?: boolean;
+  connectionLimit?: number;
 }

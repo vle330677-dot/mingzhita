@@ -3,6 +3,7 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { createMySqlDatabase, createSqliteDatabase } from './client';
+import { getMySqlConfigFromEnv } from './mysqlConfig';
 import { runSchema } from './schema';
 import { runMigrate } from './migrate';
 import { runSeed } from './seed';
@@ -15,19 +16,7 @@ const SyncMySql = require('sync-mysql');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function getMySqlConfig() {
-  return {
-    host: process.env.MYSQL_HOST || '127.0.0.1',
-    port: Number(process.env.MYSQL_PORT || 3306),
-    user: process.env.MYSQL_USER || 'root',
-    password: process.env.MYSQL_PASSWORD || '',
-    database: process.env.MYSQL_DATABASE || 'mingzhita',
-    charset: process.env.MYSQL_CHARSET || 'utf8mb4',
-    multipleStatements: true,
-  };
-}
-
-function ensureDatabase(config: ReturnType<typeof getMySqlConfig>) {
+function ensureDatabase(config: ReturnType<typeof getMySqlConfigFromEnv>) {
   const bootstrap = new SyncMySql({
     host: config.host,
     port: config.port,
@@ -47,7 +36,7 @@ function quoteIdentifier(name: string) {
 
 function main() {
   const sqlitePath = process.env.SQLITE_IMPORT_PATH || process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'game.db');
-  const mysqlConfig = getMySqlConfig();
+  const mysqlConfig = getMySqlConfigFromEnv();
 
   ensureDatabase(mysqlConfig);
 

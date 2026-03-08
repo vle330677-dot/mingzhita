@@ -1,14 +1,8 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import Database from 'better-sqlite3';
-import { createRequire } from 'module';
+import mysql from 'mysql2/promise';
+import type { Pool, PoolConnection } from 'mysql2/promise';
 import type { AppDatabase, AppStatement, DbRunResult, MySqlConnectionConfig } from './types';
-
-const require = createRequire(import.meta.url);
-const SyncMySql = require('sync-mysql');
-
-type SyncMySqlConnection = {
-  query: (sql: string, values?: any[]) => any;
-  dispose?: () => void;
-};
 
 const LONG_TEXT_COLUMNS = new Set([
   'content',
@@ -53,8 +47,8 @@ function chooseTextType(columnName: string, rest: string) {
   const lower = columnName.toLowerCase();
   const hasDefault = /\bDEFAULT\b/i.test(rest);
   const keyLike =
-    /\bPRIMARY\s+KEY\b|\bUNIQUE\b/i.test(rest) ||
-    /(^id$|id$|token$|name$|title$|type$|status$|role$|faction$|key$|datekey$|locationid$|archiveid$|sessionid$|partyid$|cityid$|shopname$|pointtype$)/i.test(lower);
+    /\bPRIMARY\s+KEY\b|\bUNIQUE\b/i.test(rest)
+    || /(^id$|id$|token$|name$|title$|type$|status$|role$|faction$|key$|datekey$|locationid$|archiveid$|sessionid$|partyid$|cityid$|shopname$|pointtype$)/i.test(lower);
 
   if (URL_TEXT_COLUMNS.has(columnName)) return 'VARCHAR(1024)';
   if (LONG_TEXT_COLUMNS.has(columnName)) return hasDefault ? 'VARCHAR(4096)' : 'LONGTEXT';
@@ -154,74 +148,133 @@ function parseConditionalCreateIndex(sql: string): ParsedConditionalIndex | null
 }
 
 class SqliteStatement implements AppStatement {
-  constructor(private readonly statement: Database.Statement) {}
+  constructor(
+    private readonly database: SqliteDatabase,
+    private readonly statement: Database.Statement,
+  ) {}
 
-  get(...params: any[]) {
-    return this.statement.get(...params);
+  async get(...params: any[]) {
+    return this.database.execute(() => this.statement.get(...params));
   }
 
-  all(...params: any[]) {
-    return this.statement.all(...params);
+  async all(...params: any[]) {
+    return this.database.execute(() => this.statement.all(...params));
   }
 
-  run(...params: any[]): DbRunResult {
-    const result = this.statement.run(...params) as any;
-    return {
-      changes: Number(result?.changes || 0),
-      lastInsertRowid: Number(result?.lastInsertRowid || 0),
-    };
+  async run(...params: any[]): Promise<DbRunResult> {
+    return this.database.execute(() => {
+      const result = this.statement.run(...params) as any;
+      return {
+        changes: Number(result?.changes || 0),
+        lastInsertRowid: Number(result?.lastInsertRowid || 0),
+      };
+    });
   }
 }
 
 export class SqliteDatabase implements AppDatabase {
   readonly dialect = 'sqlite' as const;
+  private queue: Promise<void> = Promise.resolve();
+  private readonly transactionContext = new AsyncLocalStorage<true>();
+  private savepointCounter = 0;
 
   constructor(private readonly db: Database.Database) {}
 
   prepare(sql: string): AppStatement {
-    return new SqliteStatement(this.db.prepare(sql));
+    return new SqliteStatement(this, this.db.prepare(sql));
   }
 
-  exec(sql: string) {
-    this.db.exec(sql);
+  async exec(sql: string) {
+    await this.execute(() => {
+      this.db.exec(sql);
+    });
   }
 
-  pragma(sql: string) {
-    return this.db.pragma(sql);
+  async pragma(sql: string) {
+    return this.execute(() => this.db.pragma(sql));
   }
 
-  transaction<T extends (...args: any[]) => any>(fn: T): T {
-    const wrapped = this.db.transaction(fn as any);
-    return ((...args: any[]) => wrapped(...args)) as T;
+  transaction<T extends (...args: any[]) => any>(fn: T) {
+    return (async (...args: Parameters<T>) => {
+      if (this.transactionContext.getStore()) {
+        const savepoint = `sqlite_sp_${this.savepointCounter += 1}`;
+        this.db.exec(`SAVEPOINT ${savepoint}`);
+        try {
+          const result = await fn(...args);
+          this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          return result as Awaited<ReturnType<T>>;
+        } catch (error) {
+          try {
+            this.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          } catch {}
+          throw error;
+        }
+      }
+
+      return this.enqueue(async () => {
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+          const result = await this.transactionContext.run(true, async () => fn(...args));
+          this.db.exec('COMMIT');
+          return result as Awaited<ReturnType<T>>;
+        } catch (error) {
+          try {
+            this.db.exec('ROLLBACK');
+          } catch {}
+          throw error;
+        }
+      });
+    }) as (...args: Parameters<T>) => Promise<Awaited<ReturnType<T>>>;
   }
 
-  close() {
-    this.db.close();
+  async close() {
+    await this.enqueue(() => {
+      this.db.close();
+    });
+  }
+
+  execute<T>(task: () => T): Promise<T> {
+    if (this.transactionContext.getStore()) {
+      return Promise.resolve(task());
+    }
+    return this.enqueue(task);
+  }
+
+  private enqueue<T>(task: () => T | Promise<T>): Promise<T> {
+    const next = this.queue.then(() => task(), () => task());
+    this.queue = next.then(() => undefined, () => undefined);
+    return next;
   }
 }
 
 class MySqlStatement implements AppStatement {
-  constructor(private readonly db: MySqlDatabase, private readonly sql: string) {}
+  constructor(
+    private readonly database: MySqlDatabase,
+    private readonly sql: string,
+  ) {}
 
   get(...params: any[]) {
-    return this.db.get(this.sql, params);
+    return this.database.get(this.sql, params);
   }
 
   all(...params: any[]) {
-    return this.db.all(this.sql, params);
+    return this.database.all(this.sql, params);
   }
 
   run(...params: any[]) {
-    return this.db.run(this.sql, params);
+    return this.database.run(this.sql, params);
   }
 }
 
 export class MySqlDatabase implements AppDatabase {
   readonly dialect = 'mysql' as const;
-  private readonly connection: SyncMySqlConnection;
+  private readonly pool: Pool;
+  private readonly transactionContext = new AsyncLocalStorage<PoolConnection>();
+  private savepointCounter = 0;
 
   constructor(config: MySqlConnectionConfig) {
-    this.connection = new SyncMySql({
+    this.pool = mysql.createPool({
       host: config.host,
       port: config.port,
       user: config.user,
@@ -229,150 +282,204 @@ export class MySqlDatabase implements AppDatabase {
       database: config.database,
       charset: config.charset || 'utf8mb4',
       multipleStatements: config.multipleStatements ?? true,
-    }) as SyncMySqlConnection;
+      waitForConnections: true,
+      connectionLimit: config.connectionLimit ?? 20,
+      queueLimit: 0,
+      dateStrings: true,
+      timezone: 'Z',
+      supportBigNumbers: true,
+      bigNumberStrings: true,
+    });
   }
 
   prepare(sql: string): AppStatement {
     return new MySqlStatement(this, sql);
   }
 
-  exec(sql: string) {
+  async exec(sql: string) {
     const statements = splitSqlStatements(sql);
     if (!statements.length) return;
     for (const statement of statements) {
-      this.executeStatement(statement);
+      await this.executeStatement(statement);
     }
   }
 
-  pragma(_sql: string) {
+  async pragma(_sql: string) {
     return null;
   }
 
-  transaction<T extends (...args: any[]) => any>(fn: T): T {
-    return ((...args: any[]) => {
-      this.connection.query('START TRANSACTION');
+  transaction<T extends (...args: any[]) => any>(fn: T) {
+    return (async (...args: Parameters<T>) => {
+      const existingConnection = this.transactionContext.getStore();
+      if (existingConnection) {
+        const savepoint = `mysql_sp_${this.savepointCounter += 1}`;
+        await existingConnection.query(`SAVEPOINT ${savepoint}`);
+        try {
+          const result = await fn(...args);
+          await existingConnection.query(`RELEASE SAVEPOINT ${savepoint}`);
+          return result as Awaited<ReturnType<T>>;
+        } catch (error) {
+          try {
+            await existingConnection.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            await existingConnection.query(`RELEASE SAVEPOINT ${savepoint}`);
+          } catch {}
+          throw error;
+        }
+      }
+
+      const connection = await this.pool.getConnection();
       try {
-        const result = fn(...args);
-        this.connection.query('COMMIT');
-        return result;
+        await connection.beginTransaction();
+        const result = await this.transactionContext.run(connection, async () => fn(...args));
+        await connection.commit();
+        return result as Awaited<ReturnType<T>>;
       } catch (error) {
         try {
-          this.connection.query('ROLLBACK');
+          await connection.rollback();
         } catch {}
         throw error;
+      } finally {
+        connection.release();
       }
-    }) as T;
+    }) as (...args: Parameters<T>) => Promise<Awaited<ReturnType<T>>>;
   }
 
-  close() {
-    this.connection.dispose?.();
+  async close() {
+    await this.pool.end();
   }
 
-  get(sql: string, params: any[]) {
-    const rows = this.all(sql, params);
+  async get(sql: string, params: any[]) {
+    const rows = await this.all(sql, params);
     return rows[0];
   }
 
-  all(sql: string, params: any[]) {
-    const meta = this.handleMetaQuery(sql, params);
+  async all(sql: string, params: any[]) {
+    const meta = await this.handleMetaQuery(sql, params);
     if (meta.handled) return meta.rows;
 
     const normalized = normalizeMySqlSql(sql);
-    const result = this.connection.query(normalized, normalizeBindValues(params));
-    return Array.isArray(result) ? result : [];
-  }
-
-  run(sql: string, params: any[]): DbRunResult {
-    if (this.ensureConditionalIndex(sql)) {
-      return { changes: 0, lastInsertRowid: 0 };
-    }
-
-    const normalized = normalizeMySqlSql(sql);
-    const result = this.connection.query(normalized, normalizeBindValues(params)) as any;
-    if (Array.isArray(result)) {
-      return { changes: 0, lastInsertRowid: 0 };
-    }
-    return {
-      changes: Number(result?.affectedRows ?? result?.changedRows ?? 0),
-      lastInsertRowid: Number(result?.insertId ?? 0),
-    };
-  }
-
-  private executeStatement(sql: string) {
-    const statement = sql.trim();
-    if (!statement) return;
-    if (this.ensureConditionalIndex(statement)) return;
-    this.connection.query(normalizeMySqlSql(statement));
-  }
-
-  private ensureConditionalIndex(sql: string) {
-    const parsed = parseConditionalCreateIndex(sql);
-    if (!parsed) return false;
-
-    const existing = this.connection.query(
-      `
-        SELECT 1
-        FROM information_schema.statistics
-        WHERE table_schema = DATABASE()
-          AND table_name = ?
-          AND index_name = ?
-        LIMIT 1
-      `,
-      [parsed.tableName, parsed.indexName],
-    ) as any[];
-
-    if (Array.isArray(existing) && existing.length > 0) {
-      return true;
-    }
-
-    const sqlToRun = `CREATE ${parsed.unique ? 'UNIQUE ' : ''}INDEX ${parsed.indexName} ON ${parsed.tableName}${parsed.columnsSql}`;
-    this.connection.query(sqlToRun);
-    return true;
-  }
-
-  private handleMetaQuery(sql: string, params: any[]) {
-    const compact = sql.replace(/\s+/g, ' ').trim();
-    if (/^SELECT name FROM sqlite_master WHERE type='table' AND name = \?$/i.test(compact)) {
-      const rows = this.connection.query(
-        `
-          SELECT table_name AS name
-          FROM information_schema.tables
-          WHERE table_schema = DATABASE() AND table_name = ?
-          LIMIT 1
-        `,
-        normalizeBindValues(params),
-      ) as any[];
-      return { handled: true, rows: rows || [] };
-    }
-
-    const pragma = compact.match(/^PRAGMA table_info\(([^)]+)\)$/i);
-    if (pragma) {
-      const tableName = String(pragma[1] || '').replace(/['"`]/g, '');
-      const rows = this.connection.query(
-        `
-          SELECT
-            COLUMN_NAME AS name,
-            DATA_TYPE AS type,
-            CASE WHEN IS_NULLABLE = 'NO' THEN 1 ELSE 0 END AS notnull,
-            COLUMN_DEFAULT AS dflt_value,
-            CASE WHEN COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END AS pk
-          FROM information_schema.columns
-          WHERE table_schema = DATABASE() AND table_name = ?
-          ORDER BY ORDINAL_POSITION ASC
-        `,
-        [tableName],
-      ) as any[];
-      return { handled: true, rows: rows || [] };
-    }
-
-    return { handled: false, rows: [] as any[] };
-  }
-}
-
-export function createSqliteDatabase(dbPath: string) {
-  return new SqliteDatabase(new Database(dbPath));
-}
-
-export function createMySqlDatabase(config: MySqlConnectionConfig) {
-  return new MySqlDatabase(config);
-}
+    const [rows] = await this.getExecutor().query(normalized, normalizeBindValues(params));
++    return Array.isArray(rows) ? rows : [];
++  }
++
++  async run(sql: string, params: any[]): Promise<DbRunResult> {
++    if (await this.ensureConditionalIndex(sql)) {
++      return { changes: 0, lastInsertRowid: 0 };
++    }
++
++    const normalized = normalizeMySqlSql(sql);
++    const [result] = await this.getExecutor().query(normalized, normalizeBindValues(params));
++    if (Array.isArray(result)) {
++      return { changes: 0, lastInsertRowid: 0 };
++    }
++
++    const packet = result as any;
++    return {
++      changes: Number(packet?.affectedRows ?? packet?.changedRows ?? 0),
++      lastInsertRowid: Number(packet?.insertId ?? 0),
++    };
++  }
++
++  private getExecutor() {
++    return this.transactionContext.getStore() || this.pool;
++  }
++
++  private async executeStatement(sql: string) {
++    const statement = sql.trim();
++    if (!statement) return;
++    if (await this.ensureConditionalIndex(statement)) return;
++    await this.getExecutor().query(normalizeMySqlSql(statement));
++  }
++
++  private async ensureConditionalIndex(sql: string) {
++    const parsed = parseConditionalCreateIndex(sql);
++    if (!parsed) return false;
++
++    const [existing] = await this.getExecutor().query(
++      `
++        SELECT 1
++        FROM information_schema.statistics
++        WHERE table_schema = DATABASE()
++          AND table_name = ?
++          AND index_name = ?
++        LIMIT 1
++      `,
++      [parsed.tableName, parsed.indexName],
++    );
++
++    if (Array.isArray(existing) && existing.length > 0) {
++      return true;
++    }
++
++    const sqlToRun = `CREATE ${parsed.unique ? 'UNIQUE ' : ''}INDEX ${parsed.indexName} ON ${parsed.tableName}${parsed.columnsSql}`;
++    await this.getExecutor().query(sqlToRun);
++    return true;
++  }
++
++  private async handleMetaQuery(sql: string, params: any[]) {
++    const compact = sql.replace(/\s+/g, ' ').trim();
++    if (/^SELECT name FROM sqlite_master WHERE type='table' AND name = \?$/i.test(compact)) {
++      const [rows] = await this.getExecutor().query(
++        `
++          SELECT table_name AS name
++          FROM information_schema.tables
++          WHERE table_schema = DATABASE() AND table_name = ?
++          LIMIT 1
++        `,
++        normalizeBindValues(params),
++      );
++      return { handled: true, rows: Array.isArray(rows) ? rows : [] };
++    }
++
++    const pragma = compact.match(/^PRAGMA table_info\(([^)]+)\)$/i);
++    if (pragma) {
++      const tableName = String(pragma[1] || '').replace(/['"`]/g, '');
++      const [rows] = await this.getExecutor().query(
++        `
++          SELECT
++            COLUMN_NAME AS name,
++            DATA_TYPE AS type,
++            CASE WHEN IS_NULLABLE = 'NO' THEN 1 ELSE 0 END AS notnull,
++            COLUMN_DEFAULT AS dflt_value,
++            CASE WHEN COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END AS pk
++          FROM information_schema.columns
++          WHERE table_schema = DATABASE() AND table_name = ?
++          ORDER BY ORDINAL_POSITION ASC
++        `,
++        [tableName],
++      );
++      return { handled: true, rows: Array.isArray(rows) ? rows : [] };
++    }
++
++    return { handled: false, rows: [] as any[] };
++  }
++}
++
++export function createSqliteDatabase(dbPath: string) {
++  return new SqliteDatabase(new Database(dbPath));
++}
++
++export function createMySqlDatabase(config: MySqlConnectionConfig) {
++  return new MySqlDatabase(config);
++}
++
++export async function ensureMySqlDatabase(config: MySqlConnectionConfig) {
++  const connection = await mysql.createConnection({
++    host: config.host,
++    port: config.port,
++    user: config.user,
++    password: config.password,
++    charset: config.charset || 'utf8mb4',
++    multipleStatements: true,
++    timezone: 'Z',
++  });
++
++  try {
++    await connection.query(
++      'CREATE DATABASE IF NOT EXISTS ?? CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
++      [config.database],
++    );
++  } finally {
++    await connection.end();
++  }
++}

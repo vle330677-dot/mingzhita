@@ -3,6 +3,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { createMySqlDatabase, createSqliteDatabase } from './client';
+import { getMySqlConfigFromEnv, shouldUseMySql } from './mysqlConfig';
 import type { AppDatabase } from './types';
 import { runSchema } from './schema';
 import { runMigrate } from './migrate';
@@ -58,34 +59,21 @@ function initSqliteDb() {
 }
 
 function initMySqlDb() {
-  const host = process.env.MYSQL_HOST || '127.0.0.1';
-  const port = Number(process.env.MYSQL_PORT || 3306);
-  const user = process.env.MYSQL_USER || 'root';
-  const password = process.env.MYSQL_PASSWORD || '';
-  const database = process.env.MYSQL_DATABASE || 'mingzhita';
-  const charset = process.env.MYSQL_CHARSET || 'utf8mb4';
+  const config = getMySqlConfigFromEnv();
 
   const bootstrap = new SyncMySql({
-    host,
-    port,
-    user,
-    password,
-    charset,
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    password: config.password,
+    charset: config.charset,
     multipleStatements: true,
   }) as { query: (sql: string, params?: any[]) => any; dispose?: () => void };
 
-  bootstrap.query('CREATE DATABASE IF NOT EXISTS ?? CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', [database]);
+  bootstrap.query('CREATE DATABASE IF NOT EXISTS ?? CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', [config.database]);
   bootstrap.dispose?.();
 
-  const db = createMySqlDatabase({
-    host,
-    port,
-    user,
-    password,
-    database,
-    charset,
-    multipleStatements: true,
-  });
+  const db = createMySqlDatabase(config);
 
   runSchema(db);
   runMigrate(db);
@@ -94,7 +82,5 @@ function initMySqlDb() {
 }
 
 export function initDb(): AppDatabase {
-  const client = String(process.env.DB_CLIENT || '').trim().toLowerCase();
-  const shouldUseMySql = client === 'mysql' || (!!process.env.MYSQL_HOST && client !== 'sqlite');
-  return shouldUseMySql ? initMySqlDb() : initSqliteDb();
+  return shouldUseMySql() ? initMySqlDb() : initSqliteDb();
 }
