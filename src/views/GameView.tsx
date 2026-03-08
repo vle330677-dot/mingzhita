@@ -27,7 +27,6 @@ import { WildHuntView } from './WildHuntView';
 import CustomFactionView from './CustomFactionView';
 
 // ===== 新增：灾厄游戏 =====
-import { CustomGamePlayerView } from './CustomGamePlayerView';
 import CustomGameRunView from './CustomGameRunView';
 
 import { GlobalAnnouncementPrompt } from './GlobalAnnouncementPrompt';
@@ -280,7 +279,6 @@ export function GameView({ user, onLogout, showToast, fetchGlobalData }: Props) 
   const [groupRPJoinedLocationName, setGroupRPJoinedLocationName] = useState('');
 
   // ===== 灾厄游戏状态（新增）=====
-  const [showCustomGamePanel, setShowCustomGamePanel] = useState(false);
   const [activeCustomGameId, setActiveCustomGameId] = useState<number | null>(null);
   const [customFactions, setCustomFactions] = useState<any[]>([]);
   const [customFactionAssets, setCustomFactionAssets] = useState<any[]>([]);
@@ -2318,19 +2316,43 @@ const closeAnnouncement = () => {
         content = <LondonTowerView {...commonProps} />;
         break;
       case 'sanctuary':
-        content = <SanctuaryView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
+        content = (
+          <SanctuaryView
+            {...commonProps}
+            onNavigateLocation={handleNavigateLocationFromSubView}
+            onEnterCustomGameRun={(gameId) => setActiveCustomGameId(Number(gameId || 0))}
+          />
+        );
         break;
       case 'guild':
         content = <GuildView {...commonProps} />;
         break;
       case 'army':
-        content = <ArmyView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
+        content = (
+          <ArmyView
+            {...commonProps}
+            onNavigateLocation={handleNavigateLocationFromSubView}
+            onEnterCustomGameRun={(gameId) => setActiveCustomGameId(Number(gameId || 0))}
+          />
+        );
         break;
       case 'slums':
-        content = <SlumsView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
+        content = (
+          <SlumsView
+            {...commonProps}
+            onNavigateLocation={handleNavigateLocationFromSubView}
+            onEnterCustomGameRun={(gameId) => setActiveCustomGameId(Number(gameId || 0))}
+          />
+        );
         break;
       case 'rich_area':
-        content = <RichAreaView {...commonProps} onNavigateLocation={handleNavigateLocationFromSubView} />;
+        content = (
+          <RichAreaView
+            {...commonProps}
+            onNavigateLocation={handleNavigateLocationFromSubView}
+            onEnterCustomGameRun={(gameId) => setActiveCustomGameId(Number(gameId || 0))}
+          />
+        );
         break;
       case 'demon_society':
         content = <DemonSocietyView {...commonProps} />;
@@ -3879,49 +3901,56 @@ const closeAnnouncement = () => {
         )}
       </AnimatePresence>
 
-      {/* ===== 新增：灾厄游戏面板 ===== */}
+      {/* ===== 新增：灾厄运行页 ===== */}
       <AnimatePresence>
-        {showCustomGamePanel && (
-          <div className="fixed inset-0 z-[9996] bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-            <div className="max-w-3xl mx-auto mt-10">
+        {activeCustomGameId && (
+          <div className="fixed inset-0 z-[9997] bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="max-w-6xl mx-auto mt-6">
               <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 mb-3 flex justify-between items-center">
-                <h3 className="font-black text-white">灾厄游戏中心</h3>
+                <h3 className="font-black text-white">灾厄运行区</h3>
                 <button
-                  onClick={() => setShowCustomGamePanel(false)}
+                  onClick={async () => {
+                    const gameId = Number(activeCustomGameId || 0);
+                    if (gameId) {
+                      try {
+                        await fetch(`/api/custom-games/${gameId}/run/leave`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}`
+                          },
+                          body: JSON.stringify({})
+                        });
+                      } catch {
+                        // ignore and still return to world view
+                      }
+                    }
+                    setActiveCustomGameId(null);
+                    fetchGlobalData();
+                  }}
                   className="px-3 py-1 rounded bg-slate-700 text-white"
                 >
                   关闭
                 </button>
               </div>
 
-              <CustomGamePlayerView
-                {...({
-                  user,
-                  showToast,
-                  onEnterRun: (gameId: number) => {
-                    setActiveCustomGameId(Number(gameId || 0));
-                    setShowCustomGamePanel(false);
-                  }
-                } as any)}
-              />
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white">
+                <CustomGameRunView
+                  gameId={Number(activeCustomGameId)}
+                  currentUser={{
+                    id: Number(user.id || 0),
+                    username: String(user.name || ''),
+                    nickname: String(user.name || ''),
+                    isAdmin: false
+                  }}
+                  onExit={() => {
+                    setActiveCustomGameId(null);
+                    fetchGlobalData();
+                  }}
+                />
+              </div>
             </div>
           </div>
-        )}
-      </AnimatePresence>
-
-      {/* ===== 新增：灾厄运行页 ===== */}
-      <AnimatePresence>
-        {activeCustomGameId && (
-          <CustomGameRunView
-            gameId={Number(activeCustomGameId)}
-            currentUser={{
-              id: Number(user.id || 0),
-              username: String(user.name || ''),
-              nickname: String(user.name || ''),
-              isAdmin: false
-            }}
-            onExit={() => setActiveCustomGameId(null)}
-          />
         )}
       </AnimatePresence>
 

@@ -56,6 +56,9 @@ type RunState = {
   // 后端可返回权限标识；没有就走前端兜底
   canControl?: boolean;
   creatorUserId?: number;
+  worldDataMode?: "isolated" | "not_joined";
+  worldSnapshotCapturedAt?: string | null;
+  returnedAt?: string | null;
 };
 
 type Settlement = {
@@ -319,6 +322,24 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
     }
   }, [canControl, gameId, fetchActiveAndState]);
 
+  const leaveRun = useCallback(async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      if (runState?.isJoined) {
+        await api(`${API_BASE}/${gameId}/run/leave`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+      }
+    } catch (e: any) {
+      setErr(e?.message || "返回主世界失败");
+    } finally {
+      setBusy(false);
+      onExit?.();
+    }
+  }, [gameId, onExit, runState?.isJoined]);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -344,6 +365,24 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
       clearInterval(timer);
     };
   }, [fetchActiveAndState]);
+
+  useEffect(() => {
+    if (!runState) return;
+    const incomingStages =
+      Array.isArray(runState.stageConfigs) && runState.stageConfigs.length
+        ? runState.stageConfigs.map((item, index) => ({
+            index: index + 1,
+            name: String(item.name || `阶段${index + 1}`),
+            desc: String(item.desc || ""),
+          }))
+        : Array.from({ length: Math.max(1, Number(runState.totalStages || 1)) }).map((_, index) => ({
+            index: index + 1,
+            name: `阶段${index + 1}`,
+            desc: "",
+          }));
+    setCfgTotalStages(Math.max(1, Number(runState.totalStages || incomingStages.length || 1)));
+    setCfgStages(incomingStages);
+  }, [runState?.runId, runState?.totalStages, JSON.stringify(runState?.stageConfigs || [])]);
 
   // 配置阶段行增删
   const ensureStageRows = (count: number) => {
@@ -374,7 +413,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
         {err ? <p style={{ color: "tomato" }}>{err}</p> : null}
         {onExit ? (
           <div style={{ marginTop: 10 }}>
-            <button onClick={onExit}>回归原世界</button>
+            <button onClick={leaveRun}>回归原世界</button>
           </div>
         ) : null}
       </div>
@@ -399,6 +438,18 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
           <span>阶段名：{runState.stageName || "-"}</span>
           <span>玩家：{runState.players?.length || 0}</span>
           <span>你：{myName}</span>
+        </div>
+
+        <div style={{ marginBottom: 12, border: "1px solid #314158", background: "#111827", borderRadius: 8, padding: 10, color: "#dbeafe" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>副本数据隔离说明</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            当前灾厄局使用独立临时数据层，不继承主世界属性、背包和技能；结算后只保留积分，离开时回到原本世界存档。
+          </div>
+          {runState.worldSnapshotCapturedAt ? (
+            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 6 }}>
+              主世界快照时间：{new Date(runState.worldSnapshotCapturedAt).toLocaleString()}
+            </div>
+          ) : null}
         </div>
 
         <div style={{ marginBottom: 12, border: "1px solid #2b2b2b", borderRadius: 8, padding: 8 }}>
@@ -445,6 +496,21 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
               </div>
             ))}
           </div>
+          {(runState.mapConfig as any)?.announcementText ? (
+            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
+              <strong>开局公告：</strong> {String((runState.mapConfig as any)?.announcementText || "")}
+            </div>
+          ) : null}
+          {(runState.mapConfig as any)?.layoutRuleText ? (
+            <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.6 }}>
+              <strong>地图规则：</strong> {String((runState.mapConfig as any)?.layoutRuleText || "")}
+            </div>
+          ) : null}
+          {runState.stageDesc ? (
+            <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.6 }}>
+              <strong>当前阶段说明：</strong> {runState.stageDesc}
+            </div>
+          ) : null}
         </div>
 
         {err ? <p style={{ color: "tomato" }}>{err}</p> : null}
@@ -532,6 +598,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
               <div>
                 <p>结束时间：{new Date(settlement.endedAt).toLocaleString()}</p>
                 <p>结果：{settlement.result || "已结算"}</p>
+                <p>结算排名会同步写入命之塔公告厅，长期只累计积分。</p>
                 <ul>
                   {(settlement.rank || []).map((r, i) => (
                     <li key={r.userId}>
@@ -548,7 +615,7 @@ const CustomGameRunView: React.FC<Props> = ({ gameId, currentUser, onExit, class
 
         <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
           <button onClick={() => fetchActiveAndState()} disabled={busy}>刷新</button>
-          {onExit ? <button onClick={onExit}>回归原世界</button> : null}
+          {onExit ? <button onClick={leaveRun}>回归原世界</button> : null}
         </div>
       </section>
 

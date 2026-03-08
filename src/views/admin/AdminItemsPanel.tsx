@@ -30,13 +30,18 @@ const ITEM_LOCATIONS = [
   { value: 'slums', label: '西市' },
   { value: 'rich_area', label: '东市' },
   { value: 'demon_society', label: '恶魔会' },
-  { value: 'guild', label: '工会' },
+  { value: 'guild', label: '公会' },
   { value: 'army', label: '军队' },
   { value: 'tower_guard', label: '守塔会' },
   { value: 'observers', label: '观察者' },
   { value: 'paranormal_office', label: '灵异管理所' },
 ];
 const EMPTY_ITEM: CatalogItemRow = { name: '', description: '', locationTag: 'all', faction: '全图', price: 0, tier: '低阶', itemType: '回复道具', effectValue: 0, npcId: null };
+
+function formatItemLocation(locationTag: string | undefined) {
+  const key = String(locationTag || 'all');
+  return ITEM_LOCATIONS.find((option) => option.value === key)?.label || key;
+}
 
 export function AdminItemsPanel({ refreshKey, onNotice }: Props) {
   const [items, setItems] = useState<CatalogItemRow[]>([]);
@@ -118,10 +123,10 @@ export function AdminItemsPanel({ refreshKey, onNotice }: Props) {
                 <div className="font-black">{item.name}</div>
                 <div className="text-xs text-slate-500">{item.faction || '通用'} · {item.tier || '低阶'} · {item.itemType || '回复道具'}</div>
               </div>
-              <div className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black text-slate-700">{Number(item.price || 0)} G</div>
+              <div className="rounded-full bg-slate-200 px-3 py-1 text-xs font-black text-slate-700">{Number(item.price || 0)} 金币</div>
             </div>
             <div className="mt-3 text-sm leading-6 text-slate-700">{item.description || '暂无描述'}</div>
-            <div className="mt-3 text-xs text-slate-500">掉落区域：{item.locationTag || 'all'} · 效果值：{Number(item.effectValue || 0)}</div>
+            <div className="mt-3 text-xs text-slate-500">掉落区域：{formatItemLocation(item.locationTag)} · 效果值：{Number(item.effectValue || 0)}</div>
             <div className="mt-3 flex gap-2">
               <button onClick={() => setEditingItem({ ...item })} className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-black text-white hover:bg-slate-800">编辑</button>
               <button onClick={() => deleteItem(item)} className="rounded-xl bg-rose-100 px-3 py-1.5 text-xs font-black text-rose-700 hover:bg-rose-200">删除</button>
@@ -145,7 +150,7 @@ export function AdminItemsPanel({ refreshKey, onNotice }: Props) {
               <SelectField label="物品类型" value={editingItem.itemType || '回复道具'} onChange={(value) => setEditingItem({ ...editingItem, itemType: value })} options={ITEM_TYPES.map((value) => ({ value, label: value }))} />
               <Field label="价格" value={String(editingItem.price ?? 0)} onChange={(value) => setEditingItem({ ...editingItem, price: Number(value || 0) })} />
               <Field label="效果值" value={String(editingItem.effectValue ?? 0)} onChange={(value) => setEditingItem({ ...editingItem, effectValue: Number(value || 0) })} />
-              <Field label="NPC ID（可空）" value={String(editingItem.npcId ?? '')} onChange={(value) => setEditingItem({ ...editingItem, npcId: value ? Number(value) : null })} />
+              <Field label="NPC 编号（可空）" value={String(editingItem.npcId ?? '')} onChange={(value) => setEditingItem({ ...editingItem, npcId: value ? Number(value) : null })} />
             </div>
             <label className="mt-4 block text-xs font-black text-slate-500"><span className="mb-1 block">描述</span><textarea value={editingItem.description || ''} onChange={(event) => setEditingItem({ ...editingItem, description: event.target.value })} rows={5} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900" /></label>
             <div className="mt-4 flex justify-end gap-2">

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../utils/http';
 
 type AnyGame = Record<string, any>;
@@ -7,6 +7,7 @@ export function AdminCustomGamesView() {
   const [ideaList, setIdeaList] = useState<AnyGame[]>([]);
   const [mapList, setMapList] = useState<AnyGame[]>([]);
   const [startList, setStartList] = useState<AnyGame[]>([]);
+  const [voteQueueList, setVoteQueueList] = useState<AnyGame[]>([]);
   const [comment, setComment] = useState('');
   const [voteStats, setVoteStats] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,7 @@ export function AdminCustomGamesView() {
     const key = String(raw || '').toLowerCase();
     const map: Record<string, string> = {
       open: '进行中',
-      closed: '已结束',
+      closed: '已关闭',
       pending: '待开启',
       passed: '已通过',
       rejected: '未通过',
@@ -60,7 +61,7 @@ export function AdminCustomGamesView() {
     () =>
       mapList.map((m) => ({
         ...m,
-        title: `${String(m.game_title || '未命名灾厄局')} · 地图v${Number(m.version || 1)}`,
+        title: `${String(m.game_title || '未命名灾厄局')} · 地图版本 ${Number(m.version || 1)}`,
         creatorLabel: `地图#${Number(m.id || 0)} / 游戏#${Number(m.game_id || 0)}`,
       })),
     [mapList]
@@ -69,14 +70,16 @@ export function AdminCustomGamesView() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [ideas, maps, starts] = await Promise.all([
+      const [ideas, maps, starts, votes] = await Promise.all([
         apiFetch<any[]>('/api/custom-games/admin/review/ideas/pending', { auth: 'admin' }),
         apiFetch<any[]>('/api/custom-games/admin/review/maps/pending', { auth: 'admin' }),
         apiFetch<any[]>('/api/custom-games/admin/review/start/pending', { auth: 'admin' }),
+        apiFetch<any[]>('/api/custom-games/admin/review/votes/queue', { auth: 'admin' }),
       ]);
       setIdeaList(Array.isArray(ideas) ? ideas : []);
       setMapList(Array.isArray(maps) ? maps : []);
       setStartList(Array.isArray(starts) ? starts : []);
+      setVoteQueueList(Array.isArray(votes) ? votes : []);
     } catch (e: any) {
       alert(e?.message || '加载灾厄游戏审核列表失败');
     } finally {
@@ -166,6 +169,7 @@ export function AdminCustomGamesView() {
       });
       showMsg(`全服投票已开启，截止时间：${data?.voteEndsAt || '未知'}`);
       await loadAll();
+      await fetchVoteStatus(id);
     } catch (e: any) {
       showMsg(`开启投票失败：${e?.message || '未知错误'}`);
     }
@@ -190,6 +194,9 @@ export function AdminCustomGamesView() {
       });
       showMsg(data?.passed ? '投票通过，灾厄副本已开启' : '投票未通过，未满足半数同意');
       await loadAll();
+      if (!data?.passed) {
+        await fetchVoteStatus(id);
+      }
     } catch (e: any) {
       showMsg(`判定失败：${e?.message || '未知错误'}`);
     }
@@ -245,7 +252,6 @@ export function AdminCustomGamesView() {
           <div className="space-y-2">
             {startList.map((g) => {
               const gameId = Number(g.id || 0);
-              const vote = voteStats[gameId];
               return (
                 <div key={gameId} className="border rounded p-3 space-y-2">
                   <div className="flex items-start justify-between gap-3">
@@ -275,29 +281,71 @@ export function AdminCustomGamesView() {
                     >
                       驳回开局
                     </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border rounded-2xl p-4">
+        <h3 className="font-black mb-3">投票管理</h3>
+        {voteQueueList.length === 0 ? (
+          <div className="text-slate-400 text-sm">暂无待处理项目</div>
+        ) : (
+          <div className="space-y-2">
+            {voteQueueList.map((g) => {
+              const gameId = Number(g.id || 0);
+              const vote = voteStats[gameId];
+              const voteOpen = String(g.vote_status || '').toLowerCase() === 'open';
+              const canOpenVote = ['ready_for_vote', 'ready_for_start', 'vote_failed'].includes(String(g.status || '').toLowerCase()) && !voteOpen;
+              const canJudge = voteOpen;
+              return (
+                <div key={`vote-${gameId}`} className="border rounded p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold">{String(g.title || `游戏#${gameId}`)}</div>
+                      <div className="text-xs text-slate-500">
+                        创建者 #{Number(g.creator_user_id || 0)} · {formatReviewStatus(g.status)} · 投票 {formatVoteStatus(g.vote_status)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteGame(gameId, String(g.title || `游戏#${gameId}`))}
+                      className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded font-bold text-sm hover:bg-slate-300"
+                    >
+                      删除申请
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => openVote(gameId)}
-                      className="px-3 py-1.5 bg-sky-600 text-white rounded font-bold text-sm"
+                      disabled={!canOpenVote}
+                      className="px-3 py-1.5 bg-sky-600 text-white rounded font-bold text-sm disabled:opacity-50"
                     >
                       开启全服投票
                     </button>
                     <button
                       onClick={() => closeAndJudge(gameId)}
-                      className="px-3 py-1.5 bg-violet-600 text-white rounded font-bold text-sm"
+                      disabled={!canJudge}
+                      className="px-3 py-1.5 bg-violet-600 text-white rounded font-bold text-sm disabled:opacity-50"
                     >
                       关票并判定
                     </button>
-                  </div>
-                  <div className="flex gap-2 items-center flex-wrap">
-                    <button onClick={() => fetchVoteStatus(gameId)} className="px-3 py-1 bg-slate-700 text-white rounded text-sm font-bold">
+                    <button
+                      onClick={() => fetchVoteStatus(gameId)}
+                      className="px-3 py-1.5 bg-slate-700 text-white rounded font-bold text-sm"
+                    >
                       查看票数
                     </button>
-                    {vote && (
-                      <div className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">
-                        同意 {Number(vote.yesCount || 0)} · 反对 {Number(vote.noCount || 0)} · 总计 {Number(vote.total || 0)} · {formatVoteStatus(vote.voteStatus)}
-                      </div>
-                    )}
                   </div>
+
+                  {vote && (
+                    <div className="text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                      同意 {Number(vote.yesCount || 0)} · 反对 {Number(vote.noCount || 0)} · 总计 {Number(vote.total || 0)} · {formatVoteStatus(vote.voteStatus)}
+                    </div>
+                  )}
                 </div>
               );
             })}

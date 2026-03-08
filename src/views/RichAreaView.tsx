@@ -16,6 +16,7 @@ interface Props {
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
   onNavigateLocation?: (locationId: string) => void;
+  onEnterCustomGameRun?: (gameId: number) => void;
 }
 
 interface RoomEntrance {
@@ -65,7 +66,7 @@ function safeParse<T = any>(raw: string | null, fallback: T): T {
   try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
 }
 
-export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
+export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation, onEnterCustomGameRun }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
 
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
@@ -390,6 +391,7 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
           onNavigateLocation?.(locationId);
         }}
         onExitToWorld={() => { setEnteredRoom(null); onExit(); }}
+        onEnterCustomGameRun={onEnterCustomGameRun}
       />
     );
   }

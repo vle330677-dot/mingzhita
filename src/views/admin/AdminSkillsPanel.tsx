@@ -126,7 +126,7 @@ export function AdminSkillsPanel({ refreshKey, onNotice }: Props) {
               <Field label="名称" value={editingSkill.name || ''} onChange={(value) => setEditingSkill({ ...editingSkill, name: value })} />
               <SelectField label="派系" value={editingSkill.faction || '通用'} onChange={(value) => setEditingSkill({ ...editingSkill, faction: value })} options={SKILL_FACTIONS.map((value) => ({ value, label: value }))} />
               <SelectField label="阶级" value={editingSkill.tier || '低阶'} onChange={(value) => setEditingSkill({ ...editingSkill, tier: value })} options={TIERS.map((value) => ({ value, label: value }))} />
-              <Field label="NPC ID（可空）" value={String(editingSkill.npcId ?? '')} onChange={(value) => setEditingSkill({ ...editingSkill, npcId: value ? Number(value) : null })} />
+              <Field label="NPC 编号（可空）" value={String(editingSkill.npcId ?? '')} onChange={(value) => setEditingSkill({ ...editingSkill, npcId: value ? Number(value) : null })} />
             </div>
             <label className="mt-4 block text-xs font-black text-slate-500"><span className="mb-1 block">描述</span><textarea value={editingSkill.description || ''} onChange={(event) => setEditingSkill({ ...editingSkill, description: event.target.value })} rows={5} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900" /></label>
             <div className="mt-4 flex justify-end gap-2">

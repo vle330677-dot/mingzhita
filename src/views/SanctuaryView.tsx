@@ -23,6 +23,7 @@ interface Props {
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
   onNavigateLocation?: (locationId: string) => void;
+  onEnterCustomGameRun?: (gameId: number) => void;
 }
 
 interface RoomEntrance {
@@ -115,7 +116,7 @@ function hasJob(job?: string) {
   return !!value && value !== '无';
 }
 
-export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
+export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation, onEnterCustomGameRun }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<MapBuilding | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [healSkills, setHealSkills] = useState<any[]>([]);
@@ -477,6 +478,7 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
           setEnteredRoom(null);
           onExit();
         }}
+        onEnterCustomGameRun={onEnterCustomGameRun}
       />
     );
   }

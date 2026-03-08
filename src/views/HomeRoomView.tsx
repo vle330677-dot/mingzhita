@@ -3,6 +3,7 @@ import {
   ArrowLeft, BedDouble, ChevronDown, ChevronUp, Download, MessageSquarePlus,
   Save, Settings, Sparkles, Trash2
 } from 'lucide-react';
+import { CustomGamePlayerView } from './CustomGamePlayerView';
 
 type HomeLocation = 'sanctuary' | 'slums' | 'rich_area';
 const NONE = '无';
@@ -80,6 +81,7 @@ interface Props {
   refreshGlobalData?: () => void;
   onRequestSwitchLocation?: (locationId: string) => void;
   onExitToWorld?: () => void;
+  onEnterCustomGameRun?: (gameId: number) => void;
 }
 
 export function deriveInitialHomeLocation(user: UserLite): HomeLocation {
@@ -524,7 +526,8 @@ export default function HomeRoomView({
   onSaved,
   refreshGlobalData,
   onRequestSwitchLocation,
-  onExitToWorld
+  onExitToWorld,
+  onEnterCustomGameRun
 }: Props) {
   const isOwner = Number(currentUser.id) === Number(room.ownerId);
   const actualLoc = normalizeHomeLocation(room.homeLocation) || sourceMap;
@@ -1299,49 +1302,27 @@ export default function HomeRoomView({
               {activePanel === p.id ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
             </button>
           ))}
-          {!isOwner && (
-            <button
-              onClick={() => setShowCustomGameApply(true)}
-              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-black bg-rose-800/60 hover:bg-rose-700 text-rose-200"
-            >
-              <MessageSquarePlus size={12} /> 灾厄申请
-            </button>
-          )}
         </div>
       </div>
 
       {/* Custom game modal */}
       {showCustomGameApply && (
         <div className="fixed inset-0 z-[255] bg-black/70 flex items-center justify-center p-4 mobile-portrait-safe-overlay">
-          <div className="w-full max-w-2xl rounded-3xl border border-rose-700/40 bg-slate-900/95 p-5 shadow-2xl mobile-portrait-safe-card mobile-contrast-surface-dark">
+          <div className="w-full max-w-6xl rounded-3xl border border-rose-700/40 bg-slate-900/95 p-5 shadow-2xl mobile-portrait-safe-card mobile-contrast-surface-dark">
             <div className="flex items-center justify-between gap-3 mb-3">
               <h4 className="text-base font-black text-rose-200 flex items-center gap-2">
-                <MessageSquarePlus size={15} /> 灾厄开戏申请
+                <MessageSquarePlus size={15} /> 灾厄游戏中心
               </h4>
               <button onClick={() => setShowCustomGameApply(false)} className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold">关闭</button>
             </div>
-            <div className="space-y-2">
-              <input value={customGameTitle} onChange={(e) => setCustomGameTitle(e.target.value)} placeholder="灾厄游戏标题" className="w-full p-2 rounded bg-slate-950 border border-slate-700 text-xs" />
-              <textarea value={customGameIdea} onChange={(e) => setCustomGameIdea(e.target.value)} placeholder="游戏大纲（背景、规则、目标等）" className="w-full h-28 p-2 rounded bg-slate-950 border border-slate-700 text-xs" />
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={submitCustomGameApply} disabled={customGameBusy} className="py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-xs font-black disabled:opacity-60">
-                  {customGameBusy ? '提交中...' : '提交审核'}
-                </button>
-                <button onClick={() => loadMyCustomGames()} disabled={customGameLoading} className="py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-black disabled:opacity-60">
-                  {customGameLoading ? '刷新中...' : '刷新记录'}
-                </button>
-              </div>
-            </div>
-            <div className="mt-3 rounded-2xl border border-slate-700 bg-slate-800/60 p-3 max-h-36 overflow-y-auto custom-scrollbar">
-              {customGameLoading ? <div className="text-xs text-slate-400">加载中...</div> :
-               customGameRows.length === 0 ? <div className="text-xs text-slate-500">暂无申请记录</div> :
-               customGameRows.map((g) => (
-                 <div key={g.id} className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 mb-2">
-                   <div className="text-xs font-black text-white truncate">{g.title}</div>
-                   <div className="text-[11px] text-slate-400">状态：{g.status}</div>
-                 </div>
-               ))}
-            </div>
+            <CustomGamePlayerView
+              user={currentUser as any}
+              showToast={showToast}
+              onEnterRun={(gameId) => {
+                setShowCustomGameApply(false);
+                onEnterCustomGameRun?.(gameId);
+              }}
+            />
           </div>
         </div>
       )}

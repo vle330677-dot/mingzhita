@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User } from '../types';
 
 interface Props {
@@ -28,38 +28,8 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
   const [visible, setVisible] = useState(false);
   const [voteStat, setVoteStat] = useState<any>(null);
   const seenRef = useRef<string>('');
-  const handledGameStartRef = useRef<Set<string>>(new Set());
-  const handledRunSwitchRef = useRef<Set<string>>(new Set());
+  const handledActivePromptRef = useRef<Set<string>>(new Set());
 
-  const joinAndEnterRun = useCallback(
-    async (gameId: number, runId: string, failMessage: string) => {
-      try {
-        const res = await fetch(`/api/custom-games/${gameId}/run/join`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('USER_TOKEN') || ''}`
-          },
-          body: JSON.stringify({ userId: user.id })
-        });
-        const data = await res.json().catch(() => ({} as any));
-        if (!res.ok) {
-          showToast(data.message || failMessage);
-          return false;
-        }
-        showToast('灾厄降临了，已自动切换到创作者地图');
-        setVisible(false);
-        onEnterRun({ runId, gameId });
-        return true;
-      } catch {
-        showToast('网络异常，自动切换失败，请手动进入');
-        return false;
-      }
-    },
-    [onEnterRun, showToast, user.id]
-  );
-
-  // 在线心跳（投票在线人数统计）
   useEffect(() => {
     const hb = setInterval(() => {
       fetch('/api/presence/heartbeat', {
@@ -72,24 +42,24 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
     return () => clearInterval(hb);
   }, [user.id]);
 
-  // 拉公告（只关心 vote_open / game_start）
   useEffect(() => {
     const poll = async () => {
       try {
         const res = await fetch('/api/announcements');
-        const data = await res.json();
+        const data = await res.json().catch(() => ({} as any));
         if (!data.success) return;
 
         const list = Array.isArray(data.announcements) ? data.announcements : [];
         const target = [...list].reverse().find((x: any) => x.type === 'vote_open' || x.type === 'game_start');
         if (!target) return;
 
-        if (seenRef.current !== target.id) {
-          seenRef.current = target.id;
-          setLatest(target);
-          setVisible(true);
-          setVoteStat(null);
-        }
+        const nextId = String(target.id || '');
+        if (!nextId || seenRef.current === nextId) return;
+
+        seenRef.current = nextId;
+        setLatest(target);
+        setVisible(true);
+        setVoteStat(null);
       } catch {
         // ignore
       }
@@ -100,11 +70,10 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
     return () => clearInterval(t);
   }, []);
 
-  // 如果是投票公告，轮询票数
   useEffect(() => {
     if (!latest || latest.type !== 'vote_open') return;
     const extra = parseExtraFromAnnouncement(latest);
-    const gameId = extra.gameId;
+    const gameId = Number(extra.gameId || 0);
     if (!gameId) return;
 
     const pollVote = async () => {
@@ -123,31 +92,6 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
   }, [latest]);
 
   useEffect(() => {
-    if (!latest || latest.type !== 'game_start') return;
-
-    const noticeId = String(latest.id || '');
-    if (!noticeId) return;
-    if (handledGameStartRef.current.has(noticeId)) return;
-    handledGameStartRef.current.add(noticeId);
-
-    const extra = parseExtraFromAnnouncement(latest);
-    const runId = String(extra.runId || '');
-    const gameId = Number(extra.gameId || 0);
-    if (!runId || !gameId) return;
-    const runKey = `${gameId}:${runId}`;
-    if (handledRunSwitchRef.current.has(runKey)) return;
-    handledRunSwitchRef.current.add(runKey);
-
-    (async () => {
-      const ok = await joinAndEnterRun(gameId, runId, '灾厄地图切换失败，请手动进入');
-      if (!ok) {
-        handledRunSwitchRef.current.delete(runKey);
-      }
-    })();
-  }, [joinAndEnterRun, latest]);
-
-  // 公告丢失兜底：只要存在运行中的灾厄局，在线玩家都会自动切到创作者地图
-  useEffect(() => {
     let alive = true;
     const pollActiveRun = async () => {
       try {
@@ -157,21 +101,27 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
           }
         });
         const data = await res.json().catch(() => ({} as any));
-        if (!alive || !res.ok) return;
-        if (!Boolean(data?.hasActive)) return;
+        if (!alive || !res.ok || !Boolean(data?.hasActive)) return;
 
         const gameId = Number(data?.gameId || 0);
         const runId = String(data?.runId || '');
         if (!gameId || !runId) return;
 
         const runKey = `${gameId}:${runId}`;
-        if (handledRunSwitchRef.current.has(runKey)) return;
-        handledRunSwitchRef.current.add(runKey);
+        if (handledActivePromptRef.current.has(runKey)) return;
+        handledActivePromptRef.current.add(runKey);
 
-        const ok = await joinAndEnterRun(gameId, runId, '灾厄地图切换失败，请手动进入');
-        if (!ok) {
-          handledRunSwitchRef.current.delete(runKey);
-        }
+        if (latest?.type === 'game_start') return;
+
+        setLatest({
+          id: `active-run-${runKey}`,
+          type: 'game_start',
+          title: String(data?.gameTitle || '灾厄游戏已开启'),
+          content: `${String(data?.mapName || '创作者地图')} 正在运行中，是否进入由你自行决定。`,
+          payload: { gameId, runId, mapName: String(data?.mapName || '') }
+        });
+        setVisible(true);
+        setVoteStat(null);
       } catch {
         // ignore
       }
@@ -183,14 +133,14 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
       alive = false;
       clearInterval(t);
     };
-  }, [joinAndEnterRun]);
+  }, [latest?.type]);
 
   if (!visible || !latest) return null;
 
   const extra = parseExtraFromAnnouncement(latest);
 
   const renderVoteOpen = () => {
-    const gameId = extra.gameId;
+    const gameId = Number(extra.gameId || 0);
     if (!gameId) return <p className="text-sm text-rose-500">公告缺少游戏编号</p>;
 
     const castVote = async (vote: 'yes' | 'no') => {
@@ -218,7 +168,7 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
         <div className="text-xs rounded bg-slate-50 p-3 mb-4">
           <div>同意票：{voteStat?.yesCount ?? '-'}</div>
           <div>反对票：{voteStat?.noCount ?? '-'}</div>
-          <div>总票：{voteStat?.total ?? '-'}</div>
+          <div>总票数：{voteStat?.total ?? '-'}</div>
           <div>我的票：{voteStat?.myVote === null || voteStat?.myVote === undefined ? '未投票' : voteStat?.myVote === 1 ? '同意' : '反对'}</div>
         </div>
 
@@ -239,15 +189,18 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
   };
 
   const renderGameStart = () => {
-    const runId = extra.runId;
-    const gameId = extra.gameId;
+    const runId = String(extra.runId || '');
+    const gameId = Number(extra.gameId || 0);
     return (
       <>
         <h3 className="text-xl font-black mb-2">{latest.title}</h3>
         <p className="text-sm text-slate-600 mb-4">{latest.content}</p>
+        <div className="rounded bg-slate-50 p-3 text-xs text-slate-600 mb-4">
+          本次灾厄局不会自动把在线玩家拉入，是否加入由你自己决定。
+        </div>
         <div className="flex gap-2">
           <button className="flex-1 py-2 rounded bg-slate-200 font-bold" onClick={() => setVisible(false)}>
-            关闭
+            暂不进入
           </button>
           <button
             className="flex-1 py-2 rounded bg-rose-600 text-white font-bold"
@@ -267,7 +220,7 @@ export function GlobalAnnouncementPrompt({ user, showToast, onEnterRun }: Props)
                 return showToast(data.message || '加入副本失败');
               }
               setVisible(false);
-              onEnterRun({ runId: String(runId), gameId: Number(gameId || 0) });
+              onEnterRun({ runId, gameId });
             }}
           >
             进入灾厄地图

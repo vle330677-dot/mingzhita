@@ -15,6 +15,7 @@ interface Props {
   showToast: (msg: string) => void;
   fetchGlobalData: () => void;
   onNavigateLocation?: (locationId: string) => void;
+  onEnterCustomGameRun?: (gameId: number) => void;
 }
 
 const buildings = [
@@ -37,7 +38,7 @@ const RANK_SCORES: Record<string, number> = {
   'A': 8, 'A+': 9, 'S': 10, 'S+': 11, 'SS': 12, 'SS+': 13, 'SSS': 14
 };
 
-export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation }: Props) {
+export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateLocation, onEnterCustomGameRun }: Props) {
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
   const [isPatrolling, setIsPatrolling] = useState(false);
   
@@ -646,6 +647,7 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
               onNavigateLocation?.(locationId);
             }}
             onExitToWorld={() => { setTargetHomeRoom(null); setTargetHomeOwner(null); onExit(); }}
+            onEnterCustomGameRun={onEnterCustomGameRun}
           />
         )}
       </AnimatePresence>

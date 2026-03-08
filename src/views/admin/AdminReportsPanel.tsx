@@ -21,6 +21,17 @@ interface AdminReport {
 }
 
 const REPORT_STATUS_OPTIONS = ['all', 'pending', 'voting', 'banned', 'rejected'];
+const REPORT_STATUS_LABELS: Record<string, string> = {
+  all: '全部',
+  pending: '待处理',
+  voting: '投票中',
+  banned: '已封号',
+  rejected: '已驳回',
+};
+
+function formatReportStatus(status: string) {
+  return REPORT_STATUS_LABELS[String(status || '')] || String(status || '未设置');
+}
 
 export function AdminReportsPanel({ refreshKey, onNotice }: Props) {
   const [reports, setReports] = useState<AdminReport[]>([]);
@@ -58,13 +69,14 @@ export function AdminReportsPanel({ refreshKey, onNotice }: Props) {
         <label className="block text-xs font-black text-slate-500">
           <span className="mb-1 block">举报状态</span>
           <select value={reportFilter} onChange={(event) => setReportFilter(event.target.value)} className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900">
-            {REPORT_STATUS_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
+            {REPORT_STATUS_OPTIONS.map((value) => <option key={value} value={value}>{formatReportStatus(value)}</option>)}
           </select>
         </label>
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">封号与驳回阈值：{threshold} 票</div>
       </div>
 
       <div className="space-y-3">
+        {filteredReports.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">当前筛选条件下没有举报记录</div>}
         {filteredReports.map((report) => (
           <div key={report.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -73,7 +85,7 @@ export function AdminReportsPanel({ refreshKey, onNotice }: Props) {
                 <div className="text-xs text-slate-500">举报人：{report.reporterName || `玩家#${report.reporterId}`} · 目标：{report.targetName || `玩家#${report.targetId}`}</div>
                 <div className="mt-1 text-xs text-slate-500">创建：{report.createdAt}</div>
               </div>
-              <div className={`rounded-full px-3 py-1 text-xs font-black ${report.status === 'banned' ? 'bg-rose-100 text-rose-700' : report.status === 'rejected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-700'}`}>{report.status}</div>
+              <div className={`rounded-full px-3 py-1 text-xs font-black ${report.status === 'banned' ? 'bg-rose-100 text-rose-700' : report.status === 'rejected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-700'}`}>{formatReportStatus(report.status)}</div>
             </div>
             <div className="mt-3 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700">{report.reason}</div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">

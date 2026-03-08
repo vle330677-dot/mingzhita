@@ -31,6 +31,11 @@ interface PointBinding {
   items: BoundItem[];
   isDropPoint: boolean;
 }
+export interface TimelineStageConfig {
+  index: number;
+  name: string;
+  desc?: string;
+}
 
 export interface BuiltMapJson {
   mapName: string;
@@ -38,6 +43,8 @@ export interface BuiltMapJson {
   announcementText?: string;
   layoutRuleText?: string;
   currencyName?: string;
+  totalStages?: number;
+  stageConfigs?: TimelineStageConfig[];
   points: MapPoint[];
   bindings: PointBinding[];
 }
@@ -70,6 +77,12 @@ const defaultMap: BuiltMapJson = {
   announcementText: '',
   layoutRuleText: '',
   currencyName: '灾厄币',
+  totalStages: 3,
+  stageConfigs: [
+    { index: 1, name: '阶段1', desc: '' },
+    { index: 2, name: '阶段2', desc: '' },
+    { index: 3, name: '阶段3', desc: '' }
+  ],
   points: [],
   bindings: []
 };
