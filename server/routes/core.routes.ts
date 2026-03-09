@@ -257,7 +257,7 @@ export async function createCoreRouter(ctx: AppContext) {
     `);
 
     const ensureColumn = async (table: string, column: string, definition: string) => {
-      const cols = await db.prepare(`PRAGMA table_info(${table})`).all() as AnyRow[];
+      const cols = await db.getTableColumns(table) as AnyRow[];
       if (!cols.some((row) => String(row.name || '') === column)) {
         await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
       }
@@ -312,8 +312,7 @@ export async function createCoreRouter(ctx: AppContext) {
   await ensureTables();
 
   const tableExists = async (tableName: string) => {
-    const row = await db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`).get(tableName) as AnyRow | undefined;
-    return !!row;
+    return db.tableExists(tableName);
   };
 
   const runIfTableExists = async (tableName: string, sql: string, params: any[] = []) => {

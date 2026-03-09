@@ -66,7 +66,7 @@ export async function runMigrate(db: AppDatabase) {
   try {
     await db.exec(perfIndexes);
   } catch {
-    // ignore syntax differences on older SQLite variants
+    // ignore index DDL differences on older database environments
   }
 
   await db.exec(`

@@ -1,8 +1,13 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import Database from 'better-sqlite3';
 import mysql from 'mysql2/promise';
 import type { Pool, PoolConnection } from 'mysql2/promise';
-import type { AppDatabase, AppStatement, DbRunResult, MySqlConnectionConfig } from './types';
+import type {
+  AppDatabase,
+  AppStatement,
+  DbColumnInfo,
+  DbRunResult,
+  MySqlConnectionConfig,
+} from './types';
 
 const LONG_TEXT_COLUMNS = new Set([
   'content',
@@ -149,7 +154,6 @@ function normalizeMySqlSql(sql: string) {
   normalized = normalized.replace(/datetime\(\s*COALESCE\(([^)]*)\)\s*\)/gi, 'CAST(COALESCE($1) AS DATETIME)');
   normalized = normalized.replace(/datetime\(\s*([^()]+?)\s*\)/gi, 'CAST($1 AS DATETIME)');
 
-  // Statements are split before execution, so CREATE TABLE usually reaches here without a trailing semicolon.
   if (/^\s*CREATE\s+TABLE\b/i.test(normalized)) {
     normalized = normalizeCreateTableSql(normalized);
   } else if (/CREATE\s+TABLE/i.test(normalized)) {
@@ -214,107 +218,6 @@ function parseConditionalCreateIndex(sql: string): ParsedConditionalIndex | null
   };
 }
 
-class SqliteStatement implements AppStatement {
-  constructor(
-    private readonly database: SqliteDatabase,
-    private readonly statement: Database.Statement,
-  ) {}
-
-  async get(...params: any[]) {
-    return this.database.execute(() => this.statement.get(...params));
-  }
-
-  async all(...params: any[]) {
-    return this.database.execute(() => this.statement.all(...params));
-  }
-
-  async run(...params: any[]): Promise<DbRunResult> {
-    return this.database.execute(() => {
-      const result = this.statement.run(...params) as any;
-      return {
-        changes: Number(result?.changes || 0),
-        lastInsertRowid: Number(result?.lastInsertRowid || 0),
-      };
-    });
-  }
-}
-
-export class SqliteDatabase implements AppDatabase {
-  readonly dialect = 'sqlite' as const;
-  private queue: Promise<void> = Promise.resolve();
-  private readonly transactionContext = new AsyncLocalStorage<true>();
-  private savepointCounter = 0;
-
-  constructor(private readonly db: Database.Database) {}
-
-  prepare(sql: string): AppStatement {
-    return new SqliteStatement(this, this.db.prepare(sql));
-  }
-
-  async exec(sql: string) {
-    await this.execute(async () => {
-      await this.db.exec(sql);
-    });
-  }
-
-  async pragma(sql: string) {
-    return this.execute(async () => await this.db.pragma(sql));
-  }
-
-  transaction<T extends (...args: any[]) => any>(fn: T) {
-    return (async (...args: Parameters<T>) => {
-      if (this.transactionContext.getStore()) {
-        const savepoint = `sqlite_sp_${this.savepointCounter += 1}`;
-        await this.db.exec(`SAVEPOINT ${savepoint}`);
-        try {
-          const result = await fn(...args);
-          await this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
-          return result as Awaited<ReturnType<T>>;
-        } catch (error) {
-          try {
-            await this.db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
-            await this.db.exec(`RELEASE SAVEPOINT ${savepoint}`);
-          } catch {}
-          throw error;
-        }
-      }
-
-      return this.enqueue(async () => {
-        await this.db.exec('BEGIN IMMEDIATE');
-        try {
-          const result = await this.transactionContext.run(true, async () => fn(...args));
-          await this.db.exec('COMMIT');
-          return result as Awaited<ReturnType<T>>;
-        } catch (error) {
-          try {
-            await this.db.exec('ROLLBACK');
-          } catch {}
-          throw error;
-        }
-      });
-    }) as (...args: Parameters<T>) => Promise<Awaited<ReturnType<T>>>;
-  }
-
-  async close() {
-    await this.enqueue(async () => {
-      await this.db.close();
-    });
-  }
-
-  execute<T>(task: () => T): Promise<T> {
-    if (this.transactionContext.getStore()) {
-      return Promise.resolve(task());
-    }
-    return this.enqueue(task);
-  }
-
-  private enqueue<T>(task: () => T | Promise<T>): Promise<T> {
-    const next = this.queue.then(() => task(), () => task());
-    this.queue = next.then(() => undefined, () => undefined);
-    return next;
-  }
-}
-
 class MySqlStatement implements AppStatement {
   constructor(
     private readonly database: MySqlDatabase,
@@ -371,8 +274,49 @@ export class MySqlDatabase implements AppDatabase {
     }
   }
 
-  async pragma(_sql: string) {
-    return null;
+  async tableExists(tableName: string) {
+    const [rows] = await this.getExecutor().query(
+      `
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+        LIMIT 1
+      `,
+      [tableName],
+    );
+
+    return Array.isArray(rows) && rows.length > 0;
+  }
+
+  async getTableColumns(tableName: string): Promise<DbColumnInfo[]> {
+    const [rows] = await this.getExecutor().query(
+      `
+        SELECT
+          COLUMN_NAME AS name,
+          DATA_TYPE AS type,
+          IS_NULLABLE AS nullable,
+          COLUMN_DEFAULT AS defaultValue,
+          COLUMN_KEY AS columnKey
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+        ORDER BY ORDINAL_POSITION ASC
+      `,
+      [tableName],
+    );
+
+    if (!Array.isArray(rows)) return [];
+
+    return rows
+      .map((row: any) => ({
+        name: String(row?.name || ''),
+        type: String(row?.type || ''),
+        nullable: String(row?.nullable || '').toUpperCase() !== 'NO',
+        defaultValue: row?.defaultValue ?? null,
+        primaryKey: String(row?.columnKey || '').toUpperCase() === 'PRI',
+      }))
+      .filter((row) => row.name);
   }
 
   transaction<T extends (...args: any[]) => any>(fn: T) {
@@ -421,9 +365,6 @@ export class MySqlDatabase implements AppDatabase {
   }
 
   async all(sql: string, params: any[]) {
-    const meta = await this.handleMetaQuery(sql, params);
-    if (meta.handled) return meta.rows;
-
     const normalized = normalizeMySqlSql(sql);
     const [rows] = await this.getExecutor().query(normalized, normalizeBindValues(params));
     return Array.isArray(rows) ? rows : [];
@@ -482,48 +423,6 @@ export class MySqlDatabase implements AppDatabase {
     await this.getExecutor().query(sqlToRun);
     return true;
   }
-
-  private async handleMetaQuery(sql: string, params: any[]) {
-    const compact = sql.replace(/\s+/g, ' ').trim();
-    if (/^SELECT name FROM sqlite_master WHERE type='table' AND name = \?$/i.test(compact)) {
-      const [rows] = await this.getExecutor().query(
-        `
-          SELECT table_name AS name
-          FROM information_schema.tables
-          WHERE table_schema = DATABASE() AND table_name = ?
-          LIMIT 1
-        `,
-        normalizeBindValues(params),
-      );
-      return { handled: true, rows: Array.isArray(rows) ? rows : [] };
-    }
-
-    const pragma = compact.match(/^PRAGMA table_info\(([^)]+)\)$/i);
-    if (pragma) {
-      const tableName = String(pragma[1] || '').replace(/['"`]/g, '');
-      const [rows] = await this.getExecutor().query(
-        `
-          SELECT
-            COLUMN_NAME AS name,
-            DATA_TYPE AS type,
-            CASE WHEN IS_NULLABLE = 'NO' THEN 1 ELSE 0 END AS notnull,
-            COLUMN_DEFAULT AS dflt_value,
-            CASE WHEN COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END AS pk
-          FROM information_schema.columns
-          WHERE table_schema = DATABASE() AND table_name = ?
-          ORDER BY ORDINAL_POSITION ASC
-        `,
-        [tableName],
-      );
-      return { handled: true, rows: Array.isArray(rows) ? rows : [] };
-    }
-
-    return { handled: false, rows: [] as any[] };
-  }
-}
-
-export function createSqliteDatabase(dbPath: string) {
-  return new SqliteDatabase(new Database(dbPath));
 }
 
 export function createMySqlDatabase(config: MySqlConnectionConfig) {

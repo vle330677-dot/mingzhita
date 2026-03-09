@@ -1,664 +1,527 @@
 import type { AppDatabase } from './types';
 
-function isIgnorableSchemaError(error: any) {
-  const code = error?.code;
-  const message = String(error?.sqlMessage || error?.message || '');
-
-  return (
-    code === 'ER_DUP_KEYNAME' || // 重复索引名
-    code === 'ER_TABLE_EXISTS_ERROR' || // 表已存在
-    code === 'ER_DUP_FIELDNAME' || // 字段已存在
-    message.includes('Duplicate key name') ||
-    message.includes('already exists') ||
-    message.includes('Duplicate column name')
-  );
-}
-
 export async function runSchema(db: AppDatabase) {
-  const statements: string[] = [
-    `
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      name VARCHAR(191) UNIQUE,
-      age INT DEFAULT 18,
-      role VARCHAR(64),
-      faction VARCHAR(128),
-      mentalRank VARCHAR(64),
-      physicalRank VARCHAR(64),
-      gold INT DEFAULT 0,
-      ability VARCHAR(255),
-      spiritName VARCHAR(191),
-      spiritType VARCHAR(128),
-      spiritIntimacy INT DEFAULT 0,
-      spiritLevel INT DEFAULT 1,
-      spiritImageUrl VARCHAR(1024) DEFAULT '',
-      spiritAppearance VARCHAR(1024) DEFAULT '',
-      spiritNameLocked TINYINT(1) DEFAULT 0,
-      spiritAvatarLocked TINYINT(1) DEFAULT 0,
-      spiritAppearanceLocked TINYINT(1) DEFAULT 0,
-      spiritInteractDate VARCHAR(32),
-      spiritFeedCount INT DEFAULT 0,
-      spiritPetCount INT DEFAULT 0,
-      spiritTrainCount INT DEFAULT 0,
-      avatarUrl VARCHAR(1024),
-      avatarUpdatedAt VARCHAR(64),
-      status VARCHAR(64) DEFAULT 'pending',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE,
+      age INTEGER DEFAULT 18,
+      role TEXT,
+      faction TEXT,
+      mentalRank TEXT,
+      physicalRank TEXT,
+      gold INTEGER DEFAULT 0,
+      ability TEXT,
+      spiritName TEXT,
+      spiritType TEXT,
+      spiritIntimacy INTEGER DEFAULT 0,
+      spiritLevel INTEGER DEFAULT 1,
+      spiritImageUrl TEXT DEFAULT '',
+      spiritAppearance TEXT DEFAULT '',
+      spiritNameLocked INTEGER DEFAULT 0,
+      spiritAvatarLocked INTEGER DEFAULT 0,
+      spiritAppearanceLocked INTEGER DEFAULT 0,
+      spiritInteractDate TEXT,
+      spiritFeedCount INTEGER DEFAULT 0,
+      spiritPetCount INTEGER DEFAULT 0,
+      spiritTrainCount INTEGER DEFAULT 0,
+      avatarUrl TEXT,
+      avatarUpdatedAt TEXT,
+      status TEXT DEFAULT 'pending',
       deathDescription TEXT,
       profileText TEXT,
-      isHidden TINYINT(1) DEFAULT 0,
-      currentLocation VARCHAR(191),
-      homeLocation VARCHAR(191),
-      job VARCHAR(128) DEFAULT '无',
-      hp INT DEFAULT 100,
-      maxHp INT DEFAULT 100,
-      mp INT DEFAULT 100,
-      maxMp INT DEFAULT 100,
-      mentalProgress DOUBLE DEFAULT 0,
-      workCount INT DEFAULT 0,
-      trainCount INT DEFAULT 0,
-      lastResetDate VARCHAR(32),
-      lastCheckInDate VARCHAR(32),
-      password VARCHAR(255),
-      loginPasswordHash VARCHAR(255),
-      roomPasswordHash VARCHAR(255),
-      roomBgImage VARCHAR(1024),
+      isHidden INTEGER DEFAULT 0,
+      currentLocation TEXT,
+      homeLocation TEXT,
+      job TEXT DEFAULT '无',
+      hp INTEGER DEFAULT 100,
+      maxHp INTEGER DEFAULT 100,
+      mp INTEGER DEFAULT 100,
+      maxMp INTEGER DEFAULT 100,
+      mentalProgress REAL DEFAULT 0,
+      workCount INTEGER DEFAULT 0,
+      trainCount INTEGER DEFAULT 0,
+      lastResetDate TEXT,
+      lastCheckInDate TEXT,
+      password TEXT,
+      loginPasswordHash TEXT,
+      roomPasswordHash TEXT,
+      roomBgImage TEXT,
       roomDescription TEXT,
-      allowVisit TINYINT(1) DEFAULT 1,
-      fury INT DEFAULT 0,
-      guideStability INT DEFAULT 100,
-      partyId VARCHAR(191) DEFAULT NULL,
-      adminAvatarUrl VARCHAR(1024),
-      forceOfflineAt VARCHAR(64),
+      allowVisit INTEGER DEFAULT 1,
+      fury INTEGER DEFAULT 0,
+      guideStability INTEGER DEFAULT 100,
+      partyId TEXT DEFAULT NULL,
+      adminAvatarUrl TEXT,
+      forceOfflineAt TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS announcements (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      type VARCHAR(64) DEFAULT 'system',
-      title VARCHAR(255) NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT DEFAULT 'system',
+      title TEXT NOT NULL,
       content TEXT NOT NULL,
-      extraJson VARCHAR(4096),
-      payload VARCHAR(4096),
+      extraJson TEXT,
+      payload TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_at DATETIME
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS user_sessions (
-      token VARCHAR(191) PRIMARY KEY,
-      userId BIGINT NOT NULL,
-      userName VARCHAR(191) NOT NULL,
-      role VARCHAR(64) DEFAULT 'player',
+      token TEXT PRIMARY KEY,
+      userId INTEGER NOT NULL,
+      userName TEXT NOT NULL,
+      role TEXT DEFAULT 'player',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       lastSeenAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       revokedAt DATETIME
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS admin_whitelist (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      name VARCHAR(191) NOT NULL UNIQUE,
-      code_name VARCHAR(191),
-      enabled TINYINT(1) DEFAULT 1,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      code_name TEXT,
+      enabled INTEGER DEFAULT 1,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS admin_action_logs (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      adminName VARCHAR(191) NOT NULL,
-      action VARCHAR(128) NOT NULL,
-      targetType VARCHAR(64),
-      targetId VARCHAR(191),
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      adminName TEXT NOT NULL,
+      action TEXT NOT NULL,
+      targetType TEXT,
+      targetId TEXT,
       detail TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS system_migrations (
-      migration_key VARCHAR(191) PRIMARY KEY,
+      \`key\` TEXT PRIMARY KEY,
       appliedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS items (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      name VARCHAR(191) NOT NULL,
-      description TEXT,
-      locationTag VARCHAR(191) DEFAULT '',
-      npcId VARCHAR(191),
-      price INT DEFAULT 0,
-      faction VARCHAR(128) DEFAULT '通用',
-      tier VARCHAR(64) DEFAULT '低阶',
-      itemType VARCHAR(64) DEFAULT '回复道具',
-      effectValue INT DEFAULT 0,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      locationTag TEXT DEFAULT '',
+      npcId TEXT,
+      price INTEGER DEFAULT 0,
+      faction TEXT DEFAULT '通用',
+      tier TEXT DEFAULT '低阶',
+      itemType TEXT DEFAULT '回复道具',
+      effectValue INTEGER DEFAULT 0,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS skills (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      name VARCHAR(191) NOT NULL UNIQUE,
-      faction VARCHAR(128) DEFAULT '通用',
-      tier VARCHAR(64) DEFAULT '低阶',
-      description TEXT,
-      npcId VARCHAR(191),
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      faction TEXT DEFAULT '通用',
+      tier TEXT DEFAULT '低阶',
+      description TEXT DEFAULT '',
+      npcId TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS user_skills (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      userId BIGINT NOT NULL,
-      skillId BIGINT NOT NULL,
-      level INT DEFAULT 1,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      skillId INTEGER NOT NULL,
+      level INTEGER DEFAULT 1,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_user_skill (userId, skillId)
-    )
-    `,
+      UNIQUE(userId, skillId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS active_rp_sessions (
-      id VARCHAR(191) PRIMARY KEY,
-      locationId VARCHAR(191),
-      locationName VARCHAR(255),
-      status VARCHAR(64) DEFAULT 'active',
-      endProposedBy BIGINT,
+      id TEXT PRIMARY KEY,
+      locationId TEXT,
+      locationName TEXT,
+      status TEXT DEFAULT 'active',
+      endProposedBy INTEGER,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS active_rp_members (
-      sessionId VARCHAR(191) NOT NULL,
-      userId BIGINT NOT NULL,
-      userName VARCHAR(191) NOT NULL,
-      role VARCHAR(64) DEFAULT '',
+      sessionId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      userName TEXT NOT NULL,
+      role TEXT DEFAULT '',
       PRIMARY KEY (sessionId, userId)
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS active_rp_messages (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      sessionId VARCHAR(191) NOT NULL,
-      senderId BIGINT,
-      senderName VARCHAR(191),
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT NOT NULL,
+      senderId INTEGER,
+      senderName TEXT,
       content TEXT,
-      type VARCHAR(64) DEFAULT 'user',
+      type TEXT DEFAULT 'user',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS active_rp_leaves (
-      sessionId VARCHAR(191) NOT NULL,
-      userId BIGINT NOT NULL,
+      sessionId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
       leftAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (sessionId, userId)
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS active_group_rp_members (
-      locationId VARCHAR(191) NOT NULL,
-      dateKey VARCHAR(32) NOT NULL,
-      archiveId VARCHAR(191) NOT NULL,
-      userId BIGINT NOT NULL,
-      userName VARCHAR(191) NOT NULL,
+      locationId TEXT NOT NULL,
+      dateKey TEXT NOT NULL,
+      archiveId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      userName TEXT NOT NULL,
       joinedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (locationId, dateKey, userId)
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_active_group_rp_members_archive
-      ON active_group_rp_members(archiveId, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_active_group_rp_members_archive
+      ON active_group_rp_members(archiveId, updatedAt);
 
-    `
     CREATE TABLE IF NOT EXISTS rp_archives (
-      id VARCHAR(191) PRIMARY KEY,
-      title VARCHAR(255) NOT NULL,
-      locationId VARCHAR(191),
-      locationName VARCHAR(255),
-      participants VARCHAR(4096),
-      participantNames VARCHAR(4096),
-      status VARCHAR(64) DEFAULT 'active',
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      locationId TEXT,
+      locationName TEXT,
+      participants TEXT,
+      participantNames TEXT,
+      status TEXT DEFAULT 'active',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS rp_archive_messages (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      archiveId VARCHAR(191) NOT NULL,
-      senderId BIGINT,
-      senderName VARCHAR(191),
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      archiveId TEXT NOT NULL,
+      senderId INTEGER,
+      senderName TEXT,
       content TEXT,
-      type VARCHAR(64) DEFAULT 'user',
+      type TEXT DEFAULT 'user',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_skip_requests (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      fromUserId BIGINT NOT NULL,
-      toUserId BIGINT NOT NULL,
-      actionType VARCHAR(64) NOT NULL,
-      payloadJson VARCHAR(4096) DEFAULT '{}',
-      status VARCHAR(64) DEFAULT 'pending',
-      resultMessage VARCHAR(1024) DEFAULT '',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromUserId INTEGER NOT NULL,
+      toUserId INTEGER NOT NULL,
+      actionType TEXT NOT NULL,
+      payloadJson TEXT DEFAULT '{}',
+      status TEXT DEFAULT 'pending',
+      resultMessage TEXT DEFAULT '',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_reports (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      reporterId BIGINT NOT NULL,
-      targetId BIGINT NOT NULL,
-      reason VARCHAR(1024) NOT NULL,
-      status VARCHAR(64) DEFAULT 'pending',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reporterId INTEGER NOT NULL,
+      targetId INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_trade_logs (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      fromUserId BIGINT NOT NULL,
-      toUserId BIGINT NOT NULL,
-      mode VARCHAR(64) NOT NULL,
-      payloadJson VARCHAR(4096) DEFAULT '{}',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromUserId INTEGER NOT NULL,
+      toUserId INTEGER NOT NULL,
+      mode TEXT NOT NULL,
+      payloadJson TEXT DEFAULT '{}',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_events (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      userId BIGINT NOT NULL,
-      sourceUserId BIGINT DEFAULT 0,
-      targetUserId BIGINT DEFAULT 0,
-      actionType VARCHAR(64) DEFAULT '',
-      title VARCHAR(255) DEFAULT '',
-      message VARCHAR(1024) NOT NULL,
-      payloadJson VARCHAR(4096) DEFAULT '{}',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      sourceUserId INTEGER DEFAULT 0,
+      targetUserId INTEGER DEFAULT 0,
+      actionType TEXT DEFAULT '',
+      title TEXT DEFAULT '',
+      message TEXT NOT NULL,
+      payloadJson TEXT DEFAULT '{}',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_interaction_events_user_id
-      ON interaction_events(userId, id)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_interaction_events_user_id
+      ON interaction_events(userId, id);
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_trade_sessions (
-      id VARCHAR(191) PRIMARY KEY,
-      userAId BIGINT NOT NULL,
-      userBId BIGINT NOT NULL,
-      status VARCHAR(64) DEFAULT 'pending',
-      confirmA TINYINT(1) DEFAULT 0,
-      confirmB TINYINT(1) DEFAULT 0,
-      cancelledBy BIGINT DEFAULT 0,
+      id TEXT PRIMARY KEY,
+      userAId INTEGER NOT NULL,
+      userBId INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      confirmA INTEGER DEFAULT 0,
+      confirmB INTEGER DEFAULT 0,
+      cancelledBy INTEGER DEFAULT 0,
       completedAt DATETIME,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_interaction_trade_sessions_pair_status
-      ON interaction_trade_sessions(userAId, userBId, status, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_sessions_pair_status
+      ON interaction_trade_sessions(userAId, userBId, status, updatedAt);
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_trade_offers (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      sessionId VARCHAR(191) NOT NULL,
-      userId BIGINT NOT NULL,
-      itemName VARCHAR(191) DEFAULT '',
-      qty INT DEFAULT 0,
-      gold INT DEFAULT 0,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      itemName TEXT DEFAULT '',
+      qty INTEGER DEFAULT 0,
+      gold INTEGER DEFAULT 0,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_trade_offer (sessionId, userId)
-    )
-    `,
+      UNIQUE(sessionId, userId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_trade_requests (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      fromUserId BIGINT NOT NULL,
-      toUserId BIGINT NOT NULL,
-      status VARCHAR(64) DEFAULT 'pending',
-      sessionId VARCHAR(191) DEFAULT '',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromUserId INTEGER NOT NULL,
+      toUserId INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending',
+      sessionId TEXT DEFAULT '',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_interaction_trade_requests_to_status
-      ON interaction_trade_requests(toUserId, status, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_requests_to_status
+      ON interaction_trade_requests(toUserId, status, updatedAt);
 
-    `
-    CREATE INDEX idx_interaction_trade_requests_from_status
-      ON interaction_trade_requests(fromUserId, status, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_interaction_trade_requests_from_status
+      ON interaction_trade_requests(fromUserId, status, updatedAt);
 
-    `
     CREATE TABLE IF NOT EXISTS interaction_report_votes (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      reportId BIGINT NOT NULL,
-      adminUserId BIGINT NOT NULL,
-      adminName VARCHAR(191) NOT NULL,
-      decision VARCHAR(64) NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reportId INTEGER NOT NULL,
+      adminUserId INTEGER NOT NULL,
+      adminName TEXT NOT NULL,
+      decision TEXT NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_report_admin (reportId, adminUserId)
-    )
-    `,
+      UNIQUE(reportId, adminUserId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS party_requests (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      batchKey VARCHAR(191) DEFAULT '',
-      requestType VARCHAR(64) NOT NULL,
-      partyId VARCHAR(191) DEFAULT '',
-      fromUserId BIGINT NOT NULL,
-      toUserId BIGINT NOT NULL,
-      targetUserId BIGINT DEFAULT 0,
-      payloadJson VARCHAR(4096) DEFAULT '{}',
-      status VARCHAR(64) DEFAULT 'pending',
-      resultMessage VARCHAR(1024) DEFAULT '',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batchKey TEXT DEFAULT '',
+      requestType TEXT NOT NULL,
+      partyId TEXT DEFAULT '',
+      fromUserId INTEGER NOT NULL,
+      toUserId INTEGER NOT NULL,
+      targetUserId INTEGER DEFAULT 0,
+      payloadJson TEXT DEFAULT '{}',
+      status TEXT DEFAULT 'pending',
+      resultMessage TEXT DEFAULT '',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS party_entanglements (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      userAId BIGINT NOT NULL,
-      userBId BIGINT NOT NULL,
-      sourcePartyId VARCHAR(191) DEFAULT '',
-      active TINYINT(1) DEFAULT 1,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userAId INTEGER NOT NULL,
+      userBId INTEGER NOT NULL,
+      sourcePartyId TEXT DEFAULT '',
+      active INTEGER DEFAULT 1,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_party_entangle (userAId, userBId)
-    )
-    `,
+      UNIQUE(userAId, userBId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS rp_mediation_invites (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      sessionId VARCHAR(191) NOT NULL,
-      invitedUserId BIGINT NOT NULL,
-      requestedByUserId BIGINT NOT NULL,
-      requestedByName VARCHAR(191) DEFAULT '',
-      reason VARCHAR(1024) DEFAULT '',
-      status VARCHAR(64) DEFAULT 'pending',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT NOT NULL,
+      invitedUserId INTEGER NOT NULL,
+      requestedByUserId INTEGER NOT NULL,
+      requestedByName TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS job_challenges (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      challengerId BIGINT NOT NULL,
-      holderId BIGINT NOT NULL,
-      targetJobName VARCHAR(191) NOT NULL,
-      status VARCHAR(64) DEFAULT 'voting',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      challengerId INTEGER NOT NULL,
+      holderId INTEGER NOT NULL,
+      targetJobName TEXT NOT NULL,
+      status TEXT DEFAULT 'voting',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS job_challenge_votes (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      challengeId BIGINT NOT NULL,
-      voterId BIGINT NOT NULL,
-      vote VARCHAR(64) NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      challengeId INTEGER NOT NULL,
+      voterId INTEGER NOT NULL,
+      vote TEXT NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_job_vote (challengeId, voterId)
-    )
-    `,
+      UNIQUE(challengeId, voterId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS city_prosperity (
-      cityId VARCHAR(191) PRIMARY KEY,
-      mayorUserId BIGINT DEFAULT 0,
-      mayorName VARCHAR(191) DEFAULT '',
-      prosperity INT DEFAULT 0,
-      residentCount INT DEFAULT 0,
-      shopCount INT DEFAULT 0,
-      lastSettlementDate VARCHAR(32) DEFAULT '',
+      cityId TEXT PRIMARY KEY,
+      mayorUserId INTEGER DEFAULT 0,
+      mayorName TEXT DEFAULT '',
+      prosperity INTEGER DEFAULT 0,
+      residentCount INTEGER DEFAULT 0,
+      shopCount INTEGER DEFAULT 0,
+      lastSettlementDate TEXT DEFAULT '',
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS city_shops (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      cityId VARCHAR(191) NOT NULL,
-      ownerUserId BIGINT NOT NULL,
-      ownerName VARCHAR(191) DEFAULT '',
-      shopName VARCHAR(191) NOT NULL,
-      description TEXT,
-      status VARCHAR(64) DEFAULT 'active',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cityId TEXT NOT NULL,
+      ownerUserId INTEGER NOT NULL,
+      ownerName TEXT DEFAULT '',
+      shopName TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      status TEXT DEFAULT 'active',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_city_owner (cityId, ownerUserId)
-    )
-    `,
+      UNIQUE(cityId, ownerUserId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS ghost_materialization (
-      userId BIGINT PRIMARY KEY,
-      state VARCHAR(64) DEFAULT 'ethereal',
+      userId INTEGER PRIMARY KEY,
+      state TEXT DEFAULT 'ethereal',
       lastToggleAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      mpCost INT DEFAULT 0,
+      mpCost INTEGER DEFAULT 0,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS mediation_requests (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      sessionId VARCHAR(191) NOT NULL,
-      requesterUserId BIGINT NOT NULL,
-      requesterName VARCHAR(191) DEFAULT '',
-      targetUserId BIGINT NOT NULL,
-      targetName VARCHAR(191) DEFAULT '',
-      reason VARCHAR(1024) DEFAULT '',
-      status VARCHAR(64) DEFAULT 'pending',
-      mediatorUserId BIGINT DEFAULT 0,
-      mediatorName VARCHAR(191) DEFAULT '',
-      reward INT DEFAULT 1000,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sessionId TEXT NOT NULL,
+      requesterUserId INTEGER NOT NULL,
+      requesterName TEXT DEFAULT '',
+      targetUserId INTEGER NOT NULL,
+      targetName TEXT DEFAULT '',
+      reason TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      mediatorUserId INTEGER DEFAULT 0,
+      mediatorName TEXT DEFAULT '',
+      reward INTEGER DEFAULT 1000,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_mediation_requests_status
-      ON mediation_requests(status, createdAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_mediation_requests_status
+      ON mediation_requests(status, createdAt);
 
-    `
     CREATE TABLE IF NOT EXISTS army_arbitrations (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      plaintiffUserId BIGINT NOT NULL,
-      plaintiffName VARCHAR(191) DEFAULT '',
-      defendantUserId BIGINT NOT NULL,
-      defendantName VARCHAR(191) DEFAULT '',
-      reason VARCHAR(1024) NOT NULL,
-      evidence VARCHAR(4096) DEFAULT '',
-      status VARCHAR(64) DEFAULT 'pending',
-      judgeUserId BIGINT DEFAULT 0,
-      judgeName VARCHAR(191) DEFAULT '',
-      verdict VARCHAR(1024) DEFAULT '',
-      penalty VARCHAR(1024) DEFAULT '',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plaintiffUserId INTEGER NOT NULL,
+      plaintiffName TEXT DEFAULT '',
+      defendantUserId INTEGER NOT NULL,
+      defendantName TEXT DEFAULT '',
+      reason TEXT NOT NULL,
+      evidence TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      judgeUserId INTEGER DEFAULT 0,
+      judgeName TEXT DEFAULT '',
+      verdict TEXT DEFAULT '',
+      penalty TEXT DEFAULT '',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS army_arbitration_votes (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      arbitrationId BIGINT NOT NULL,
-      voterUserId BIGINT NOT NULL,
-      voterName VARCHAR(191) DEFAULT '',
-      vote VARCHAR(64) NOT NULL,
-      comment VARCHAR(1024) DEFAULT '',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      arbitrationId INTEGER NOT NULL,
+      voterUserId INTEGER NOT NULL,
+      voterName TEXT DEFAULT '',
+      vote TEXT NOT NULL,
+      comment TEXT DEFAULT '',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_arbitration_vote (arbitrationId, voterUserId)
-    )
-    `,
+      UNIQUE(arbitrationId, voterUserId)
+    );
 
-    `
     CREATE TABLE IF NOT EXISTS sensitive_operation_confirmations (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      userId BIGINT NOT NULL,
-      operationType VARCHAR(128) NOT NULL,
-      operationData VARCHAR(4096) DEFAULT '{}',
-      status VARCHAR(64) DEFAULT 'pending',
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      userId INTEGER NOT NULL,
+      operationType TEXT NOT NULL,
+      operationData TEXT DEFAULT '{}',
+      status TEXT DEFAULT 'pending',
       confirmedAt DATETIME,
       expiresAt DATETIME NOT NULL,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_sensitive_confirmations_user_status
-      ON sensitive_operation_confirmations(userId, status, expiresAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_sensitive_confirmations_user_status
+      ON sensitive_operation_confirmations(userId, status, expiresAt);
 
-    `
     CREATE TABLE IF NOT EXISTS faction_custom_roles (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      locationId VARCHAR(191) NOT NULL,
-      factionName VARCHAR(191) NOT NULL,
-      title VARCHAR(191) NOT NULL,
-      description VARCHAR(1024) DEFAULT '',
-      minAge INT DEFAULT 16,
-      minMentalRank VARCHAR(64) DEFAULT '',
-      minPhysicalRank VARCHAR(64) DEFAULT '',
-      maxMembers INT DEFAULT 0,
-      salary INT DEFAULT 0,
-      createdByUserId BIGINT DEFAULT 0,
-      isActive TINYINT(1) DEFAULT 1,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      locationId TEXT NOT NULL,
+      factionName TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      minAge INTEGER DEFAULT 16,
+      minMentalRank TEXT DEFAULT '',
+      minPhysicalRank TEXT DEFAULT '',
+      maxMembers INTEGER DEFAULT 0,
+      salary INTEGER DEFAULT 0,
+      createdByUserId INTEGER DEFAULT 0,
+      isActive INTEGER DEFAULT 1,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_location_title (locationId, title)
-    )
-    `,
+      UNIQUE(locationId, title)
+    );
 
-    `
-    CREATE INDEX idx_faction_custom_roles_location_active
-      ON faction_custom_roles(locationId, isActive, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_faction_custom_roles_location_active
+      ON faction_custom_roles(locationId, isActive, updatedAt);
 
-    `
     CREATE TABLE IF NOT EXISTS custom_factions (
-      id VARCHAR(191) PRIMARY KEY,
-      name VARCHAR(191) NOT NULL UNIQUE,
-      description VARCHAR(1024) DEFAULT '',
-      ownerUserId BIGINT NOT NULL,
-      ownerName VARCHAR(191) DEFAULT '',
-      leaderTitle VARCHAR(191) DEFAULT '???',
-      pointX DOUBLE NOT NULL,
-      pointY DOUBLE NOT NULL,
-      mapImageUrl VARCHAR(1024) DEFAULT '',
-      pointType VARCHAR(64) DEFAULT 'safe',
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT DEFAULT '',
+      ownerUserId INTEGER NOT NULL,
+      ownerName TEXT DEFAULT '',
+      leaderTitle TEXT DEFAULT '???',
+      pointX REAL NOT NULL,
+      pointY REAL NOT NULL,
+      mapImageUrl TEXT DEFAULT '',
+      pointType TEXT DEFAULT 'safe',
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_custom_factions_owner
-      ON custom_factions(ownerUserId, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_custom_factions_owner
+      ON custom_factions(ownerUserId, updatedAt);
 
-    `
     CREATE TABLE IF NOT EXISTS custom_faction_nodes (
-      id VARCHAR(191) PRIMARY KEY,
-      factionId VARCHAR(191) NOT NULL,
-      name VARCHAR(191) NOT NULL,
-      description VARCHAR(1024) DEFAULT '',
-      x DOUBLE NOT NULL,
-      y DOUBLE NOT NULL,
-      dailyInteractionLimit INT DEFAULT 1,
-      salary INT DEFAULT 0,
-      createdByUserId BIGINT DEFAULT 0,
+      id TEXT PRIMARY KEY,
+      factionId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      x REAL NOT NULL,
+      y REAL NOT NULL,
+      dailyInteractionLimit INTEGER DEFAULT 1,
+      salary INTEGER DEFAULT 0,
+      createdByUserId INTEGER DEFAULT 0,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-    `,
+    );
 
-    `
-    CREATE INDEX idx_custom_faction_nodes_faction
-      ON custom_faction_nodes(factionId, updatedAt)
-    `,
+    CREATE INDEX IF NOT EXISTS idx_custom_faction_nodes_faction
+      ON custom_faction_nodes(factionId, updatedAt);
 
-    `
     CREATE TABLE IF NOT EXISTS custom_faction_node_logs (
-      id BIGINT PRIMARY KEY AUTO_INCREMENT,
-      nodeId VARCHAR(191) NOT NULL,
-      factionId VARCHAR(191) NOT NULL,
-      userId BIGINT NOT NULL,
-      dateKey VARCHAR(32) NOT NULL,
-      interactionCount INT DEFAULT 0,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nodeId TEXT NOT NULL,
+      factionId TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      dateKey TEXT NOT NULL,
+      interactionCount INTEGER DEFAULT 0,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_node_user_date (nodeId, userId, dateKey)
-    )
-    `,
+      UNIQUE(nodeId, userId, dateKey)
+    );
 
-    `
-    CREATE INDEX idx_custom_faction_node_logs_lookup
-      ON custom_faction_node_logs(nodeId, userId, dateKey)
-    `,
-  ];
-
-  for (let i = 0; i < statements.length; i++) {
-    const sql = statements[i].trim();
-    if (!sql) continue;
-
-    try {
-      await db.exec(sql);
-      console.log(`[runSchema] ok #${i + 1}`);
-    } catch (error: any) {
-      if (isIgnorableSchemaError(error)) {
-        console.warn(`[runSchema] skip #${i + 1}: ${error?.code || error?.message}`);
-        continue;
-      }
-
-      console.error(`[runSchema] failed at statement #${i + 1}`);
-      console.error(sql);
-      throw error;
-    }
-  }
-
-  console.log('[runSchema] schema completed');
+    CREATE INDEX IF NOT EXISTS idx_custom_faction_node_logs_lookup
+      ON custom_faction_node_logs(nodeId, userId, dateKey);
+  `);
 }

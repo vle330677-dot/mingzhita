@@ -80,14 +80,6 @@ function getParsedConnectionConfig(env: EnvMap) {
   return parseMySqlConnectionString(connectionString);
 }
 
-export function shouldUseMySql(env: EnvMap = process.env) {
-  const client = String(env.DB_CLIENT || '').trim().toLowerCase();
-  const hasMySqlHost = Boolean(getOptionalEnv(env, ['MYSQL_HOST', 'MYSQL_PUBLIC_HOST', 'MYSQL_HOSTNAME']));
-  const hasMySqlUser = Boolean(getOptionalEnv(env, ['MYSQL_USER', 'MYSQL_USERNAME', 'MYSQL_PUBLIC_USERNAME']));
-  const hasMySqlConnectionString = Boolean(getMySqlConnectionString(env));
-  return client === 'mysql' || ((hasMySqlHost || hasMySqlUser || hasMySqlConnectionString) && client !== 'sqlite');
-}
-
 export function getMySqlConfigFromEnv(env: EnvMap = process.env): MySqlConnectionConfig {
   const parsed = getParsedConnectionConfig(env);
 

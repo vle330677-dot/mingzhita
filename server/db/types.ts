@@ -1,8 +1,16 @@
-export type DbDialect = 'sqlite' | 'mysql';
+export type DbDialect = 'mysql';
 
 export type DbRunResult = {
   changes: number;
   lastInsertRowid: number;
+};
+
+export type DbColumnInfo = {
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue: any;
+  primaryKey: boolean;
 };
 
 export interface AppStatement {
@@ -15,7 +23,8 @@ export interface AppDatabase {
   dialect: DbDialect;
   prepare(sql: string): AppStatement;
   exec(sql: string): Promise<void>;
-  pragma(sql: string): Promise<any>;
+  tableExists(tableName: string): Promise<boolean>;
+  getTableColumns(tableName: string): Promise<DbColumnInfo[]>;
   transaction<T extends (...args: any[]) => any>(fn: T): (...args: Parameters<T>) => Promise<Awaited<ReturnType<T>>>;
   close(): Promise<void>;
 }

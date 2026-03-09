@@ -467,12 +467,11 @@ async function ensureColumn(db: DB, table: string, column: string, typeSql: stri
 
 async function tableExists(db: DB, tableName: string) {
   try {
-    const row = await dbGet(
-      db,
-      `SELECT name FROM sqlite_master WHERE type='table' AND name = ?`,
-      [tableName]
-    );
-    return !!row?.name;
+    if (typeof db?.tableExists === "function") {
+      return await db.tableExists(tableName);
+    }
+    const row = await dbGet(db, `SHOW TABLES LIKE ?`, [tableName]);
+    return !!row;
   } catch {
     return false;
   }
