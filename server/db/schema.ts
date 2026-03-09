@@ -98,7 +98,7 @@ export async function runSchema(db: AppDatabase) {
     );
 
     CREATE TABLE IF NOT EXISTS system_migrations (
-      key TEXT PRIMARY KEY,
+      \`key\` TEXT PRIMARY KEY,
       appliedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -525,4 +525,3 @@ export async function runSchema(db: AppDatabase) {
       ON custom_faction_node_logs(nodeId, userId, dateKey);
   `);
 }
-

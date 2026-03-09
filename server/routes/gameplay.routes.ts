@@ -540,7 +540,7 @@ async function ensureTables(db: any) {
     );
 
     CREATE TABLE IF NOT EXISTS world_npc_runtime (
-      key TEXT PRIMARY KEY,
+      \`key\` TEXT PRIMARY KEY,
       value TEXT DEFAULT '',
       updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
     );
@@ -2085,9 +2085,9 @@ function pickNpcReply(action: string, nextAffinity: number, delta: number) {
 
 async function upsertWorldNpcRuntime(db: any, key: string, value: string) {
   await db.prepare(`
-    INSERT INTO world_npc_runtime(key, value, updatedAt)
+    INSERT INTO world_npc_runtime(\`key\`, value, updatedAt)
     VALUES(?,?,?)
-    ON CONFLICT(key) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt
+    ON CONFLICT(\`key\`) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt
   `).run(key, value, nowIso());
 }
 
@@ -2167,7 +2167,7 @@ async function ensureWorldNpcPopulation(db: any) {
 async function refreshWorldNpcDailyIfNeeded(db: any) {
   const key = 'daily_shuffle_date';
   const today = todayKey();
-  const state = await db.prepare(`SELECT value FROM world_npc_runtime WHERE key = ? LIMIT 1`).get(key) as AnyRow | undefined;
+  const state = await db.prepare('SELECT value FROM world_npc_runtime WHERE `key` = ? LIMIT 1').get(key) as AnyRow | undefined;
   if (String(state?.value || '') === today) return;
 
   const rows = await db.prepare(`SELECT id FROM world_npcs WHERE isLegacy = 0 ORDER BY id ASC`).all() as AnyRow[];
@@ -6969,5 +6969,3 @@ export async function createGameplayRouter(ctx: AppContext) {
 
   return r;
 }
-
-

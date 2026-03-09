@@ -37,7 +37,7 @@ export async function runMigrate(db: AppDatabase) {
   await addColumn(db, 'users', 'spiritPetCount', 'INTEGER DEFAULT 0');
   await addColumn(db, 'users', 'spiritTrainCount', 'INTEGER DEFAULT 0');
 
-  const hasFix = await db.prepare(`SELECT 1 FROM system_migrations WHERE key = ?`).get('fix_minor_home_v1');
+  const hasFix = await db.prepare('SELECT 1 FROM system_migrations WHERE `key` = ?').get('fix_minor_home_v1');
   if (!hasFix) {
     await db.exec(`
       UPDATE users
@@ -45,7 +45,7 @@ export async function runMigrate(db: AppDatabase) {
       WHERE age < 16
         AND (homeLocation IS NULL OR homeLocation <> 'sanctuary');
     `);
-    await db.prepare(`INSERT INTO system_migrations(key) VALUES (?)`).run('fix_minor_home_v1');
+    await db.prepare('INSERT INTO system_migrations(`key`) VALUES (?)').run('fix_minor_home_v1');
   }
 
   const perfIndexes = `
