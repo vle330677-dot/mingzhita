@@ -42,14 +42,38 @@ const MYSQL_RESERVED_COLUMN_NAMES = new Set([
 function normalizeBindValues(params: any[]) {
   return params.map((value) => {
     if (value === undefined) return null;
-    if (value instanceof Date) return value.toISOString();
+    if (value instanceof Date) return formatMySqlDateTime(value);
     if (typeof value === 'boolean') return value ? 1 : 0;
     if (typeof value === 'string') {
       const intervalMatch = value.trim().match(/^([+-]?\d+)\s+seconds?$/i);
       if (intervalMatch) return Number(intervalMatch[1]);
+      const isoLikeValue = normalizeIsoDateLikeString(value);
+      if (isoLikeValue !== null) return isoLikeValue;
     }
     return value;
   });
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+function formatMySqlDateTime(date: Date) {
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())} ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}:${pad2(date.getUTCSeconds())}`;
+}
+
+function normalizeIsoDateLikeString(value: string) {
+  const trimmed = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(trimmed)) {
+    return null;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return formatMySqlDateTime(parsed);
 }
 
 function chooseTextType(columnName: string, rest: string) {
