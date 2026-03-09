@@ -76,12 +76,13 @@ function normalizeIsoDateLikeString(value: string) {
   return formatMySqlDateTime(parsed);
 }
 
-function chooseTextType(columnName: string, rest: string) {
+function chooseTextType(columnName: string, rest: string, indexedKeyColumn = false) {
   const lower = columnName.toLowerCase();
   const hasDefault = /\bDEFAULT\b/i.test(rest);
   const hasTimestampDefault = /\bDEFAULT\s+(?:\(?\s*)?(?:CURRENT_TIMESTAMP|UTC_TIMESTAMP)\s*\(?\)?/i.test(rest);
   const keyLike =
     /\bPRIMARY\s+KEY\b|\bUNIQUE\b/i.test(rest)
+    || indexedKeyColumn
     || /(^id$|id$|token$|name$|title$|type$|status$|role$|faction$|key$|datekey$|locationid$|archiveid$|sessionid$|partyid$|cityid$|shopname$|pointtype$)/i.test(lower);
 
   if (hasTimestampDefault) return 'DATETIME';
@@ -89,6 +90,30 @@ function chooseTextType(columnName: string, rest: string) {
   if (LONG_TEXT_COLUMNS.has(columnName)) return hasDefault ? 'VARCHAR(4096)' : 'LONGTEXT';
   if (keyLike) return 'VARCHAR(191)';
   return hasDefault ? 'VARCHAR(255)' : 'LONGTEXT';
+}
+
+function collectIndexedCreateTableColumns(sql: string) {
+  const columns = new Set<string>();
+  const patterns = [
+    /\bPRIMARY\s+KEY\s*\(([^)]+)\)/gi,
+    /\bUNIQUE(?:\s+KEY)?(?:\s+(?:`[^`]+`|[A-Za-z_][A-Za-z0-9_]*))?\s*\(([^)]+)\)/gi,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of sql.matchAll(pattern)) {
+      const columnList = String(match[1] || '');
+      for (const rawPart of columnList.split(',')) {
+        const part = rawPart.trim();
+        const identifierMatch = part.match(/^(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_]*))/);
+        const columnName = identifierMatch?.[1] || identifierMatch?.[2] || '';
+        if (columnName) {
+          columns.add(columnName);
+        }
+      }
+    }
+  }
+
+  return columns;
 }
 
 function quoteMySqlIdentifier(identifier: string) {
@@ -148,6 +173,8 @@ function normalizeCreateTableSql(block: string) {
     .replace(/\bREAL\b/gi, 'DOUBLE')
     .replace(/\bBOOLEAN\b/gi, 'TINYINT(1)');
 
+  const indexedColumns = collectIndexedCreateTableColumns(normalized);
+
   normalized = normalized
     .split('\n')
     .map((line) => {
@@ -161,7 +188,7 @@ function normalizeCreateTableSql(block: string) {
       }
 
       const textMatch = rawRest.match(/^TEXT(\b.*)$/);
-      const rest = textMatch ? `${chooseTextType(columnName, textMatch[1])}${textMatch[1]}` : rawRest;
+      const rest = textMatch ? `${chooseTextType(columnName, textMatch[1], indexedColumns.has(columnName))}${textMatch[1]}` : rawRest;
       return `${indent}${quoteMySqlIdentifier(columnName)}${gap}${rest}`;
     })
     .join('\n');
