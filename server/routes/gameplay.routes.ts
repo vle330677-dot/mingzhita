@@ -2308,7 +2308,7 @@ async function pickNpcFactionSkill(db: any, userId: number, skillFaction: string
         WHEN '中阶' THEN 2
         ELSE 1
       END DESC,
-      RANDOM()
+      RAND()
     LIMIT 1
   `).get(userId, skillFaction, skillFaction) as AnyRow | undefined;
   if (primary) return primary;
@@ -2326,7 +2326,7 @@ async function pickNpcFactionSkill(db: any, userId: number, skillFaction: string
         WHEN '中阶' THEN 2
         ELSE 1
       END DESC,
-      RANDOM()
+      RAND()
     LIMIT 1
   `).get(userId) as AnyRow | undefined;
 }
