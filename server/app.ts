@@ -35,6 +35,30 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+type BootstrapStatus = 'starting' | 'ready' | 'error';
+
+type BootstrapState = {
+  status: BootstrapStatus;
+  mode: 'static' | 'vite-middleware';
+  startedAt: string;
+  readyAt: string;
+  errorAt: string;
+  errorMessage: string;
+};
+
+function buildBootstrapPayload(state: BootstrapState) {
+  return {
+    ok: state.status !== 'error',
+    status: state.status,
+    mode: state.mode,
+    startedAt: state.startedAt,
+    readyAt: state.readyAt || null,
+    errorAt: state.errorAt || null,
+    errorMessage: state.errorMessage || null,
+    ts: Date.now(),
+  };
+}
+
 export async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT || 3000);
@@ -42,115 +66,154 @@ export async function startServer() {
   const distPath = path.resolve(__dirname, '../dist');
   const hasBuiltClient = fs.existsSync(path.join(distPath, 'index.html'));
   const useProdStatic = process.env.NODE_ENV === 'production' && hasBuiltClient;
-
-  const db = await initDb();
-  const auth = createAuth(db);
-  const runtime = createRealtimeRuntime();
-  await runtime.ready();
-  const ctx: AppContext = { db, auth, runtime };
-
-  const realtimeRouter = await createRealtimeRouter(ctx);
-  const coreRouter = await createCoreRouter(ctx);
-  const characterRouter = await createCharacterRouter(ctx);
-  const catalogRouter = await createCatalogRouter(ctx);
-  const gameplayRouter = await createGameplayRouter(ctx);
-  const guildRouter = await createGuildRouter(ctx);
-  const ghostRouter = await createGhostRouter(ctx);
-  const armyRouter = await createArmyRouter(ctx);
-  const confirmationRouter = await createConfirmationRouter(ctx);
-  const factionRouter = await createFactionRouter(ctx);
-  const cityRouter = await createCityRouter(ctx);
-  const mediationRouter = await createMediationRouter(ctx);
-  const compatRouter = await createCompatRouter(ctx);
-  const announcementsRouter = await createAnnouncementsRouter(ctx);
-  const roomsRouter = await createRoomsRouter(ctx);
-  const rpRouter = await createRpRouter(ctx);
-  const customGameRouter = await createCustomGameRouter(db);
-  const legacyRouter = await createLegacyRouter(ctx);
+  const bootstrapState: BootstrapState = {
+    status: 'starting',
+    mode: useProdStatic ? 'static' : 'vite-middleware',
+    startedAt: new Date().toISOString(),
+    readyAt: '',
+    errorAt: '',
+    errorMessage: '',
+  };
 
   app.use(compressionMiddleware);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  app.use('/api', rateLimiter(runtime, { windowMs: 60 * 1000, maxRequests: 200 }));
-
   app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, ts: Date.now() });
+    const statusCode = bootstrapState.status === 'error' ? 503 : 200;
+    res.status(statusCode).json(buildBootstrapPayload(bootstrapState));
   });
 
-  app.use('/api', realtimeRouter);
-  app.use('/api', coreRouter);
-  app.use('/api', characterRouter);
-  app.use('/api', catalogRouter);
-  app.use('/api', gameplayRouter);
-  app.use('/api', guildRouter);
-  app.use('/api', ghostRouter);
-  app.use('/api', armyRouter);
-  app.use('/api', confirmationRouter);
-  app.use('/api', factionRouter);
-  app.use('/api', cityRouter);
-  app.use('/api', mediationRouter);
-  app.use('/api', compatRouter);
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/health') return next();
+    if (bootstrapState.status === 'ready') return next();
 
-  app.use('/api', cacheMiddleware(runtime, 30 * 1000), announcementsRouter);
-  app.use('/api', cacheMiddleware(runtime, 30 * 1000), roomsRouter);
+    const message = bootstrapState.status === 'error'
+      ? 'Server bootstrap failed'
+      : 'Server is still starting';
 
-  app.use('/api', rpRouter);
-  app.use('/api/custom-games', customGameRouter);
-  app.use('/api', legacyRouter);
-
-  if (!useProdStatic) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    return res.status(503).json({
+      ...buildBootstrapPayload(bootstrapState),
+      message,
     });
-
-    app.use(vite.middlewares);
-
-    app.use('*', async (req, res, next) => {
-      if (req.originalUrl.startsWith('/api')) return next();
-
-      try {
-        let template = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf-8');
-        template = await vite.transformIndexHtml(req.originalUrl, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-      } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
-        next(e);
-      }
-    });
-  } else {
-    app.use(express.static(distPath, {
-      maxAge: '1d',
-      etag: true,
-      lastModified: true,
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        }
-        if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(filePath)) {
-          res.setHeader('Cache-Control', 'public, max-age=604800');
-        }
-      }
-    }));
-
-    app.get('*', (req, res) => {
-      if (req.originalUrl.startsWith('/api')) {
-        return res.status(404).json({ message: 'API not found' });
-      }
-      res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.use((_req, res) => res.status(404).json({ message: 'Not Found' }));
-  app.use((err: any, _req: any, res: any, _next: any) => {
-    console.error(err);
-    res.status(500).json({ message: 'Internal Server Error' });
   });
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT} (${useProdStatic ? 'static' : 'vite-middleware'} mode)`);
+    console.log(`Server running on port ${PORT} (${bootstrapState.mode} mode, bootstrapping)`);
   });
+
+  void (async () => {
+    try {
+      const db = await initDb();
+      const auth = createAuth(db);
+      const runtime = createRealtimeRuntime();
+      await runtime.ready();
+      const ctx: AppContext = { db, auth, runtime };
+
+      const realtimeRouter = await createRealtimeRouter(ctx);
+      const coreRouter = await createCoreRouter(ctx);
+      const characterRouter = await createCharacterRouter(ctx);
+      const catalogRouter = await createCatalogRouter(ctx);
+      const gameplayRouter = await createGameplayRouter(ctx);
+      const guildRouter = await createGuildRouter(ctx);
+      const ghostRouter = await createGhostRouter(ctx);
+      const armyRouter = await createArmyRouter(ctx);
+      const confirmationRouter = await createConfirmationRouter(ctx);
+      const factionRouter = await createFactionRouter(ctx);
+      const cityRouter = await createCityRouter(ctx);
+      const mediationRouter = await createMediationRouter(ctx);
+      const compatRouter = await createCompatRouter(ctx);
+      const announcementsRouter = await createAnnouncementsRouter(ctx);
+      const roomsRouter = await createRoomsRouter(ctx);
+      const rpRouter = await createRpRouter(ctx);
+      const customGameRouter = await createCustomGameRouter(db);
+      const legacyRouter = await createLegacyRouter(ctx);
+
+      app.use('/api', rateLimiter(runtime, { windowMs: 60 * 1000, maxRequests: 200 }));
+
+      app.use('/api', realtimeRouter);
+      app.use('/api', coreRouter);
+      app.use('/api', characterRouter);
+      app.use('/api', catalogRouter);
+      app.use('/api', gameplayRouter);
+      app.use('/api', guildRouter);
+      app.use('/api', ghostRouter);
+      app.use('/api', armyRouter);
+      app.use('/api', confirmationRouter);
+      app.use('/api', factionRouter);
+      app.use('/api', cityRouter);
+      app.use('/api', mediationRouter);
+      app.use('/api', compatRouter);
+
+      app.use('/api', cacheMiddleware(runtime, 30 * 1000), announcementsRouter);
+      app.use('/api', cacheMiddleware(runtime, 30 * 1000), roomsRouter);
+
+      app.use('/api', rpRouter);
+      app.use('/api/custom-games', customGameRouter);
+      app.use('/api', legacyRouter);
+
+      if (!useProdStatic) {
+        const { createServer: createViteServer } = await import('vite');
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        });
+
+        app.use(vite.middlewares);
+
+        app.use('*', async (req, res, next) => {
+          if (req.originalUrl.startsWith('/api')) return next();
+
+          try {
+            let template = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf-8');
+            template = await vite.transformIndexHtml(req.originalUrl, template);
+            res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+          } catch (e) {
+            vite.ssrFixStacktrace(e as Error);
+            next(e);
+          }
+        });
+      } else {
+        app.use(express.static(distPath, {
+          maxAge: '1d',
+          etag: true,
+          lastModified: true,
+          setHeaders: (res, filePath) => {
+            if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+              res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            }
+            if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(filePath)) {
+              res.setHeader('Cache-Control', 'public, max-age=604800');
+            }
+          }
+        }));
+
+        app.get('*', (req, res) => {
+          if (req.originalUrl.startsWith('/api')) {
+            return res.status(404).json({ message: 'API not found' });
+          }
+          res.setHeader('Cache-Control', 'no-cache');
+          res.sendFile(path.join(distPath, 'index.html'));
+        });
+      }
+
+      app.use((_req, res) => res.status(404).json({ message: 'Not Found' }));
+      app.use((err: any, _req: any, res: any, _next: any) => {
+        console.error(err);
+        res.status(500).json({ message: 'Internal Server Error' });
+      });
+
+      bootstrapState.status = 'ready';
+      bootstrapState.readyAt = new Date().toISOString();
+      console.log('Application bootstrap complete');
+    } catch (err: any) {
+      bootstrapState.status = 'error';
+      bootstrapState.errorAt = new Date().toISOString();
+      bootstrapState.errorMessage = String(err?.message || 'Unknown bootstrap error');
+      console.error('❌ Application bootstrap failed:', err);
+      if (err?.stack) {
+        console.error('Stack trace:', err.stack);
+      }
+    }
+  })();
 }
