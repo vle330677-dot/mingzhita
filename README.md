@@ -23,7 +23,6 @@
    PORT=3000
    NODE_ENV=development
    ADMIN_ENTRY_CODE=your_admin_code
-   DB_CLIENT=mysql
    MYSQL_HOST=127.0.0.1
    MYSQL_PORT=3306
    MYSQL_USERNAME=mingzhita
@@ -40,20 +39,6 @@
    ```
 
 4. 访问 `http://localhost:3000`
-
-### 从现有 SQLite 数据迁移到 MySQL
-
-如果你当前数据还在 `data/game.db`，先在 `.env` 中保留：
-
-```env
-SQLITE_IMPORT_PATH=./data/game.db
-```
-
-然后执行：
-
-```bash
-npm run db:mysql:import
-```
 
 ### 生产构建
 
@@ -78,7 +63,6 @@ npm run start
 ```env
 NODE_ENV=production
 ADMIN_ENTRY_CODE=<strong_random_code>
-DB_CLIENT=mysql
 MYSQL_HOST=your-mysql-host
 MYSQL_PORT=3306
 MYSQL_DATABASE=mingzhita
@@ -109,7 +93,7 @@ Zeabur 的 MySQL 模板默认会提供 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DATA
 
 项目已内置以下优化：
 
-- ✅ **数据库优化**：MySQL 兼容层、索引、缓存配置
+- ✅ **数据库优化**：MySQL 数据层、索引、缓存配置
 - ✅ **限流保护**：防止恶意请求（200 请求/分钟）
 - ✅ **响应压缩**：Gzip 压缩，减少 60-80% 传输量
 - ✅ **智能缓存**：内存缓存热点数据
@@ -121,7 +105,7 @@ Zeabur 的 MySQL 模板默认会提供 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DATA
 
 - **前端**：React 19 + TypeScript + Tailwind CSS + Motion
 - **后端**：Node.js + Express + TypeScript
-- **数据库**：MySQL（Zeabur 推荐，兼容导入现有 SQLite 数据）
+- **数据库**：MySQL
 - **构建工具**：Vite
 
 ## 📦 项目结构
@@ -152,7 +136,6 @@ mingzhita-main/
 
 ## 📝 注意事项
 
-- 如果你仍在用 SQLite 过渡，可继续设置 `DB_CLIENT=sqlite` 和 `DB_PATH=./data/game.db`
 - 生产环境：如果 `dist/` 缺失，服务器会回退到 Vite 中间件模式保持服务可用
 - 如果使用 MySQL，请先确认 `MYSQL_HOST`、`MYSQL_DATABASE`、`MYSQL_USERNAME`（或 `MYSQL_USER`）已正确填写，或已提供 `MYSQL_URI`
 
@@ -164,8 +147,8 @@ mingzhita-main/
 3. 考虑升级套餐或优化查询
 
 ### 数据丢失？
-1. 如果你仍在用 SQLite 过渡环境，确认已配置持久化存储
-2. 如果是 Zeabur + MySQL，先检查 MySQL 服务是否正常以及连接变量是否已注入应用
+1. 先检查 MySQL 服务是否正常以及连接变量是否已注入应用
+2. 查看 Zeabur 或宿主机日志，确认没有连接失败或权限错误
 3. 定期备份 MySQL 数据库
 
 ### 部署失败？
