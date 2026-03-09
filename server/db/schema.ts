@@ -1,5 +1,19 @@
 import type { AppDatabase } from './types';
 
+function isIgnorableSchemaError(error: any) {
+  const code = error?.code;
+  const message = String(error?.sqlMessage || error?.message || '');
+
+  return (
+    code === 'ER_DUP_KEYNAME' || // 重复索引名
+    code === 'ER_TABLE_EXISTS_ERROR' || // 表已存在
+    code === 'ER_DUP_FIELDNAME' || // 字段已存在
+    message.includes('Duplicate key name') ||
+    message.includes('already exists') ||
+    message.includes('Duplicate column name')
+  );
+}
+
 export async function runSchema(db: AppDatabase) {
   const statements: string[] = [
     `
@@ -633,10 +647,18 @@ export async function runSchema(db: AppDatabase) {
 
     try {
       await db.exec(sql);
-    } catch (error) {
+      console.log(`[runSchema] ok #${i + 1}`);
+    } catch (error: any) {
+      if (isIgnorableSchemaError(error)) {
+        console.warn(`[runSchema] skip #${i + 1}: ${error?.code || error?.message}`);
+        continue;
+      }
+
       console.error(`[runSchema] failed at statement #${i + 1}`);
       console.error(sql);
       throw error;
     }
   }
+
+  console.log('[runSchema] schema completed');
 }
