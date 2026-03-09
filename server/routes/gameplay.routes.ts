@@ -2084,39 +2084,66 @@ function pickNpcReply(action: string, nextAffinity: number, delta: number) {
 }
 
 async function upsertWorldNpcRuntime(db: any, key: string, value: string) {
-  await db.prepare(`
-    INSERT INTO world_npc_runtime(\`key\`, value, updatedAt)
-    VALUES(?,?,?)
-    ON CONFLICT(\`key\`) DO UPDATE SET value=excluded.value, updatedAt=excluded.updatedAt
-  `).run(key, value, nowIso());
+  const ts = nowIso();
+  const existing = await db.prepare('SELECT `key` FROM world_npc_runtime WHERE `key` = ? LIMIT 1').get(key) as AnyRow | undefined;
+  if (existing?.key) {
+    await db.prepare('UPDATE world_npc_runtime SET value = ?, updatedAt = ? WHERE `key` = ?').run(value, ts, key);
+    return;
+  }
+
+  await db.prepare('INSERT INTO world_npc_runtime(`key`, value, updatedAt) VALUES(?,?,?)').run(key, value, ts);
 }
 
 async function ensureWorldNpcPopulation(db: any) {
   const now = nowIso();
-  const upsertLegacy = db.prepare(`
+  const findNpcById = db.prepare(`SELECT id FROM world_npcs WHERE id = ? LIMIT 1`);
+  const insertNpc = db.prepare(`
     INSERT INTO world_npcs(
       id, name, skillFaction, personality, identity, appearance, currentLocation, mapX, mapY, isLegacy, defaultAffinity, createdAt, updatedAt
     )
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET
-      name=excluded.name,
-      skillFaction=excluded.skillFaction,
-      personality=excluded.personality,
-      identity=excluded.identity,
-      appearance=excluded.appearance,
-      currentLocation=excluded.currentLocation,
-      mapX=excluded.mapX,
-      mapY=excluded.mapY,
-      isLegacy=1,
-      defaultAffinity=excluded.defaultAffinity,
-      updatedAt=excluded.updatedAt
+  `);
+  const updateLegacyNpc = db.prepare(`
+    UPDATE world_npcs
+    SET name = ?,
+        skillFaction = ?,
+        personality = ?,
+        identity = ?,
+        appearance = ?,
+        currentLocation = ?,
+        mapX = ?,
+        mapY = ?,
+        isLegacy = 1,
+        defaultAffinity = ?,
+        updatedAt = ?
+    WHERE id = ?
   `);
 
   for (const legacy of LEGACY_WORLD_NPCS) {
     const locationId = normalizeMapLocationId(legacy.fixedLocation);
     const point = buildNpcMapPoint(locationId);
     const legacyId = `legacy_npc_${hashText(String(legacy.name || 'legacy'))}`;
-    await upsertLegacy.run(
+    const legacyAffinity = clamp(Number(legacy.defaultAffinity || 50), WORLD_NPC_AFFINITY_MIN, WORLD_NPC_AFFINITY_MAX);
+    const existing = await findNpcById.get(legacyId) as AnyRow | undefined;
+
+    if (existing?.id) {
+      await updateLegacyNpc.run(
+        legacy.name,
+        legacy.skillFaction,
+        legacy.personality,
+        legacy.identity,
+        legacy.appearance,
+        locationId,
+        point.x,
+        point.y,
+        legacyAffinity,
+        now,
+        legacyId
+      );
+      continue;
+    }
+
+    await insertNpc.run(
       legacyId,
       legacy.name,
       legacy.skillFaction,
@@ -2127,26 +2154,20 @@ async function ensureWorldNpcPopulation(db: any) {
       point.x,
       point.y,
       1,
-      clamp(Number(legacy.defaultAffinity || 50), WORLD_NPC_AFFINITY_MIN, WORLD_NPC_AFFINITY_MAX),
+      legacyAffinity,
       now,
       now
     );
   }
 
-  const insertRandomNpc = db.prepare(`
-    INSERT INTO world_npcs(
-      id, name, skillFaction, personality, identity, appearance, currentLocation, mapX, mapY, isLegacy, defaultAffinity, createdAt, updatedAt
-    )
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `);
   for (let i = 1; i <= WORLD_NPC_RANDOM_COUNT; i++) {
     const npcId = `world_npc_${i}`;
-    const exists = await db.prepare(`SELECT id FROM world_npcs WHERE id = ? LIMIT 1`).get(npcId) as AnyRow | undefined;
+    const exists = await findNpcById.get(npcId) as AnyRow | undefined;
     if (exists) continue;
 
     const locationId = rand(MAP_LOCATION_IDS);
     const point = buildNpcMapPoint(locationId);
-    await insertRandomNpc.run(
+    await insertNpc.run(
       npcId,
       randomWorldNpcName(i),
       rand(NPC_SKILL_FACTIONS),

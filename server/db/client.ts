@@ -383,6 +383,38 @@ function parseConditionalCreateIndex(sql: string): ParsedConditionalIndex | null
   };
 }
 
+function formatSqlPreview(sql: string) {
+  const compact = String(sql || '').replace(/\s+/g, ' ').trim();
+  return compact.length > 500 ? `${compact.slice(0, 500)}...` : compact;
+}
+
+function serializeSqlParams(params: any[]) {
+  try {
+    const serialized = JSON.stringify(params);
+    return serialized.length > 500 ? `${serialized.slice(0, 500)}...` : serialized;
+  } catch {
+    return '[unserializable params]';
+  }
+}
+
+function createSqlExecutionError(error: any, originalSql: string, normalizedSql: string, params: any[]) {
+  const wrapped = new Error([
+    String(error?.message || error || 'Unknown MySQL error'),
+    `[sql:original] ${formatSqlPreview(originalSql)}`,
+    `[sql:normalized] ${formatSqlPreview(normalizedSql)}`,
+    `[sql:params] ${serializeSqlParams(params)}`,
+  ].join('\n'));
+
+  if (error?.stack) {
+    wrapped.stack = `${wrapped.message}\nCaused by: ${error.stack}`;
+  }
+
+  (wrapped as any).code = error?.code;
+  (wrapped as any).errno = error?.errno;
+  (wrapped as any).sqlState = error?.sqlState;
+  return wrapped;
+}
+
 class MySqlStatement implements AppStatement {
   constructor(
     private readonly database: MySqlDatabase,
@@ -530,8 +562,7 @@ export class MySqlDatabase implements AppDatabase {
   }
 
   async all(sql: string, params: any[]) {
-    const normalized = normalizeMySqlSql(sql);
-    const [rows] = await this.getExecutor().query(normalized, normalizeBindValues(params));
+    const [rows] = await this.queryWithContext(sql, params);
     return Array.isArray(rows) ? rows : [];
   }
 
@@ -540,8 +571,7 @@ export class MySqlDatabase implements AppDatabase {
       return { changes: 0, lastInsertRowid: 0 };
     }
 
-    const normalized = normalizeMySqlSql(sql);
-    const [result] = await this.getExecutor().query(normalized, normalizeBindValues(params));
+    const [result] = await this.queryWithContext(sql, params);
     if (Array.isArray(result)) {
       return { changes: 0, lastInsertRowid: 0 };
     }
@@ -557,11 +587,21 @@ export class MySqlDatabase implements AppDatabase {
     return this.transactionContext.getStore() || this.pool;
   }
 
+  private async queryWithContext(sql: string, params: any[] = []) {
+    const normalized = normalizeMySqlSql(sql);
+    const boundParams = normalizeBindValues(params);
+    try {
+      return await this.getExecutor().query(normalized, boundParams);
+    } catch (error: any) {
+      throw createSqlExecutionError(error, sql, normalized, boundParams);
+    }
+  }
+
   private async executeStatement(sql: string) {
     const statement = sql.trim();
     if (!statement) return;
     if (await this.ensureConditionalIndex(statement)) return;
-    await this.getExecutor().query(normalizeMySqlSql(statement));
+    await this.queryWithContext(statement, []);
   }
 
   private async ensureConditionalIndex(sql: string) {

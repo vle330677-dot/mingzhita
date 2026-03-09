@@ -167,7 +167,7 @@ export async function startServer() {
           try {
             let template = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf-8');
             template = await vite.transformIndexHtml(req.originalUrl, template);
-            res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+            res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(template);
           } catch (e) {
             vite.ssrFixStacktrace(e as Error);
             next(e);

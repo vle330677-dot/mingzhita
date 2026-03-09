@@ -1,4 +1,4 @@
-﻿import { Router, Request, Response, NextFunction } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 
 type DB = any;
 
@@ -558,6 +558,25 @@ function formatSettlementAnnouncement(gameTitle: string, mapName: string, rank: 
 }
 
 /** -------------------- Review Quorum (for custom game) -------------------- */
+async function saveReviewRule(db: DB, moduleKey: ReviewModule, requiredApprovals: number) {
+  const ts = now();
+  const existing = await dbGet(db, `SELECT module_key FROM review_rules WHERE module_key = ? LIMIT 1`, [moduleKey]);
+  if (existing) {
+    await dbRun(
+      db,
+      `UPDATE review_rules SET required_approvals = ?, updated_at = ? WHERE module_key = ?`,
+      [requiredApprovals, ts, moduleKey]
+    );
+    return;
+  }
+
+  await dbRun(
+    db,
+    `INSERT INTO review_rules(module_key, required_approvals, updated_at) VALUES (?, ?, ?)`,
+    [moduleKey, requiredApprovals, ts]
+  );
+}
+
 async function ensureReviewQuorumTables(db: DB) {
   const ddl = [
     `CREATE TABLE IF NOT EXISTS review_rules (
@@ -598,15 +617,7 @@ async function ensureReviewQuorumTables(db: DB) {
     ["custom_start", 1],
   ];
   for (const [k, n] of defaults) {
-    await dbRun(
-      db,
-      `INSERT INTO review_rules(module_key, required_approvals, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(module_key) DO UPDATE SET
-         required_approvals = excluded.required_approvals,
-         updated_at = excluded.updated_at`,
-      [k, n, now()]
-    );
+    await saveReviewRule(db, k, n);
   }
 }
 
@@ -617,15 +628,7 @@ async function getRequiredApprovals(db: DB, moduleKey: ReviewModule) {
 
 async function setRequiredApprovals(db: DB, moduleKey: ReviewModule, required: number) {
   const n = Math.max(1, Number(required || 1));
-  await dbRun(
-    db,
-    `INSERT INTO review_rules(module_key, required_approvals, updated_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(module_key) DO UPDATE SET
-       required_approvals = excluded.required_approvals,
-       updated_at = excluded.updated_at`,
-    [moduleKey, n, now()]
-  );
+  await saveReviewRule(db, moduleKey, n);
 }
 
 async function ensureReviewTask(db: DB, opts: {
