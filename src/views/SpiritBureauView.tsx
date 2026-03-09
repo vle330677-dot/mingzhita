@@ -301,7 +301,7 @@ export function SpiritBureauView({ user, onExit, showToast, fetchGlobalData }: P
             <div className="p-8 bg-slate-800 border-b border-cyan-900 flex justify-between items-start">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-cyan-950 rounded-xl text-cyan-400 border border-cyan-800">
-                  {React.cloneElement(selectedBuilding.icon, { size: 28 })}
+                  {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 28 })}
                 </div>
                 <div>
                   <h2 className="text-2xl font-black text-cyan-50">{selectedBuilding.name}</h2>

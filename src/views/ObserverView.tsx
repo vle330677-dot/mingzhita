@@ -384,7 +384,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
               <div className="w-16 h-16 md:w-20 md:h-20 bg-black/80 border border-green-600/50 shadow-[0_0_20px_rgba(34,197,94,0.2)] flex items-center justify-center text-green-500 group-hover:scale-110 group-hover:bg-green-900/80 group-hover:text-white group-hover:border-green-400 transition-all rounded-full relative overflow-hidden">
                  {/* 扫描动画 */}
                  <div className="absolute top-0 left-0 w-full h-1 bg-green-500/50 animate-[scan_2s_linear_infinite] opacity-50 group-hover:opacity-100"></div>
-                {React.cloneElement(b.icon, { size: 32 })}
+                {React.cloneElement(b.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
               </div>
               <div className="bg-black/90 text-green-400 text-[10px] md:text-xs font-bold px-3 py-1 border border-green-800 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-lg">
                 {b.name}
@@ -457,7 +457,7 @@ export function ObserverView({ user, onExit, showToast, fetchGlobalData }: Props
                   {/* 标题栏 */}
                   <div className="flex items-center gap-5 mb-8 border-b border-green-900 pb-6">
                     <div className="p-4 bg-green-900/20 rounded text-green-500 border border-green-800">
-                      {React.cloneElement(selectedBuilding.icon, { size: 32 })}
+                      {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
                     </div>
                     <div>
                       <h2 className="text-2xl font-bold text-green-400 tracking-wider font-mono uppercase">{selectedBuilding.name}</h2>

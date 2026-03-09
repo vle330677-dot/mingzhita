@@ -311,7 +311,7 @@ export function ArmyView({ user, onExit, showToast, fetchGlobalData, onNavigateL
           >
             <div className="flex flex-col items-center gap-2">
               <div className="w-12 h-12 md:w-16 md:h-16 bg-slate-800/90 border border-slate-500/50 shadow-[0_0_20px_rgba(0,0,0,0.5)] backdrop-blur-sm flex items-center justify-center text-slate-300 rounded-2xl transition-all group-hover:scale-110 group-hover:bg-sky-600 group-hover:border-sky-400 group-hover:text-white group-active:scale-95">
-                {React.cloneElement(b.icon as React.ReactElement, { size: 24 })}
+                {React.cloneElement(b.icon as React.ReactElement<{ size?: number }>, { size: 24 })}
               </div>
               <div className="px-3 py-1 bg-black/60 backdrop-blur-md text-white text-[10px] md:text-xs font-bold rounded-lg border border-white/10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-lg whitespace-nowrap">
                 {b.name}

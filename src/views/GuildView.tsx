@@ -685,7 +685,7 @@ export function GuildView({ user, onExit, showToast, fetchGlobalData }: Props) {
             onClick={() => setSelectedBuilding(b)}
           >
             <div className="w-16 h-16 md:w-20 md:h-20 bg-stone-900/85 border-2 border-amber-500 rounded-2xl flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:text-amber-300 transition-all shadow-xl">
-              {React.cloneElement(b.icon as React.ReactElement, { size: 28 })}
+              {React.cloneElement(b.icon as React.ReactElement<{ size?: number }>, { size: 28 })}
             </div>
             <div className="mt-2 text-[11px] text-center text-amber-200 bg-black/70 px-2 py-1 rounded-lg whitespace-nowrap">
               {b.name}
@@ -1073,7 +1073,6 @@ function AuctionCard({
     </div>
   );
 }
-
 
 
 

@@ -202,7 +202,7 @@ export function LondonTowerView({ user, onExit, showToast, fetchGlobalData }: Pr
             <div className="flex flex-col items-center gap-3">
               <div className="w-16 h-16 md:w-20 md:h-20 bg-white/80 backdrop-blur-md border-4 border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center justify-center text-sky-600 group-hover:scale-110 group-hover:bg-sky-500 group-hover:text-white group-hover:border-sky-300 transition-all rounded-3xl z-10 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-tr from-sky-100/50 to-transparent opacity-50 group-hover:opacity-0" />
-                {React.cloneElement(b.icon as React.ReactElement, { size: 32 })}
+                {React.cloneElement(b.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
               </div>
               <div className="bg-slate-800 text-white text-[10px] md:text-xs font-bold px-4 py-1.5 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg tracking-wide border border-slate-600">
                 {b.name}
@@ -225,11 +225,11 @@ export function LondonTowerView({ user, onExit, showToast, fetchGlobalData }: Pr
             >
               <div className="p-8 bg-sky-50/50 border-b border-sky-100 flex justify-between items-start relative overflow-hidden shrink-0">
                 <div className="absolute -right-6 -top-6 text-sky-100/50 rotate-12 pointer-events-none">
-                  {React.cloneElement(selectedBuilding.icon, { size: 140 })}
+                  {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 140 })}
                 </div>
                 <div className="flex items-center gap-4 relative z-10">
                   <div className="p-3 bg-white rounded-2xl text-sky-600 shadow-sm border border-sky-100">
-                    {React.cloneElement(selectedBuilding.icon, { size: 28 })}
+                    {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 28 })}
                   </div>
                   <div>
                     <h2 className="text-2xl font-black text-slate-800 tracking-tight">{selectedBuilding.name}</h2>

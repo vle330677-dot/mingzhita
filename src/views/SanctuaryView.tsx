@@ -815,7 +815,7 @@ export function SanctuaryView({ user, onExit, showToast, fetchGlobalData, onNavi
 
               <div className="flex flex-col items-center mb-6 text-center shrink-0">
                 <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 mb-4 shadow-inner">
-                  {React.cloneElement(selectedBuilding.icon, { size: 36 })}
+                  {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 36 })}
                 </div>
                 <h2 className="text-2xl font-black text-amber-900">{selectedBuilding.name}</h2>
                 <p className="text-xs font-bold text-amber-600 mt-1 leading-6">{selectedBuilding.desc}</p>

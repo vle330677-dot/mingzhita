@@ -482,7 +482,7 @@ export function SlumsView({ user, onExit, showToast, fetchGlobalData, onNavigate
 
               <div className="flex items-center gap-4 mb-8 relative z-10">
                 <div className="p-4 bg-stone-800 rounded-xl text-orange-600 border border-stone-600 shadow-inner">
-                  {React.cloneElement(selectedBuilding.icon, { size: 32 })}
+                  {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
                 </div>
                 <div>
                   <h2 className="text-2xl font-black text-stone-200 tracking-wider">{selectedBuilding.name}</h2>

@@ -430,7 +430,7 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
             <div className="flex flex-col items-center">
               <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-yellow-50 to-amber-100 border-2 border-amber-300 shadow-[0_10px_30px_rgba(245,158,11,0.3)] flex items-center justify-center text-amber-600 group-hover:scale-110 group-hover:border-amber-500 transition-all rounded-full z-10 relative overflow-hidden">
                 <div className="absolute inset-0 bg-white/50 opacity-0 group-hover:opacity-100 transition-opacity blur-md" />
-                {React.cloneElement(b.icon as React.ReactElement, { size: 32 })}
+                {React.cloneElement(b.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
               </div>
               <div className="mt-2 bg-white/95 backdrop-blur-md text-emerald-900 text-[10px] md:text-xs font-bold px-3 py-1.5 rounded-full border border-emerald-100 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-md whitespace-nowrap">
                 {b.name}
@@ -473,7 +473,7 @@ export function RichAreaView({ user, onExit, showToast, fetchGlobalData, onNavig
 
                 <div className="flex items-center gap-5 mb-8 border-b border-slate-100 pb-6 mt-2 shrink-0">
                   <div className="p-4 bg-amber-50 rounded-2xl text-amber-600 border border-amber-200 shadow-inner">
-                    {React.cloneElement(selectedBuilding.icon, { size: 32 })}
+                    {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
                   </div>
                   <div>
                     <h2 className="text-3xl font-black text-slate-800 tracking-tight">{selectedBuilding.name}</h2>

@@ -630,7 +630,7 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                  {/* 装饰性涂鸦 */}
                  <div className="absolute top-1 right-2 text-red-600 opacity-0 group-hover:opacity-100 font-black text-xs rotate-12 transition-opacity">乱涂</div>
                  <div className="absolute bottom-1 left-2 text-red-600 opacity-0 group-hover:opacity-100 font-black text-xs -rotate-12 transition-opacity">!!!</div>
-                {React.cloneElement(b.icon as React.ReactElement, { size: 32 })}
+                {React.cloneElement(b.icon as React.ReactElement<{ size?: number }>, { size: 32 })}
               </div>
               <div className="mt-2 bg-black/90 text-red-500 text-[10px] md:text-xs font-black px-3 py-1 transform -rotate-2 border border-red-900 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
                 {b.name}
@@ -690,7 +690,7 @@ export function DemonSocietyView({ user, onExit, showToast, fetchGlobalData }: P
                   {/* 标题栏 */}
                   <div className="flex items-center gap-5 mb-8 border-b-4 border-dashed border-stone-800 pb-6">
                     <div className="p-4 bg-stone-900 rounded-full text-red-600 border-2 border-stone-700 shadow-inner">
-                      {React.cloneElement(selectedBuilding.icon, { size: 36 })}
+                      {React.cloneElement(selectedBuilding.icon as React.ReactElement<{ size?: number }>, { size: 36 })}
                     </div>
                     <div>
                       <h2 className="text-3xl font-black text-red-600 uppercase tracking-tighter drop-shadow-md" style={{ textShadow: '2px 2px 0px #000' }}>
