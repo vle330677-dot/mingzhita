@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { AppContext } from '../types';
 
 type AnyRow = Record<string, any>;
@@ -326,7 +326,7 @@ async function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
       OR locationTag LIKE '%guild%'
       OR locationTag = ''
     )
-    ORDER BY price DESC, RANDOM()
+    ORDER BY price DESC, RAND()
     LIMIT 1
   `;
   const fallbackSql = `
