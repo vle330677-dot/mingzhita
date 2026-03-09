@@ -120,6 +120,119 @@ function quoteMySqlIdentifier(identifier: string) {
   return `\`${String(identifier || '').replace(/`/g, '``')}\``;
 }
 
+function readSqlFunctionCall(sql: string, openParenIndex: number) {
+  let quote: "'" | '"' | '`' | null = null;
+  let depth = 0;
+  let innerStart = openParenIndex + 1;
+
+  for (let i = openParenIndex; i < sql.length; i += 1) {
+    const char = sql[i];
+
+    if (quote) {
+      if (char === quote && sql[i - 1] !== '\\') {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char as "'" | '"' | '`';
+      continue;
+    }
+
+    if (char === '(') {
+      depth += 1;
+      if (depth === 1) {
+        innerStart = i + 1;
+      }
+      continue;
+    }
+
+    if (char === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          inner: sql.slice(innerStart, i),
+          endIndex: i,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeSqliteDateTimeCall(inner: string) {
+  const expression = inner.trim();
+  if (!expression) return 'CAST(NULL AS DATETIME)';
+  if (/^'now'$/i.test(expression)) return 'UTC_TIMESTAMP()';
+
+  const boundInterval = expression.match(/^'now'\s*,\s*\?$/i);
+  if (boundInterval) return 'DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND)';
+
+  const literalInterval = expression.match(/^'now'\s*,\s*'([+-]?\d+)\s+seconds?'$/i);
+  if (literalInterval) {
+    return `DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${Number(literalInterval[1])} SECOND)`;
+  }
+
+  return `CAST(${expression} AS DATETIME)`;
+}
+
+function replaceSqliteDateTimeCalls(sql: string) {
+  let result = '';
+  let quote: "'" | '"' | '`' | null = null;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+
+    if (quote) {
+      result += char;
+      if (char === quote && sql[i - 1] !== '\\') {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char as "'" | '"' | '`';
+      result += char;
+      continue;
+    }
+
+    if (sql.slice(i, i + 8).toLowerCase() !== 'datetime') {
+      result += char;
+      continue;
+    }
+
+    const prev = i > 0 ? sql[i - 1] : '';
+    if (/[A-Za-z0-9_]/.test(prev)) {
+      result += char;
+      continue;
+    }
+
+    let openParenIndex = i + 8;
+    while (/\s/.test(sql[openParenIndex] || '')) {
+      openParenIndex += 1;
+    }
+
+    if (sql[openParenIndex] !== '(') {
+      result += char;
+      continue;
+    }
+
+    const parsed = readSqlFunctionCall(sql, openParenIndex);
+    if (!parsed) {
+      result += char;
+      continue;
+    }
+
+    result += normalizeSqliteDateTimeCall(parsed.inner);
+    i = parsed.endIndex;
+  }
+
+  return result;
+}
+
 function quoteReservedMySqlIdentifiers(sql: string) {
   let result = '';
   let quote: "'" | '"' | '`' | null = null;
@@ -202,11 +315,9 @@ function normalizeMySqlSql(sql: string) {
   normalized = normalized.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
   normalized = normalized.replace(/ON\s+CONFLICT\s*\([^)]*\)\s+DO\s+UPDATE\s+SET/gi, 'ON DUPLICATE KEY UPDATE');
   normalized = normalized.replace(/excluded\.(\w+)/gi, 'VALUES($1)');
-  normalized = normalized.replace(/\bRANDOM\(\)/gi, 'RAND()');
-  normalized = normalized.replace(/datetime\(\s*'now'\s*,\s*\?\s*\)/gi, 'DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND)');
-  normalized = normalized.replace(/datetime\(\s*'now'\s*\)/gi, 'UTC_TIMESTAMP()');
-  normalized = normalized.replace(/datetime\(\s*COALESCE\(([^)]*)\)\s*\)/gi, 'CAST(COALESCE($1) AS DATETIME)');
-  normalized = normalized.replace(/datetime\(\s*([^()]+?)\s*\)/gi, 'CAST($1 AS DATETIME)');
+  normalized = normalized.replace(/\bRANDOM\s*\(\s*\)/gi, 'RAND()');
+  normalized = normalized.replace(/LIKE\s+'%'\s*\|\|\s*\?\s*\|\|\s*'%'/gi, "LIKE CONCAT('%', ?, '%')");
+  normalized = replaceSqliteDateTimeCalls(normalized);
 
   if (/^\s*CREATE\s+TABLE\b/i.test(normalized)) {
     normalized = normalizeCreateTableSql(normalized);
