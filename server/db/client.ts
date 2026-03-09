@@ -202,6 +202,7 @@ function normalizeMySqlSql(sql: string) {
   normalized = normalized.replace(/INSERT\s+OR\s+REPLACE\s+INTO/gi, 'REPLACE INTO');
   normalized = normalized.replace(/ON\s+CONFLICT\s*\([^)]*\)\s+DO\s+UPDATE\s+SET/gi, 'ON DUPLICATE KEY UPDATE');
   normalized = normalized.replace(/excluded\.(\w+)/gi, 'VALUES($1)');
+  normalized = normalized.replace(/\bRANDOM\(\)/gi, 'RAND()');
   normalized = normalized.replace(/datetime\(\s*'now'\s*,\s*\?\s*\)/gi, 'DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? SECOND)');
   normalized = normalized.replace(/datetime\(\s*'now'\s*\)/gi, 'UTC_TIMESTAMP()');
   normalized = normalized.replace(/datetime\(\s*COALESCE\(([^)]*)\)\s*\)/gi, 'CAST(COALESCE($1) AS DATETIME)');
