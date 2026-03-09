@@ -301,7 +301,7 @@ async function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
       OR locationTag = ''
     )
       AND tier IN ('低阶', '中阶')
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 1
   `;
   const bankSql = `
@@ -314,7 +314,7 @@ async function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
       OR locationTag = ''
     )
       AND tier IN ('中阶', '高阶')
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 1
   `;
   const dailySql = `
@@ -332,7 +332,7 @@ async function pickItemForAuction(db: any, mode: 'tavern' | 'bank' | 'daily') {
   const fallbackSql = `
     SELECT id, name, description, itemType, tier, effectValue, price
     FROM items
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 1
   `;
   const sql = mode === 'tavern' ? tavernSql : mode === 'bank' ? bankSql : dailySql;
@@ -1656,7 +1656,7 @@ export async function createGuildRouter(ctx: AppContext) {
             OR locationTag = ''
             OR locationTag LIKE '%guild%'
           )
-          ORDER BY RANDOM()
+          ORDER BY RAND()
           LIMIT 1
         `).get() as AnyRow | undefined;
 

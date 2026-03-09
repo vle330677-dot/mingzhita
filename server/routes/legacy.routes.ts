@@ -563,7 +563,7 @@ export async function createLegacyRouter(ctx: AppContext) {
         WHERE status IN ('approved', 'ghost')
           AND (
             faction = ?
-            OR job IN (${placeholders})
+            OR job IN (${placeholders || "''"})
           )
         ORDER BY id DESC
       `).all(meta.name, ...meta.jobs) as any[];

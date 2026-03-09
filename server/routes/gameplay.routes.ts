@@ -1036,7 +1036,7 @@ async function buildDemonContrabandOffers(db: any, isDemonMember: boolean) {
         OR locationTag = ''
         OR locationTag LIKE '%demon%'
       )
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 200
   `).all(DEMON_LOCATION) as AnyRow[];
 
@@ -1075,7 +1075,7 @@ async function pickSlumAlleyItem(db: any, preferAlchemy: boolean) {
       FROM items
       WHERE ${baseWhere}
         AND (faction LIKE '%炼金%' OR name LIKE '%炼金%' OR description LIKE '%炼金%')
-      ORDER BY RANDOM()
+      ORDER BY RAND()
       LIMIT 1
     `).get() as AnyRow | undefined;
     if (alchemy) return { item: alchemy, isAlchemy: true };
@@ -1085,7 +1085,7 @@ async function pickSlumAlleyItem(db: any, preferAlchemy: boolean) {
     SELECT id, name, description, itemType, effectValue, tier, faction
     FROM items
     WHERE ${baseWhere}
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 1
   `).get() as AnyRow | undefined;
   if (common) return { item: common, isAlchemy: false };
@@ -1119,7 +1119,7 @@ async function pickRichStreetItem(db: any) {
         OR itemType = '贵重物品'
         OR COALESCE(effectValue, 0) >= 120
       )
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 240
   `).all() as AnyRow[];
 
@@ -1127,7 +1127,7 @@ async function pickRichStreetItem(db: any) {
     SELECT id, name, description, itemType, effectValue, tier, faction, price
     FROM items
     WHERE ${baseWhere}
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 240
   `).all() as AnyRow[];
 
@@ -1162,13 +1162,13 @@ async function pickRandomDropByTier(db: any, level: number, isDemonMember = fals
     SELECT id, name, description, itemType, effectValue, tier
     FROM items
     WHERE tier = ?
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 240
   `).all(tier) as AnyRow[];
   const allRows = await db.prepare(`
     SELECT id, name, description, itemType, effectValue, tier
     FROM items
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 240
   `).all() as AnyRow[];
   const pool = byTierRows.length > 0 ? byTierRows : allRows;
@@ -1844,7 +1844,7 @@ async function resolveSteal(db: any, thiefId: number, targetId: number) {
     return { success: false, message: '你尚未掌握带偷窃效果的技能，无法偷窃' };
   }
 
-  const item = await db.prepare(`SELECT * FROM inventory WHERE userId=? AND qty>0 ORDER BY RANDOM() LIMIT 1`).get(targetId) as AnyRow | undefined;
+  const item = await db.prepare(`SELECT * FROM inventory WHERE userId=? AND qty>0 ORDER BY RAND() LIMIT 1`).get(targetId) as AnyRow | undefined;
   if (!item) return { success: false, message: '目标背包为空，偷窃失败' };
 
   const tx = db.transaction(async () => {
@@ -2274,7 +2274,7 @@ async function pickNpcLocationRewardItem(db: any, locationId: string) {
         OR ? = ''
         OR locationTag LIKE '%' || ? || '%'
       )
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 1
   `);
   const strictHigh = await queryByTier.get('高阶', locationId, locationId) as AnyRow | undefined;
@@ -2288,7 +2288,7 @@ async function pickNpcLocationRewardItem(db: any, locationId: string) {
     FROM items
     WHERE itemType <> '违禁品'
       AND tier = '高阶'
-    ORDER BY RANDOM()
+    ORDER BY RAND()
     LIMIT 1
   `).get() as AnyRow | undefined;
 }
@@ -4233,7 +4233,7 @@ export async function createGameplayRouter(ctx: AppContext) {
             OR locationTag = ''
             OR locationTag LIKE '%demon%'
           )
-        ORDER BY RANDOM()
+        ORDER BY RAND()
         LIMIT 1
       `).get(DEMON_LOCATION) as AnyRow | undefined;
 
@@ -4246,14 +4246,14 @@ export async function createGameplayRouter(ctx: AppContext) {
           OR locationTag = ''
           OR locationTag LIKE '%demon%'
         )
-        ORDER BY RANDOM()
+        ORDER BY RAND()
         LIMIT 1
       `).get(DEMON_LOCATION) as AnyRow | undefined;
 
       const fallback = contraband || picked || (await db.prepare(`
         SELECT id, name, description, itemType, effectValue, tier
         FROM items
-        ORDER BY RANDOM()
+        ORDER BY RAND()
         LIMIT 1
       `).get() as AnyRow | undefined);
 
@@ -4306,7 +4306,7 @@ export async function createGameplayRouter(ctx: AppContext) {
         SELECT id, name, description, tier, itemType, effectValue, faction, locationTag
         FROM items
         WHERE (locationTag = '' OR ? = '' OR locationTag LIKE '%' || ? || '%')
-        ORDER BY RANDOM()
+        ORDER BY RAND()
         LIMIT 300
       `).all(locationTag, locationTag) as AnyRow[];
 
@@ -4379,7 +4379,7 @@ export async function createGameplayRouter(ctx: AppContext) {
         FROM skills s
         LEFT JOIN user_skills us ON us.skillId=s.id AND us.userId=?
         WHERE us.id IS NULL
-        ORDER BY RANDOM()
+        ORDER BY RAND()
         LIMIT 1
       `).get(userId) as AnyRow | undefined;
       if (!row) return res.json({ success: false, message: 'no new skill available' });
