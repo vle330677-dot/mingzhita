@@ -55,10 +55,12 @@ function normalizeBindValues(params: any[]) {
 function chooseTextType(columnName: string, rest: string) {
   const lower = columnName.toLowerCase();
   const hasDefault = /\bDEFAULT\b/i.test(rest);
+  const hasTimestampDefault = /\bDEFAULT\s+(?:\(?\s*)?(?:CURRENT_TIMESTAMP|UTC_TIMESTAMP)\s*\(?\)?/i.test(rest);
   const keyLike =
     /\bPRIMARY\s+KEY\b|\bUNIQUE\b/i.test(rest)
     || /(^id$|id$|token$|name$|title$|type$|status$|role$|faction$|key$|datekey$|locationid$|archiveid$|sessionid$|partyid$|cityid$|shopname$|pointtype$)/i.test(lower);
 
+  if (hasTimestampDefault) return 'DATETIME';
   if (URL_TEXT_COLUMNS.has(columnName)) return 'VARCHAR(1024)';
   if (LONG_TEXT_COLUMNS.has(columnName)) return hasDefault ? 'VARCHAR(4096)' : 'LONGTEXT';
   if (keyLike) return 'VARCHAR(191)';
