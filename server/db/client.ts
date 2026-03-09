@@ -120,10 +120,11 @@ function normalizeCreateTableSql(block: string) {
   normalized = normalized
     .split('\n')
     .map((line) => {
-      const match = line.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s+)(.+)$/);
+      const match = line.match(/^(\s*)(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_]*))(\s+)(.+)$/);
       if (!match) return line;
 
-      const [, indent, columnName, gap, rawRest] = match;
+      const [, indent, quotedColumnName, plainColumnName, gap, rawRest] = match;
+      const columnName = quotedColumnName || plainColumnName;
       if (/^(CREATE|PRIMARY|UNIQUE|FOREIGN|CONSTRAINT|CHECK|INDEX|KEY)$/i.test(columnName)) {
         return line;
       }
