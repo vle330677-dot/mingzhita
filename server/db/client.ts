@@ -125,7 +125,7 @@ function normalizeCreateTableSql(block: string) {
 
       const [, indent, quotedColumnName, plainColumnName, gap, rawRest] = match;
       const columnName = quotedColumnName || plainColumnName;
-      if (/^(CREATE|PRIMARY|UNIQUE|FOREIGN|CONSTRAINT|CHECK|INDEX|KEY)$/i.test(columnName)) {
+      if (/^(CREATE|PRIMARY|UNIQUE|FOREIGN|CONSTRAINT|CHECK|INDEX)$/i.test(columnName)) {
         return line;
       }
 
