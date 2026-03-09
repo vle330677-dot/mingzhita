@@ -87,8 +87,11 @@ function normalizeMySqlSql(sql: string) {
   normalized = normalized.replace(/datetime\(\s*COALESCE\(([^)]*)\)\s*\)/gi, 'CAST(COALESCE($1) AS DATETIME)');
   normalized = normalized.replace(/datetime\(\s*([^()]+?)\s*\)/gi, 'CAST($1 AS DATETIME)');
 
-  if (/CREATE\s+TABLE/i.test(normalized)) {
-    normalized = normalized.replace(/CREATE\s+TABLE[\s\S]*?\)\s*;/gi, (block) => normalizeCreateTableSql(block));
+  // Statements are split before execution, so CREATE TABLE usually reaches here without a trailing semicolon.
+  if (/^\s*CREATE\s+TABLE\b/i.test(normalized)) {
+    normalized = normalizeCreateTableSql(normalized);
+  } else if (/CREATE\s+TABLE/i.test(normalized)) {
+    normalized = normalized.replace(/CREATE\s+TABLE[\s\S]*?\)\s*;?/gi, (block) => normalizeCreateTableSql(block));
   }
 
   return normalized;
