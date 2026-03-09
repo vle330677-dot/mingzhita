@@ -8,7 +8,9 @@
   },
   "env": {
     "NODE_ENV": "production",
-    "PORT": "3000"
+    "PORT": "3000",
+    "DB_CLIENT": "mysql",
+    "MYSQL_CHARSET": "utf8mb4"
   },
   "health": {
     "path": "/api/health",

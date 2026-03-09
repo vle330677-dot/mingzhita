@@ -1,146 +1,159 @@
-# 命之塔 - Zeabur 部署指南
+# 命之塔 - Zeabur + MySQL 部署指南
 
-## 快速部署
+这份文档对应当前仓库的推荐部署方式：`Zeabur + MySQL`。  
+不再建议在 Zeabur 上按旧版 SQLite + Volume 的方式部署。
 
-### 1. 准备工作
+## 部署拓扑
 
-确保你的项目已经推送到 Git 仓库（GitHub/GitLab/Bitbucket）。
+- 一个 `Git Repository` 应用服务
+- 一个 `MySQL` 数据库服务
 
-### 2. Zeabur 部署步骤
+应用已经兼容以下 MySQL 变量格式：
 
-1. 访问 [Zeabur](https://zeabur.com)
-2. 登录并创建新项目
-3. 点击 "Add Service" → "Git Repository"
-4. 选择你的仓库
-5. Zeabur 会自动检测 Node.js 项目
+- `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_DATABASE`
+- `MYSQL_USERNAME` / `MYSQL_PASSWORD`
+- `MYSQL_USER` / `MYSQL_PASSWORD`
+- `MYSQL_URI`
+- `MYSQL_CONNECTION_STRING`
 
-### 3. 环境变量配置
+其中 Zeabur 的 MySQL 模板默认提供 `MYSQL_USERNAME`、`MYSQL_URI`、`MYSQL_CONNECTION_STRING`。
 
-在 Zeabur 控制台设置以下环境变量：
+## 部署步骤
+
+### 1. 创建项目
+
+1. 把代码推送到 GitHub / GitLab / Bitbucket
+2. 登录 [Zeabur](https://zeabur.com)
+3. 创建新项目
+
+### 2. 添加 MySQL 服务
+
+1. 在项目中点击 `Add Service`
+2. 选择 `MySQL`
+3. 等待数据库初始化完成
+
+如果你打算让应用直接连接 Zeabur 里的数据库，不需要再给应用挂载 SQLite Volume。
+
+### 3. 添加应用服务
+
+1. 点击 `Add Service`
+2. 选择 `Git Repository`
+3. 选择当前仓库
+4. 确认 Zeabur 识别为 Node.js 项目
+
+仓库内已提供 `zeabur.json`，默认构建和启动命令如下：
+
+- 构建命令：`npm install && npm run build`
+- 启动命令：`npm run start`
+
+### 4. 配置应用环境变量
+
+在应用服务里至少设置这些变量：
 
 ```env
-# 必需
 NODE_ENV=production
-ADMIN_ENTRY_CODE=your_strong_random_code_here
 PORT=3000
-
-# 数据库路径（使用持久化存储）
-DB_PATH=/data/game.db
-
-# 性能优化
+DB_CLIENT=mysql
+ADMIN_ENTRY_CODE=your_strong_random_code
+MYSQL_CHARSET=utf8mb4
 NODE_OPTIONS=--max-old-space-size=512
 ```
 
-### 4. 持久化存储配置
+数据库连接信息有两种方式：
 
-1. 在 Zeabur 控制台点击 "Add Volume"
-2. 挂载路径：`/data`
-3. 大小：至少 1GB
+方式一：使用 Zeabur MySQL 服务注入的独立变量
 
-### 5. 构建配置
+```env
+MYSQL_HOST=your-mysql-host
+MYSQL_PORT=3306
+MYSQL_DATABASE=mingzhita
+MYSQL_USERNAME=your-mysql-user
+MYSQL_PASSWORD=your-mysql-password
+```
 
-Zeabur 会自动使用 `package.json` 中的脚本：
+方式二：直接提供连接串
 
-- **构建命令**：`npm install && npm run build`
-- **启动命令**：`npm run start`
+```env
+MYSQL_URI=mysql://user:password@host:3306/mingzhita
+```
 
-### 6. 域名配置
+或：
 
-1. 在 Zeabur 控制台点击 "Domains"
-2. 添加自定义域名或使用 Zeabur 提供的域名
-3. 配置 DNS 记录（如果使用自定义域名）
+```env
+MYSQL_CONNECTION_STRING=mysql://user:password@host:3306/mingzhita
+```
 
-## 性能优化配置
+## 数据迁移
 
-### 推荐资源配置
+如果你现在的数据还在 SQLite 里，可以先把数据导入 MySQL，再部署到 Zeabur。
 
-- **CPU**：0.5 - 1 核心
-- **内存**：512MB - 1GB
-- **磁盘**：1GB SSD（持久化存储）
+本地准备好 MySQL 连接变量后执行：
 
-### 自动扩展（可选）
+```bash
+npm install
+npm run db:mysql:import
+```
 
-如果用户量大，可以配置自动扩展：
-- 最小实例：1
-- 最大实例：3
-- CPU 阈值：70%
+默认会从以下路径读取旧 SQLite 数据库：
 
-## 监控和维护
+- `SQLITE_IMPORT_PATH`
+- 或 `DB_PATH`
+- 或 `./data/game.db`
 
-### 健康检查
+## 健康检查
 
-Zeabur 会自动监控 `/api/health` 端点。
+应用健康检查地址：
 
-### 日志查看
+```txt
+/api/health
+```
 
-在 Zeabur 控制台查看实时日志：
-1. 点击服务
-2. 选择 "Logs" 标签
-3. 查看应用日志和错误信息
+当前 `zeabur.json` 已按这个路径配置。
 
-### 数据库备份
+## 推荐资源
 
-定期备份数据库文件：
-1. 使用 Zeabur CLI 下载 `/data/game.db`
-2. 或者在应用中添加自动备份脚本
+- CPU：0.5 - 1 Core
+- 内存：512MB - 1GB
+- MySQL：按实际数据量单独分配
 
 ## 常见问题
 
-### Q: 部署后无法访问？
-A: 检查：
-- 环境变量是否正确设置
-- PORT 是否设置为 3000
-- 构建是否成功
+### 1. 启动时报 MySQL 环境变量缺失
 
-### Q: 数据丢失？
-A: 确保：
-- 已配置持久化存储（Volume）
-- DB_PATH 指向 `/data/game.db`
-- 定期备份数据库
+先检查应用服务里是否能读取到以下任一组变量：
 
-### Q: 性能慢？
-A: 参考 `PERFORMANCE_GUIDE.md` 进行优化：
-- 升级资源配额
-- 启用缓存
-- 优化数据库查询
+- `MYSQL_HOST` + `MYSQL_DATABASE` + `MYSQL_USERNAME` + `MYSQL_PASSWORD`
+- `MYSQL_URI`
+- `MYSQL_CONNECTION_STRING`
 
-### Q: 如何更新代码？
-A: 
-1. 推送代码到 Git 仓库
-2. Zeabur 会自动检测并重新部署
-3. 或者在控制台手动触发部署
+### 2. Zeabur 里明明有数据库，但应用连不上
 
-## 成本估算
+通常是这几类问题：
 
-Zeabur 定价（参考）：
-- **免费套餐**：适合测试，有限制
-- **基础套餐**：$5-10/月，适合小型项目
-- **专业套餐**：$20-50/月，适合中型项目
+- MySQL 服务没有和当前应用放在同一个项目里
+- 变量没有注入到应用服务
+- 端口、用户名或库名填错
+- 复制了外网连接串，但密码或字符集不完整
 
-## 安全建议
+### 3. 还要不要配置 `/data` Volume
 
-1. **强密码**：使用强随机密码作为 `ADMIN_ENTRY_CODE`
-2. **HTTPS**：Zeabur 自动提供 SSL 证书
-3. **限流**：已内置限流中间件
-4. **定期更新**：保持依赖包最新
+如果你使用的是 Zeabur MySQL，不需要为了主业务数据再挂 SQLite Volume。  
+只有你明确要保留 SQLite 备份文件时，才需要额外挂载存储。
 
-## 技术支持
+### 4. 如何确认当前实例真的跑的是 MySQL
 
-- Zeabur 文档：https://zeabur.com/docs
-- Zeabur Discord：https://discord.gg/zeabur
-- 项目 Issues：在你的 Git 仓库提交问题
+查看应用日志，启动时会输出：
+
+- `DB_TARGET: mysql`
+- `MYSQL_HOST: ...`
+- `MYSQL_DATABASE: ...`
 
 ## 部署检查清单
 
-- [ ] 代码推送到 Git 仓库
-- [ ] 在 Zeabur 创建项目
-- [ ] 配置环境变量
-- [ ] 配置持久化存储
-- [ ] 测试健康检查端点
-- [ ] 配置域名
-- [ ] 测试登录功能
-- [ ] 测试数据持久化
-- [ ] 查看日志确认无错误
-- [ ] 设置数据库备份计划
-
-部署完成后，访问你的域名即可开始使用！
+- [ ] MySQL 服务已创建
+- [ ] Git 仓库应用已创建
+- [ ] `DB_CLIENT=mysql` 已设置
+- [ ] 应用可读取 MySQL 连接变量
+- [ ] `/api/health` 返回 200
+- [ ] 登录和基础 API 正常
+- [ ] 已完成数据库备份策略
