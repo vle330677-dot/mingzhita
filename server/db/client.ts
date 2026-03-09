@@ -30,6 +30,10 @@ const URL_TEXT_COLUMNS = new Set([
   'adminAvatarUrl',
 ]);
 
+const MYSQL_RESERVED_COLUMN_NAMES = new Set([
+  'key',
+]);
+
 function normalizeBindValues(params: any[]) {
   return params.map((value) => {
     if (value === undefined) return null;
@@ -56,6 +60,56 @@ function chooseTextType(columnName: string, rest: string) {
   return hasDefault ? 'VARCHAR(255)' : 'LONGTEXT';
 }
 
+function quoteMySqlIdentifier(identifier: string) {
+  return `\`${String(identifier || '').replace(/`/g, '``')}\``;
+}
+
+function quoteReservedMySqlIdentifiers(sql: string) {
+  let result = '';
+  let quote: "'" | '"' | '`' | null = null;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+
+    if (quote) {
+      result += char;
+      if (char === quote && sql[i - 1] !== '\\') {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === '`') {
+      quote = char as "'" | '"' | '`';
+      result += char;
+      continue;
+    }
+
+    let replaced = false;
+    for (const reservedName of MYSQL_RESERVED_COLUMN_NAMES) {
+      if (sql.slice(i, i + reservedName.length) !== reservedName) continue;
+
+      const prev = i > 0 ? sql[i - 1] : '';
+      const next = i + reservedName.length < sql.length ? sql[i + reservedName.length] : '';
+      const hasIdentifierBefore = /[A-Za-z0-9_`]/.test(prev);
+      const hasIdentifierAfter = /[A-Za-z0-9_`]/.test(next);
+
+      if (!hasIdentifierBefore && !hasIdentifierAfter) {
+        result += quoteMySqlIdentifier(reservedName);
+        i += reservedName.length - 1;
+        replaced = true;
+        break;
+      }
+    }
+
+    if (!replaced) {
+      result += char;
+    }
+  }
+
+  return result;
+}
+
 function normalizeCreateTableSql(block: string) {
   let normalized = block
     .replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, 'BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY')
@@ -66,10 +120,17 @@ function normalizeCreateTableSql(block: string) {
   normalized = normalized
     .split('\n')
     .map((line) => {
-      const match = line.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s+)TEXT(\b.*)$/);
+      const match = line.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s+)(.+)$/);
       if (!match) return line;
-      const [, indent, columnName, gap, rest] = match;
-      return `${indent}${columnName}${gap}${chooseTextType(columnName, rest)}${rest}`;
+
+      const [, indent, columnName, gap, rawRest] = match;
+      if (/^(CREATE|PRIMARY|UNIQUE|FOREIGN|CONSTRAINT|CHECK|INDEX|KEY)$/i.test(columnName)) {
+        return line;
+      }
+
+      const textMatch = rawRest.match(/^TEXT(\b.*)$/);
+      const rest = textMatch ? `${chooseTextType(columnName, textMatch[1])}${textMatch[1]}` : rawRest;
+      return `${indent}${quoteMySqlIdentifier(columnName)}${gap}${rest}`;
     })
     .join('\n');
 
@@ -93,6 +154,8 @@ function normalizeMySqlSql(sql: string) {
   } else if (/CREATE\s+TABLE/i.test(normalized)) {
     normalized = normalized.replace(/CREATE\s+TABLE[\s\S]*?\)\s*;?/gi, (block) => normalizeCreateTableSql(block));
   }
+
+  normalized = quoteReservedMySqlIdentifiers(normalized);
 
   return normalized;
 }
